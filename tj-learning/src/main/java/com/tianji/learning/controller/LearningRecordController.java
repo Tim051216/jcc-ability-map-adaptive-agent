@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
  * @author fenny
  * @since 2023-11-21
  */
-@Api(tags = "学习记录的相关接口")
+@Api(tags = "A3学习过程追踪接口")
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/learning-records")

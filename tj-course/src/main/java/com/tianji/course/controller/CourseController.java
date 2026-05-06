@@ -29,7 +29,7 @@ import java.util.List;
  * @Date 2022/7/10 15:34
  * @Version
  **/
-@Api(tags = "课程相关接口")
+@Api(tags = "A3学习资源管理接口")
 @RestController
 @RequestMapping("courses")
 @Slf4j

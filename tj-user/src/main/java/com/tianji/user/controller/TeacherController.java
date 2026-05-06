@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/teachers")
-@Api(tags = "用户管理接口")
+@Api(tags = "A3导师资源管理接口")
 public class TeacherController {
 
     @Autowired

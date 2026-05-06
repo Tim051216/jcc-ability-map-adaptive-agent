@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Api(tags = "支付相关接口")
+@Api(tags = "A3资源订阅支付接口")
 @RestController
 @RequestMapping("pay")
 @RequiredArgsConstructor

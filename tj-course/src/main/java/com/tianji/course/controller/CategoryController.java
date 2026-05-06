@@ -29,7 +29,7 @@ import java.util.List;
  * @Version
  **/
 @RestController
-@Api(tags = "课程分类相关接口")
+@Api(tags = "A3知识领域分类接口")
 @RequestMapping("categorys")
 @Slf4j
 @Validated

@@ -20,7 +20,7 @@ import java.util.Map;
  * @author 虎哥
  * @since 2022-09-02
  */
-@Api(tags = "题目管理相关接口")
+@Api(tags = "A3题库资源管理接口")
 @RestController
 @RequestMapping("/question-biz")
 @RequiredArgsConstructor

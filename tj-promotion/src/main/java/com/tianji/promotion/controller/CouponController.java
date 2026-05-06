@@ -29,7 +29,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/coupons")
-@Api(tags = "优惠券相关接口")
+@Api(tags = "A3资源运营策略接口")
 public class CouponController {
 
     private final ICouponService couponService;

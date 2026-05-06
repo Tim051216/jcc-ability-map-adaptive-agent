@@ -31,7 +31,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/boards")
-@Api(tags = "积分相关接口")
+@Api(tags = "A3学习激励评估接口")
 public class PointsBoardController {
 
     private final IPointsBoardSeasonService seasonService;

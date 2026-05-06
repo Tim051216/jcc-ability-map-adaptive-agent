@@ -26,7 +26,7 @@ import java.util.List;
  * @author 虎哥
  * @since 2022-08-29
  */
-@Api(tags = "订单相关接口")
+@Api(tags = "A3资源订阅支撑接口")
 @RestController
 @RequestMapping("/orders")
 @RequiredArgsConstructor
