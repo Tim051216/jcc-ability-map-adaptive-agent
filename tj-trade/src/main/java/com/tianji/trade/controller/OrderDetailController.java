@@ -25,7 +25,7 @@ import java.util.Map;
  * @since 2022-08-29
  */
 
-@Api(tags = "订单明细相关接口")
+@Api(tags = "A3资源订阅支撑接口")
 @RestController
 @RequestMapping("/order-details")
 @RequiredArgsConstructor

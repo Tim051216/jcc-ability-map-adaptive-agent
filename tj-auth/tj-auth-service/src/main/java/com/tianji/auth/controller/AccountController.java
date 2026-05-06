@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/accounts")
-@Api(tags = "账户管理")
+@Api(tags = "A3认证账户接口")
 @RequiredArgsConstructor
 public class AccountController {
 

@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/menus")
-@Api(tags = "菜单管理")
+@Api(tags = "A3后台菜单权限接口")
 @RequiredArgsConstructor
 public class MenuController {
 

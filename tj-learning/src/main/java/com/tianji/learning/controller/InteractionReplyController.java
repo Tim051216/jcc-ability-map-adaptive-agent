@@ -23,7 +23,7 @@ import javax.validation.Valid;
  * @since 2023-11-24
  */
 @RequiredArgsConstructor
-@Api(tags = "用户端回答或评论相关接口")
+@Api(tags = "A3智能答疑回复接口")
 @RestController
 @RequestMapping("/replies")
 public class InteractionReplyController {

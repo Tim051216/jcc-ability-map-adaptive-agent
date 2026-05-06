@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
  * @Version
  **/
 @RestController
-@Api(tags = "工作台top10数据相关接口")
+@Api(tags = "A3重点学习指标接口")
 @RequestMapping("/data/top10")
 public class Top10Controller {
 

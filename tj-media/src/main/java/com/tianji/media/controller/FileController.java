@@ -20,7 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @RestController
 @RequestMapping("/files")
-@Api(tags = "媒资管理相关接口")
+@Api(tags = "A3多模态文件接口")
 @RequiredArgsConstructor
 public class FileController {
 

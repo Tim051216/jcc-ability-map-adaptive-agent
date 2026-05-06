@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/notice-templates")
-@Api(tags = "通知模板管理接口")
+@Api(tags = "A3通知模板接口")
 @RequiredArgsConstructor
 public class NoticeTemplateController {
 

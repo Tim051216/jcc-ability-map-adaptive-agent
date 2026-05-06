@@ -21,7 +21,7 @@ import java.util.List;
  * @author 虎哥
  * @since 2022-08-26
  */
-@Api(tags = "支付相关接口")
+@Api(tags = "A3支付支撑接口")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/pay-channels")

@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/privileges")
-@Api(tags = "权限管理接口")
+@Api(tags = "A3权限控制接口")
 @RequiredArgsConstructor
 public class PrivilegeController {
 

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/students")
-@Api(tags = "用户管理接口")
+@Api(tags = "A3学生画像基础接口")
 public class StudentController {
 
     @Autowired

@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@Api(tags = "课程推荐相关接口")
+@Api(tags = "A3个性化推荐接口")
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("recommend")

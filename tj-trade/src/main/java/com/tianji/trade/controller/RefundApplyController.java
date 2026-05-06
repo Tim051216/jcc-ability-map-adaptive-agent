@@ -25,7 +25,7 @@ import javax.validation.Valid;
  * @author 虎哥
  * @since 2022-08-29
  */
-@Api(tags = "退款相关接口")
+@Api(tags = "A3资源订阅售后接口")
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/refund-apply")

@@ -24,7 +24,7 @@ import java.util.Map;
  **/
 @RestController
 @RequestMapping("course")
-@Api(tags = "课程相关接口，内部调用")
+@Api(tags = "A3学习资源内部接口")
 public class CourseInfoController {
 
     @Autowired

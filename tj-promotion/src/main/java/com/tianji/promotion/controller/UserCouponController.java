@@ -15,7 +15,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/user-coupons")
-@Api(tags = "优惠券相关接口")
+@Api(tags = "A3资源运营策略接口")
 public class UserCouponController {
 
     private final IUserCouponService userCouponService;

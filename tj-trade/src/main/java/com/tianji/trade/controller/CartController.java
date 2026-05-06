@@ -24,7 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/carts")
 @RequiredArgsConstructor
-@Api(tags = "购物车相关接口")
+@Api(tags = "A3资源订阅支撑接口")
 public class CartController {
 
     private final ICartService cartService;

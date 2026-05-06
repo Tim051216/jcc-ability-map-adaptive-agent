@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  * @author 虎哥
  * @since 2022-06-16
  */
-@Api(tags = "角色管理")
+@Api(tags = "A3角色管理接口")
 @RestController
 @RequestMapping("/roles")
 @RequiredArgsConstructor

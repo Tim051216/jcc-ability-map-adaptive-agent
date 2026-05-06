@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
  * @author 虎哥
  * @since 2022-08-19
  */
-@Api(tags = "用户收件箱接口")
+@Api(tags = "A3学习通知收件箱接口")
 @RestController
 @RequestMapping("/inboxes")
 @RequiredArgsConstructor
