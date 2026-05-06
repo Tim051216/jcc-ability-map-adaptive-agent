@@ -22,8 +22,8 @@ spring:
             refresh: false
 encrypt:
   key-store:
-    alias: tjxt  #别名
-    location: classpath:tjxt.jks  #KeyStore 证书库名称
+    alias: a3auth  #??
+    location: classpath:a3auth.jks  #KeyStore ?????
     password: tj123321   #证书库密码
     secret: tj123321   #秘钥
 tj:
@@ -31,11 +31,11 @@ tj:
     enable: true
     enableResponseWrap: true
     package-path: com.tianji.auth.controller
-    title: 天机学堂 - 权限微服务接口文档
-    description: 该服务用于管理权限相关信息
-    contact-name: 传智教育·研究院
-    contact-url: http://www.itcast.cn/
-    contact-email: zhanghuyi@itcast.cn
+    title: A3??????????? - ???????????
+    description: ??????????????????????
+    contact-name: A3??????
+    contact-url: https://www.cnsoftbei.com/content-3-1286-1.html
+    contact-email: team-a3@example.com
     version: v1.0
   auth:
     resource:

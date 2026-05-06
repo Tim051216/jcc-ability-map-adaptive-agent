@@ -3,8 +3,8 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>tjxt</artifactId>
-        <groupId>com.tianji</groupId>
+        <artifactId>a3-learning-agent-system</artifactId>
+        <groupId>com.cnsoftbei.a3</groupId>
         <version>1.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -18,13 +18,13 @@
     <dependencies>
         <!--api-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.cnsoftbei.a3</groupId>
             <artifactId>tj-api</artifactId>
             <version>1.0.0</version>
         </dependency>
         <!--auth-->
         <dependency>
-            <groupId>com.tianji</groupId>
+            <groupId>com.cnsoftbei.a3</groupId>
             <artifactId>tj-auth-resource-sdk</artifactId>
             <version>1.0.0</version>
         </dependency>
