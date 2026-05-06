@@ -1,5 +1,5 @@
 FROM openjdk:11.0-jre-buster
-LABEL maintainer="A3赛题参赛团队 <team-a3@example.com>"
+LABEL maintainer="1752401825@qq.com"
 ENV JAVA_OPTS=""
 # 设定时区
 ENV TZ=Asia/Shanghai
