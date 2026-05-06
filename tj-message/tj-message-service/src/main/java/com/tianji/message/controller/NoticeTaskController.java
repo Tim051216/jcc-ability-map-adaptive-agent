@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
  * @author 虎哥
  * @since 2022-08-19
  */
-@Api(tags = "短信任务管理接口")
+@Api(tags = "A3通知任务接口")
 @RestController
 @RequestMapping("/notice-tasks")
 @RequiredArgsConstructor

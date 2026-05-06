@@ -50,3 +50,7 @@
 ## A3 演示接口
 
 当前已在 `tj-learning` 服务中补充一组赛题演示接口，详细说明见 [A3_DEMO_API.md](F:\A3-cnsoftbei\tj-exam\A3_DEMO_API.md)。
+
+## A3 架构映射
+
+当前工程与赛题能力之间的模块映射说明见 [A3_ARCHITECTURE.md](F:\A3-cnsoftbei\tj-exam\A3_ARCHITECTURE.md)。

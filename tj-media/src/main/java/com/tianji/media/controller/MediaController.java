@@ -26,7 +26,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/medias")
-@Api(tags = "媒资管理相关接口")
+@Api(tags = "A3多模态资源管理接口")
 @RequiredArgsConstructor
 public class MediaController {
 

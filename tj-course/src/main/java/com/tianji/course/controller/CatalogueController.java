@@ -17,7 +17,7 @@ import java.util.List;
  * @Date 2022/7/27 13:59
  * @Version
  **/
-@Api(tags = "章节目录相关接口")
+@Api(tags = "A3知识目录组织接口")
 @RestController
 @RequestMapping("catalogues")
 public class CatalogueController {

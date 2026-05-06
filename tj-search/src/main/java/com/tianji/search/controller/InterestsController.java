@@ -22,7 +22,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/interests")
-@Api(tags = "课程推荐相关接口")
+@Api(tags = "A3学习兴趣画像接口")
 @RequiredArgsConstructor
 public class InterestsController {
 

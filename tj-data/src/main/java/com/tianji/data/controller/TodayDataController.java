@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
  **/
 @RestController
 @RequestMapping("/data/today")
-@Api(tags = "今日数据相关接口")
+@Api(tags = "A3学习效果分析接口")
 public class TodayDataController {
 
     @Autowired

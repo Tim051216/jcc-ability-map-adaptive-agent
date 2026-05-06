@@ -22,7 +22,7 @@ import java.util.Set;
  * @author fenny
  * @since 2023-11-26
  */
-@Api(tags = "点赞相关接口")
+@Api(tags = "A3学习反馈汇总接口")
 @RestController
 @RequestMapping("/likes")
 @RequiredArgsConstructor

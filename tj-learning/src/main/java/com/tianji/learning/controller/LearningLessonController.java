@@ -27,7 +27,7 @@ import javax.validation.Valid;
  * @author fenny
  * @since 2023-11-20
  */
-@Api(tags = "我的课程相关接口")
+@Api(tags = "A3个性化学习路径接口")
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/lessons")

@@ -20,7 +20,7 @@ import java.util.List;
  **/
 @RestController
 @RequestMapping("/data/board")
-@Api(tags = "看板数据相关操作")
+@Api(tags = "A3学习看板接口")
 @Slf4j
 public class BoardController {
 

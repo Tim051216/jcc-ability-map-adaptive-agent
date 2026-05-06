@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
  * @author 虎哥
  * @since 2022-08-19
  */
-@Api(tags = "短信平台管理接口")
+@Api(tags = "A3第三方消息平台接口")
 @RestController
 @RequestMapping("/sms-platforms")
 @RequiredArgsConstructor

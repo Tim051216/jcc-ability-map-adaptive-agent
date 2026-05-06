@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/admin")
-@Api(tags = "管理端相关接口")
+@Api(tags = "A3学习辅导管理接口")
 @RequiredArgsConstructor
 public class InteractionQuestionAdminController {
 

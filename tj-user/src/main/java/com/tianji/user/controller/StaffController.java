@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/staffs")
-@Api(tags = "用户管理接口")
+@Api(tags = "A3平台成员管理接口")
 public class StaffController {
 
     private final IStaffService staffService;

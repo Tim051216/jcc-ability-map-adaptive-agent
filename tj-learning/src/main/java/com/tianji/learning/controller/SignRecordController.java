@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Deque;
 
-@Api(tags = "签到相关接口")
+@Api(tags = "A3学习活跃度接口")
 @RestController
 @RequestMapping("sign-records")
 @RequiredArgsConstructor

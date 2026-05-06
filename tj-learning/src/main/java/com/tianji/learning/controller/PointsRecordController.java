@@ -23,7 +23,7 @@ import java.util.List;
  */
 @RestController
 @RequiredArgsConstructor
-@Api(tags = "积分相关接口")
+@Api(tags = "A3学习激励评估接口")
 @RequestMapping("/points")
 public class PointsRecordController {
 

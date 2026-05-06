@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Api(tags = "短信发送控制器")
+@Api(tags = "A3消息发送接口")
 @RestController
 @RequestMapping("sms")
 @RequiredArgsConstructor

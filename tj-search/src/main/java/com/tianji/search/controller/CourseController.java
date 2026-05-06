@@ -16,7 +16,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("courses")
-@Api(tags = "课程搜索接口")
+@Api(tags = "A3资源检索接口")
 @RequiredArgsConstructor
 public class CourseController {
 

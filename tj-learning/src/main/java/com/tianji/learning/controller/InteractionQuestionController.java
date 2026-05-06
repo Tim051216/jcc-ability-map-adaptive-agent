@@ -25,7 +25,7 @@ import javax.validation.Valid;
 @RestController
 @RequestMapping("/questions")
 @RequiredArgsConstructor
-@Api(tags = "用户端问题相关接口")
+@Api(tags = "A3智能答疑提问接口")
 public class InteractionQuestionController {
 
     private final IInteractionQuestionService questionService;

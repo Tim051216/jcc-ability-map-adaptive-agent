@@ -26,7 +26,7 @@ import java.util.Map;
  * @author 虎哥
  * @since 2022-09-02
  */
-@Api(tags = "题目管理相关接口")
+@Api(tags = "A3练习测评生成接口")
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/questions")
