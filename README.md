@@ -54,3 +54,17 @@
 ## A3 架构映射
 
 当前工程与赛题能力之间的模块映射说明见 [A3_ARCHITECTURE.md](F:\A3-cnsoftbei\a3-assessment\A3_ARCHITECTURE.md)。
+
+## 构建方式
+
+- 推荐优先使用 Maven Wrapper，而不是直接使用本机 `mvn`
+- Windows：`.\mvnw.cmd -DskipTests compile`
+- Linux/macOS：`./mvnw -DskipTests compile`
+- 项目内已自带 `.mvn/settings.xml`，`mvnw` 会优先使用官方 `https` Maven Central`
+- 如果必须使用本机 Maven，建议执行：`mvn -s .mvn/settings.xml -DskipTests compile`
+
+## 为什么推荐 Wrapper
+
+- 可以统一 Maven 版本，减少不同机器的构建差异
+- 可以复用项目内仓库配置，降低本机镜像源不一致带来的失败风险
+- 新成员拉取仓库后可直接构建，减少环境准备成本
