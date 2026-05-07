@@ -7,13 +7,13 @@
 ## root cause
 - 根 `pom.xml` 仅在 `pluginManagement` 中声明了 `maven-compiler-plugin`，Lombok 注解处理器没有真正生效。
 - `A3TemporalConverter` 的类名与文件名不一致。
-- `a3-learning` 测试代码仍保留在 `com.tinaji` 包下，并带有“天机项目”注释。
+- `a3-learning` 测试代码仍保留在旧测试包下，并带有旧项目注释。
 
 ## changes
-- 在根 [pom.xml](/F:/A3-cnsoftbei/tj-exam/pom.xml) 中正式启用 `maven-compiler-plugin`，补齐 Lombok 注解处理器生效链路。
+- 在根 `pom.xml` 中正式启用 `maven-compiler-plugin`，补齐 Lombok 注解处理器生效链路。
 - 将 `a3-common` 的 `TjTemporalConverter.java` 重命名为 `A3TemporalConverter.java`。
-- 将 `a3-learning` 测试包从 `com.tinaji` 迁移到 `com.cnsoftbei.a3.learning`。
-- 清理 `MPTest` 中残留的“天机项目”注释。
+- 将 `a3-learning` 测试包迁移到统一的 A3 包命名下。
+- 清理 `MPTest` 中残留的旧项目注释。
 - 复查源码与配置，排除 `target` 目录后未再发现 `com.tianji`、`tj-*`、`tj.`、`天机` 等残留标识。
 
 ## verification
