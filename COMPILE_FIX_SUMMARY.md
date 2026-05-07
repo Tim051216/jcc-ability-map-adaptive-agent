@@ -2,7 +2,7 @@
 
 ## 问题
 
-项目在 JDK 21 环境下执行 `mvn -q -pl tj-learning -am -DskipTests compile` 时失败，报错指向 `JCTree$JCImport` 字段兼容问题。
+项目在 JDK 21 环境下执行 `mvn -q -pl a3-learning -am -DskipTests compile` 时失败，报错指向 `JCTree$JCImport` 字段兼容问题。
 
 ## 根因
 
@@ -16,5 +16,5 @@
 
 ## 验证
 
-- 已执行：`mvn -q -pl tj-learning -am -DskipTests compile`
+- 已执行：`mvn -q -pl a3-learning -am -DskipTests compile`
 - 结果：通过

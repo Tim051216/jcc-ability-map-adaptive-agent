@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "name": "a3.auth.gateway",
+      "type": "com.cnsoftbei.a3.authsdk.gateway.config.AuthAutoConfiguration",
+      "sourceType": "com.cnsoftbei.a3.authsdk.gateway.config.AuthProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "a3.auth.excludePath",
+      "type": "java.util.Set",
+      "description": "不用登录就能访问的路径，ant风格通配符",
+      "sourceType": "com.cnsoftbei.a3.authsdk.gateway.config.AuthProperties",
+      "defaultValue": ""
+    }
+  ],
+  "hints": []
+}

@@ -8,24 +8,24 @@
     <artifactId>a3-learning-agent-system</artifactId>
     <version>1.0.0</version>
     <modules>
-        <module>tj-common</module>
-        <module>tj-auth</module>
-        <module>tj-api</module>
-        <module>tj-gateway</module>
-        <module>tj-user</module>
-        <module>tj-message</module>
-        <module>tj-media</module>
-        <module>tj-course</module>
-        <module>tj-search</module>
-        <module>tj-learning</module>
-        <module>tj-pay</module>
-        <module>tj-trade</module>
-        <module>tj-exam</module>
-        <module>tj-data</module>
-        <module>tj-remark</module>
-        <module>tj-xxljobDemo</module>
-        <module>tj-promotion</module>
-        <module>tj-aopdemo</module>
+        <module>a3-common</module>
+        <module>a3-auth</module>
+        <module>a3-api</module>
+        <module>a3-gateway</module>
+        <module>a3-user</module>
+        <module>a3-message</module>
+        <module>a3-media</module>
+        <module>a3-resource</module>
+        <module>a3-recommend</module>
+        <module>a3-learning</module>
+        <module>a3-payment</module>
+        <module>a3-subscription</module>
+        <module>a3-assessment</module>
+        <module>a3-analytics</module>
+        <module>a3-feedback</module>
+        <module>a3-scheduler-demo</module>
+        <module>a3-operations</module>
+        <module>a3-aop-demo</module>
     </modules>
     <packaging>pom</packaging>
 
@@ -181,25 +181,23 @@
     </dependencies>
 
     <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>${maven.compiler.plugin.version}</version>
-                    <configuration>
-                        <source>11</source> <!-- depending on your project -->
-                        <target>11</target> <!-- depending on your project -->
-                        <annotationProcessorPaths>
-                            <path>
-                                <groupId>org.projectlombok</groupId>
-                                <artifactId>lombok</artifactId>
-                                <version>${org.projectlombok.version}</version>
-                            </path>
-                        </annotationProcessorPaths>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.plugin.version}</version>
+                <configuration>
+                    <source>11</source>
+                    <target>11</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${org.projectlombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 </project>
