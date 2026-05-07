@@ -34,7 +34,7 @@ a3:
     contact-email: team-a3@example.com
     version: v1.0
   jdbc:
-    database: tj_exam
+    database: a3_exam
   auth:
     resource:
       enable: false
