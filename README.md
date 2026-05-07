@@ -19,15 +19,15 @@
 
 ## 目录说明
 
-- `tj-gateway`：网关服务
-- `tj-auth`：认证与权限服务
-- `tj-user`：用户中心服务
-- `tj-course`：课程与资源服务
-- `tj-learning`：学习过程服务
-- `tj-exam`：题库与测评服务
-- `tj-media`：媒资服务
-- `tj-search`：检索与推荐服务
-- `tj-data`：数据分析服务
+- `a3-gateway`：网关服务
+- `a3-auth`：认证与权限服务
+- `a3-user`：用户中心服务
+- `a3-resource`：课程与资源服务
+- `a3-learning`：学习过程服务
+- `a3-assessment`：题库与测评服务
+- `a3-media`：媒资服务
+- `a3-recommend`：检索与推荐服务
+- `a3-analytics`：数据分析服务
 
 ## 开源引用说明
 
@@ -39,7 +39,7 @@
 - 采用的开源协议
 - 团队自主开发与改造部分说明
 
-详细说明见 [OPEN_SOURCE_NOTICE.md](F:\A3-cnsoftbei\tj-exam\OPEN_SOURCE_NOTICE.md)。
+详细说明见 [OPEN_SOURCE_NOTICE.md](F:\A3-cnsoftbei\a3-assessment\OPEN_SOURCE_NOTICE.md)。
 
 ## 提交前提醒
 
@@ -49,8 +49,8 @@
 
 ## A3 演示接口
 
-当前已在 `tj-learning` 服务中补充一组赛题演示接口，详细说明见 [A3_DEMO_API.md](F:\A3-cnsoftbei\tj-exam\A3_DEMO_API.md)。
+当前已在 `a3-learning` 服务中补充一组赛题演示接口，详细说明见 [A3_DEMO_API.md](F:\A3-cnsoftbei\a3-assessment\A3_DEMO_API.md)。
 
 ## A3 架构映射
 
-当前工程与赛题能力之间的模块映射说明见 [A3_ARCHITECTURE.md](F:\A3-cnsoftbei\tj-exam\A3_ARCHITECTURE.md)。
+当前工程与赛题能力之间的模块映射说明见 [A3_ARCHITECTURE.md](F:\A3-cnsoftbei\a3-assessment\A3_ARCHITECTURE.md)。

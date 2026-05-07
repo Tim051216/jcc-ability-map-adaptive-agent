@@ -1,0 +1,32 @@
+package com.cnsoftbei.a3.learning.controller;
+
+
+import com.cnsoftbei.a3.api.client.remark.RemarkClient;
+import com.cnsoftbei.a3.common.domain.dto.LikeRecordFormDTO;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * <p>
+ * 点赞记录表 前端控制器
+ * </p>
+ *
+ * @author fenny
+ * @since 2023-11-26
+ */
+@Api(tags = "A3学习反馈互动接口")
+@RestController
+@RequestMapping("/likes")
+@RequiredArgsConstructor
+public class LikedRecordController {
+
+    private final RemarkClient remarkClient;
+    @ApiOperation("点赞或者取消赞")
+    @PostMapping()
+    public void addLikeRecord(@RequestBody @Validated LikeRecordFormDTO dto){
+        remarkClient.addLikeRecord(dto);
+    }
+}

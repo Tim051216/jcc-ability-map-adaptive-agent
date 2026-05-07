@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.cnsoftbei.a3.authsdk.gateway.config.AuthAutoConfiguration
