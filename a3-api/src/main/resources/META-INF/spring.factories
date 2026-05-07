@@ -1,0 +1,5 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.cnsoftbei.a3.api.config.RequestIdRelayConfiguration, \
+  com.cnsoftbei.a3.api.config.RoleCacheConfig, \
+  com.cnsoftbei.a3.api.config.FallbackConfig, \
+  com.cnsoftbei.a3.api.config.CategoryCacheConfig
