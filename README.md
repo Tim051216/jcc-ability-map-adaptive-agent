@@ -43,7 +43,7 @@
 
 ## 提交前提醒
 
-- 将 `bootstrap.yml` 中的团队联系人邮箱替换为你们自己的真实邮箱
+- 已将 `bootstrap.yml` 中的团队联系人邮箱替换为当前项目邮箱，如需答辩提交请再按团队最终信息确认
 - 补充你们最终采用的大模型、智能体框架、知识库方案与部署说明
 - 在答辩材料中重点展示画像、资源生成、学习路径与多智能体协作链路
 
@@ -60,7 +60,7 @@
 - 推荐优先使用 Maven Wrapper，而不是直接使用本机 `mvn`
 - Windows：`.\mvnw.cmd -DskipTests compile`
 - Linux/macOS：`./mvnw -DskipTests compile`
-- 项目内已自带 `.mvn/settings.xml`，`mvnw` 会优先使用官方 `https` Maven Central`
+- 项目内已自带 `.mvn/settings.xml`，`mvnw` 会优先使用官方 `https` Maven Central
 - 如果必须使用本机 Maven，建议执行：`mvn -s .mvn/settings.xml -DskipTests compile`
 
 ## 为什么推荐 Wrapper
