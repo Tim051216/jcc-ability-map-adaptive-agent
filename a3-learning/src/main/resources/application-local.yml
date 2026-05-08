@@ -1,0 +1,28 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:13306/tj_learning?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: a3mysql123
+  redis:
+    host: 127.0.0.1
+    port: 16379
+    database: 0
+    timeout: 10s
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    listener:
+      simple:
+        missing-queues-fatal: false
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
