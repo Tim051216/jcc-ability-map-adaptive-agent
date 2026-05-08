@@ -1,4 +1,4 @@
-import request from "@/utils/request.js";
+﻿import request from "@/utils/request.js";
 import {
   demoInterests,
   demoRecommendCourses,
@@ -23,6 +23,11 @@ import {
   saveDemoPlan,
   signDemoPoints,
 } from "@/config/demo-learning";
+import courseCoverAiStudy from "@/assets/course-covers/course-cover-ai-study.jpg";
+import courseCoverBootcamp from "@/assets/course-covers/course-cover-bootcamp.jpg";
+import courseCoverFrontend from "@/assets/course-covers/course-cover-frontend.jpg";
+import courseCoverLlm from "@/assets/course-covers/course-cover-llm.jpg";
+import courseCoverMicroservice from "@/assets/course-covers/course-cover-microservice.jpg";
 
 const SEARCH_API_PREFIX = "/ss";
 const COURSE_API_PREFIX = "/cs";
@@ -60,6 +65,45 @@ const A3_PORTAL_CATEGORIES = [
 ];
 
 const cloneDemoData = (value) => JSON.parse(JSON.stringify(value));
+
+const A3_RECOMMEND_COURSE_OVERRIDES = {
+  101: {
+    name: "A3 智能学习助手实战",
+    teacher: "A3 教学团队",
+    teacherName: "A3 教学团队",
+    coverUrl: courseCoverAiStudy,
+  },
+  102: {
+    name: "Spring Cloud 微服务训练营",
+    teacher: "平台研发组",
+    teacherName: "平台研发组",
+    coverUrl: courseCoverMicroservice,
+  },
+  201: {
+    name: "Vue 3 项目工程化落地",
+    teacher: "前端架构组",
+    teacherName: "前端架构组",
+    coverUrl: courseCoverFrontend,
+  },
+  301: {
+    name: "大模型应用开发导论",
+    teacher: "A3 AI 实验室",
+    teacherName: "A3 AI 实验室",
+    coverUrl: courseCoverLlm,
+  },
+  302: {
+    name: "软挑赛题项目实训",
+    teacher: "竞赛辅导组",
+    teacherName: "竞赛辅导组",
+    coverUrl: courseCoverBootcamp,
+  },
+};
+
+const normalizeRecommendCourseCards = (courses = []) =>
+  cloneDemoData(courses).map((course) => ({
+    ...course,
+    ...(A3_RECOMMEND_COURSE_OVERRIDES[course?.id] || {}),
+  }));
 
 const isSuspiciousCategoryName = (value = "") => {
   if (typeof value !== "string") {
@@ -107,10 +151,10 @@ export const getClassCategorys = (params) =>
       });
 
 export const getRecommendClassList = (type) =>
-  isPortalDemoMode()
+  isPortalDemoMode() || isA3LocalMode
     ? Promise.resolve({
         code: 200,
-        data: demoRecommendCourses[type] || [],
+        data: normalizeRecommendCourseCards(demoRecommendCourses[type] || []),
       })
     : request({
         url: `${SEARCH_API_PREFIX}/recommend/${type}`,
@@ -425,3 +469,4 @@ export const getSelectOptions = (params) =>
         method: "get",
         params,
       });
+

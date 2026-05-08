@@ -1,10 +1,10 @@
 PROFILE_DIMENSIONS = [
-    "major",
-    "goal",
-    "knowledge_level",
-    "learning_style",
-    "weak_points",
-    "preferred_resource_types",
+    "knowledge_foundation",
+    "cognitive_style",
+    "learning_progress",
+    "weak_point_preference",
+    "interest_orientation",
+    "learning_habit",
 ]
 
 RESOURCE_TYPES = [

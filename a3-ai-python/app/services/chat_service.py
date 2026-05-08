@@ -33,6 +33,8 @@ class ChatService:
             citations=citations,
             intent=state.get("intent"),
             agent_trace=state.get("execution_trace", []),
+            profile=state.get("profile"),
             generated_plan=state.get("plan") or None,
             generated_resources=state.get("resources", []),
+            generated_evaluation=state.get("evaluation") or None,
         )

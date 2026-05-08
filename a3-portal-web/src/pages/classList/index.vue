@@ -1,18 +1,14 @@
 <template>
   <div class="mainWrapper">
     <div class="container banner fx">
-      <div class="categorys bg-wt">
+      <div class="categorys">
         <ClassCategory :data="classCategorys" />
       </div>
-      <Swiper :data="imags" />
+      <Swiper :data="images" />
     </div>
 
     <div class="bg-wt pd-tp-30">
       <OpenClass title="平台公开演示" class="container bg-wt" :data="demoCourses" />
-    </div>
-
-    <div class="pd-tp-30">
-      <OpenClass title="赛题演示课程" class="container" :data="newCourses" />
     </div>
 
     <div class="globalTopBanner a3ListBanner">
@@ -34,13 +30,28 @@ import { ElMessage } from "element-plus";
 import ClassCategory from "@/components/ClassCategory.vue";
 import OpenClass from "@/pages/main/components/OpenClass.vue";
 import Swiper from "./components/Swiper.vue";
-import { getClassCategorys, getRecommendClassList } from "@/api/class.js";
+import { getClassCategorys, getRecommendClassList, normalizeCategoryData } from "@/api/class.js";
 
 const classCategorys = ref([]);
-const imags = ref([]);
 const demoCourses = ref([]);
-const newCourses = ref([]);
 const bestCourses = ref([]);
+
+const images = [
+  {
+    eyebrow: "A3 课程导览",
+    title: "从首页到课程列表，统一为赛题化演示表达",
+    desc: "这里展示的是更适合答辩现场介绍、课程筛选和项目能力讲解的内容版式。",
+    badge: "课程总览",
+    background: "linear-gradient(135deg, #0f766e 0%, #2563eb 58%, #1e293b 100%)",
+  },
+  {
+    eyebrow: "前台体验优化",
+    title: "列表页也不再只是堆卡片，而是具备结构、层次和展示重点",
+    desc: "让课程推荐、专题呈现和演示讲解有更清晰的主次关系，减少原项目痕迹。",
+    badge: "A3 Portal",
+    background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #14b8a6 100%)",
+  },
+];
 
 onMounted(() => {
   getClassCategoryData();
@@ -51,7 +62,7 @@ const getClassCategoryData = async () => {
   try {
     const res = await getClassCategorys();
     if (res.code === 200) {
-      classCategorys.value = res.data || [];
+      classCategorys.value = normalizeCategoryData(res.data || []);
       return;
     }
     ElMessage({ message: res.msg || "分类加载失败", type: "error" });
@@ -62,14 +73,8 @@ const getClassCategoryData = async () => {
 
 const getCourseBlocks = async () => {
   try {
-    const [freeRes, newRes, bestRes] = await Promise.all([
-      getRecommendClassList("free"),
-      getRecommendClassList("new"),
-      getRecommendClassList("best"),
-    ]);
-
+    const [freeRes, bestRes] = await Promise.all([getRecommendClassList("free"), getRecommendClassList("best")]);
     demoCourses.value = freeRes.code === 200 ? freeRes.data || [] : [];
-    newCourses.value = newRes.code === 200 ? newRes.data || [] : [];
     bestCourses.value = bestRes.code === 200 ? bestRes.data || [] : [];
   } catch (error) {
     ElMessage({ message: "课程内容加载失败", type: "error" });
@@ -80,13 +85,13 @@ const getCourseBlocks = async () => {
 <style lang="scss" scoped>
 .mainWrapper {
   .banner {
-    padding: 20px 0;
+    padding: 26px 0 20px;
 
     .categorys {
       position: relative;
       width: 236px;
       height: 388px;
-      border-radius: 8px;
+      border-radius: 24px;
       z-index: 9;
     }
   }
@@ -105,10 +110,11 @@ const getCourseBlocks = async () => {
   .bannerInner {
     max-width: 1180px;
     margin: 0 auto;
-    border-radius: 18px;
-    padding: 24px 32px;
+    border-radius: 24px;
+    padding: 26px 32px;
     color: #fff;
     background: linear-gradient(135deg, #114c7a 0%, #177f89 100%);
+    box-shadow: 0 18px 36px rgba(17, 76, 122, 0.18);
   }
 
   .bannerEyebrow {

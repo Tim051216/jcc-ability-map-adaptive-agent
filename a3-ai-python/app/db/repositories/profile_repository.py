@@ -14,3 +14,26 @@ class ProfileRepository:
         )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def create_snapshot(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        version: int,
+        profile_data: dict,
+        source_summary: str | None,
+        created_at: str,
+        updated_at: str,
+    ) -> UserProfileSnapshot:
+        snapshot = UserProfileSnapshot(
+            user_id=user_id,
+            version=version,
+            profile_data=profile_data,
+            source_summary=source_summary,
+            created_at=created_at,
+            updated_at=updated_at,
+        )
+        session.add(snapshot)
+        await session.flush()
+        return snapshot

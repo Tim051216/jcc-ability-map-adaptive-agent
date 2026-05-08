@@ -17,8 +17,10 @@ class ChatResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     intent: str | None = None
     agent_trace: list[str] = Field(default_factory=list)
+    profile: dict | None = None
     generated_plan: dict | None = None
     generated_resources: list[dict] = Field(default_factory=list)
+    generated_evaluation: dict | None = None
 
 
 class ChatTaskSubmitResponse(BaseModel):

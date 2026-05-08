@@ -14,8 +14,9 @@ async def planner_node(state: LearningAgentState) -> LearningAgentState:
 
     if not course_code or not user_id or not user_input:
         state["plan"] = {
-            "summary": "当前缺少课程或问题上下文，暂不生成学习计划。",
+            "summary": "当前缺少课程或问题上下文，暂不生成学习路径。",
             "steps": [],
+            "stages": [],
         }
         return state
 
@@ -25,6 +26,8 @@ async def planner_node(state: LearningAgentState) -> LearningAgentState:
             course_code=course_code,
             target=user_input,
             available_days=3,
+            scene=state.get("scene"),
+            profile=state.get("profile"),
         )
     )
     state["plan"] = plan.model_dump()
