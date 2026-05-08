@@ -11,6 +11,7 @@
             结构化展示出来，方便你讲“检索增强 + 多智能体协作 + 教学资源生成”的完整闭环。
           </p>
           <div class="heroQuickNav">
+            <router-link class="navLink light" to="/main/index">返回首页</router-link>
             <router-link class="pathLink" to="/main/ai-path">进入正式学习路径页</router-link>
           </div>
           <div class="heroStats">
@@ -798,7 +799,28 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
 }
 
 .heroQuickNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 20px;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128px;
+  height: 46px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: #eef5fb;
+  color: #16304f;
+  font-weight: 700;
+
+  &:hover {
+    color: #16304f;
+    background: #e2edf8;
+  }
 }
 
 .pathLink {

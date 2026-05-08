@@ -10,6 +10,8 @@
             对应题目里的“学习效果评估 + 个性化报告 + 闭环反馈”。
           </p>
           <div class="heroActions">
+            <router-link class="navLink light" to="/main/index">返回首页</router-link>
+            <router-link class="navLink dark" to="/main/ai-path">返回学习专区</router-link>
             <el-button type="primary" size="large" :loading="loading" @click="runEvaluation">
               {{ loading ? "评估中..." : "重新生成评估" }}
             </el-button>
@@ -300,6 +302,38 @@ onMounted(async () => {
   display: flex;
   gap: 12px;
   margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.navLink.light {
+  background: #eef5fb;
+  color: #16304f;
+}
+
+.navLink.light:hover {
+  color: #16304f;
+  background: #e2edf8;
+}
+
+.navLink.dark {
+  background: #15304f;
+  color: #fff;
+}
+
+.navLink.dark:hover {
+  color: #fff;
+  background: #10243c;
 }
 
 .summaryCard {

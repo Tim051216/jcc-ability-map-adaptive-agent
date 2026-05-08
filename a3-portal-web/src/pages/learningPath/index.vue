@@ -10,6 +10,7 @@
             更贴近你们 PPT 里的“学习路径页 + 闭环执行”。
           </p>
           <div class="heroActions">
+            <router-link class="navLink light" to="/main/index">返回首页</router-link>
             <el-button type="primary" size="large" :loading="loading" @click="buildPlan">
               {{ loading ? "生成中..." : "重新生成路径" }}
             </el-button>
@@ -304,6 +305,24 @@ onMounted(async () => {
   gap: 12px;
   margin-top: 24px;
   flex-wrap: wrap;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #eef5fb;
+  color: #16304f;
+  font-weight: 700;
+
+  &:hover {
+    color: #16304f;
+    background: #e2edf8;
+  }
 }
 
 .reportLink {
