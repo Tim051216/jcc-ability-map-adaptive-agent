@@ -1,157 +1,226 @@
-<!-- 首页头部课程分类 -->
 <template>
-    <div class="classCategory ft-14" :class="{ classCategoryHeader: type == 'float'}">
-      <div @mouseout="mouseoutHandle()">
-        <div class="items">
-          <div class="item" v-for="item in data" :key="item.id" @mouseover="mouseoverHandle(item.children)" >
-            <!-- 一级分类 -->
-            <div class="fx-sb">
-              <div @click="() => $router.push({path:'/search', query:{type:'categoryIdLv1',id:item.id}})" class="font-bt2" >{{item.name}}</div>
-              <img src="@/assets/icon_more.png" alt="">
+  <div class="classCategory ft-14" :class="{ classCategoryHeader: type === 'float' }">
+    <div @mouseleave="mouseoutHandle">
+      <div class="items">
+        <div
+          v-for="item in data"
+          :key="item.id"
+          class="item"
+          @mouseover="mouseoverHandle(item.children)"
+        >
+          <div class="topRow fx-sb">
+            <div
+              class="primaryName"
+              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv1', id: item.id } })"
+            >
+              {{ item.name }}
             </div>
-            <!-- 二级分类前两个 -->
-            <div class="desc ft-12 ft-cl-des">
-              <span @click="() => $router.push({path:'/search', query:{type:'categoryIdLv2',id:item.children[0].id}})" class="font-bt2 ft-cl-des" v-if="item.children.length > 0">{{ item.children[0].name}}</span>
-              <span v-if="item.children.length > 1"> / </span>
-              <span @click="() => $router.push({path:'/search', query:{type:'categoryIdLv2',id:item.children[1].id}})" v-if="item.children.length > 1" class="font-bt2 ft-cl-des">{{  item.children[1].name}}</span>
-            </div>
+            <img src="@/assets/icon_more.png" alt="" />
+          </div>
+          <div class="desc ft-12">
+            <span
+              v-if="item.children?.length > 0"
+              class="secondaryName"
+              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv2', id: item.children[0].id } })"
+            >
+              {{ item.children[0].name }}
+            </span>
+            <span v-if="item.children?.length > 1"> / </span>
+            <span
+              v-if="item.children?.length > 1"
+              class="secondaryName"
+              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv2', id: item.children[1].id } })"
+            >
+              {{ item.children[1].name }}
+            </span>
           </div>
         </div>
-        
-        <!-- 展示详情 -->
-        <div class="allCategory" v-show="isDetails" @mouseover="mouseoverHandle()">
-          <div class="cont">
-            <div class="fx ft-wt-600 pd-bt-10" v-for="item in categorys" :key="item.id">
-              <span class="tit font-bt2" @click="() => $router.push({path:'/search', query:{type:'categoryIdLv2',id:item.id}})">{{item.name}} :</span> 
-              <div class="name fx-1">
-                <span class="ft-wt-400 cur-pt font-bt2" @click="() => $router.push({path:'/search', query:{type:'categoryIdLv3',id:it.id}})" v-for="it in item.children" :key="it.id">{{it.name}}</span>
-              </div>
+      </div>
+
+      <div v-show="isDetails" class="allCategory" @mouseover="mouseoverHandle()">
+        <div class="detailTitle">专题方向总览</div>
+        <div class="cont">
+          <div v-for="item in categorys" :key="item.id" class="detailRow">
+            <span
+              class="tit"
+              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv2', id: item.id } })"
+            >
+              {{ item.name }}
+            </span>
+            <div class="name fx-1">
+              <span
+                v-for="it in item.children"
+                :key="it.id"
+                class="tag"
+                @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv3', id: it.id } })"
+              >
+                {{ it.name }}
+              </span>
             </div>
           </div>
         </div>
       </div>
     </div>
+  </div>
 </template>
+
 <script setup>
-import {ref} from 'vue';
-  const isDetails = ref(false);
-  // 接收的全部分类
-  const props = defineProps({
-    data: {
-        type: Array,
-        default: []
-    },
-    type: {
-      type: String,
-      default: ''
-    }
-  })
-  // 详情的二级分类展示数据
-  const categorys = ref();
+import { ref } from "vue";
 
-  // 鼠标滑过修改当前二级分类数据
-  const mouseoverHandle = (item) => {
-    item ? categorys.value = item : null
-    isDetails.value = true
-  }
+const isDetails = ref(false);
 
-  const mouseoutHandle = () => {
-    isDetails.value = false
+const props = defineProps({
+  data: {
+    type: Array,
+    default: () => [],
+  },
+  type: {
+    type: String,
+    default: "",
+  },
+});
+
+const categorys = ref([]);
+
+const mouseoverHandle = (item) => {
+  if (item) {
+    categorys.value = item;
   }
-  
+  isDetails.value = true;
+};
+
+const mouseoutHandle = () => {
+  isDetails.value = false;
+};
 </script>
+
 <style lang="scss" scoped>
-.classCategory, .classCategoryHeader{
+.classCategory,
+.classCategoryHeader {
   position: relative;
-  .items{
+
+  .items {
     height: 388px;
     overflow: hidden;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(10px);
   }
-  .item{
-    padding:15px;
-    height: 78px;
-    border-bottom: solid 1px #eeeeee;
-    img{
+
+  .item {
+    padding: 18px 18px 16px;
+    min-height: 96px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+    transition: background 0.2s ease, transform 0.2s ease;
+
+    img {
       width: 20px;
       height: 20px;
+      opacity: 0.42;
     }
-    .desc{
-      padding-top: 8px;
+
+    &:hover {
+      background: linear-gradient(90deg, rgba(37, 99, 235, 0.08), rgba(15, 118, 110, 0.04));
     }
-    &:hover{
-      background-color: var(--color-background2);
-    }
-    &:first-child{
-      border-radius: 8px 8px 0 0;
-    }
-    &:nth-child(5){
-      border-radius: 0 0 8px 8px;
+
+    &:last-child {
+      border-bottom: none;
     }
   }
-  .allCategory{
+
+  .topRow {
+    align-items: center;
+  }
+
+  .primaryName {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .desc {
+    padding-top: 10px;
+    line-height: 1.7;
+    color: #64748b;
+  }
+
+  .secondaryName {
+    color: #64748b;
+    cursor: pointer;
+
+    &:hover {
+      color: #2563eb;
+    }
+  }
+
+  .allCategory {
     position: absolute;
     top: 0;
-    left: 236px;
-    width: 537px;
-    overflow: hidden;
+    left: 252px;
+    width: 560px;
     height: 388px;
-    padding: 20px 30px 20px 20px;
-    background: #FFFFFF;
-    box-shadow: 0 4px 6px 2px rgba(108,112,118,0.17);
-    border-radius: 8px;
-    .cont{
-      height: 360px;
-      // overflow-y: scroll;
-    }
-    .tit{
-      display: inline-block;
-      width: 120px;
-      overflow: hidden;
-      height: 20px;
-      border-right:none;
-    }
-    span{
-      display: inline-block;
-      padding: 0 10px 0 10px;
-      border-right: solid 1px var(--color-font5);
-      line-height: 16px;
-      margin-bottom: 10px;
-      &:last-child{
-        border-right:none;
-      }
+    padding: 22px 24px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(12px);
+  }
+
+  .detailTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .cont {
+    margin-top: 18px;
+    height: 320px;
+    overflow: auto;
+  }
+
+  .detailRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 14px;
+  }
+
+  .tit {
+    min-width: 92px;
+    font-weight: 700;
+    color: #0f172a;
+    cursor: pointer;
+  }
+
+  .name {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    color: #475569;
+    background: #f8fafc;
+    cursor: pointer;
+
+    &:hover {
+      color: #0f766e;
+      background: #ecfeff;
     }
   }
 }
-.classCategoryHeader{
-  .items{
+
+.classCategoryHeader {
+  .items {
     min-height: 388px;
     width: 236px;
     overflow: inherit;
-    box-shadow: 0 4px 6px 2px rgba(108,112,118,0.17);
-    border-radius: 8px;
-    .item:first-child{
-      position: relative;
-      &::before{
-        content: '';
-        display: inline-block;
-        width: 15px;
-        height: 15px;
-        position: absolute;
-        z-index: -1;
-        background-color: #fff;
-        top: -6px;
-        left: 44%;
-        transform: rotate(45deg);
-        box-shadow: 4px 4px 6px 2px rgba(108,112,118,0.3);
-        // border:solid 1px #E3E5E9;
-      }
-      &:hover{
-        background-color: var(--color-background2);
-        &::before{
-          background-color: var(--color-background2);
-        }
-      }
-    }
   }
 }
 </style>

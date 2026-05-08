@@ -11,4 +11,8 @@ class ProfileBuildRequest(BaseModel):
 class ProfileResponse(BaseModel):
     user_id: int
     dimensions: dict
+    dimension_order: list[str] = Field(default_factory=list)
+    profile_tags: list[str] = Field(default_factory=list)
+    recommended_resource_types: list[str] = Field(default_factory=list)
+    summary: str | None = None
     version: int = 1

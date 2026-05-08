@@ -1,26 +1,53 @@
-import httpx
+from datetime import datetime, timezone
 
-from app.core.constants import PROFILE_DIMENSIONS
+import httpx
+from pydantic import ValidationError
+
+from app.db.repositories.profile_repository import ProfileRepository
+from app.db.session import async_session_factory
 from app.integrations.java_clients.user_client import UserClient
 from app.schemas.profile import ProfileBuildRequest, ProfileResponse
+from app.services.profile_builder import build_profile_payload
 
 
 class ProfileService:
     async def build_profile(self, request: ProfileBuildRequest) -> ProfileResponse:
-        dimensions = {dimension: "待结合真实模型与业务数据进一步完善" for dimension in PROFILE_DIMENSIONS}
         try:
             user_profile = await UserClient().get_user(request.user_id)
-        except httpx.HTTPError:
+        except (httpx.HTTPError, ValidationError, ValueError):
             user_profile = None
 
-        if user_profile:
-            dimensions["major"] = user_profile.major or "待补充专业信息"
-            if user_profile.grade:
-                dimensions["knowledge_level"] = f"可结合 {user_profile.grade} 年级课程进度进行推断"
-        if request.learning_goal:
-            dimensions["goal"] = request.learning_goal
-        if request.dialogue:
-            dimensions["learning_style"] = "对话中已体现主动提问倾向，适合任务分解式学习"
-        if request.course_code:
-            dimensions["weak_points"] = f"建议结合课程 {request.course_code} 的测评结果动态更新"
-        return ProfileResponse(user_id=request.user_id, dimensions=dimensions)
+        payload = build_profile_payload(
+            user_id=request.user_id,
+            course_code=request.course_code,
+            learning_goal=request.learning_goal,
+            dialogue=request.dialogue,
+            user_profile=user_profile,
+        )
+
+        now = datetime.now(timezone.utc).isoformat()
+        async with async_session_factory() as session:
+            repo = ProfileRepository()
+            latest = await repo.latest_by_user(session, request.user_id)
+            version = (latest.version + 1) if latest else 1
+            payload["profile_version"] = version
+            await repo.create_snapshot(
+                session,
+                user_id=request.user_id,
+                version=version,
+                profile_data=payload,
+                source_summary=payload.get("source_summary"),
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+
+        return ProfileResponse(
+            user_id=request.user_id,
+            dimensions=payload["dimensions"],
+            dimension_order=payload["dimension_order"],
+            profile_tags=payload["profile_tags"],
+            recommended_resource_types=payload["recommended_resource_types"],
+            summary=payload["summary"],
+            version=payload["profile_version"],
+        )

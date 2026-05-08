@@ -16,4 +16,5 @@ class LearningAgentState(TypedDict, total=False):
     citations: list[dict[str, Any]]
     plan: dict[str, Any]
     resources: list[dict[str, Any]]
+    evaluation: dict[str, Any]
     final_answer: str

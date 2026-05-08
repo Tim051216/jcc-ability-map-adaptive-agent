@@ -27,6 +27,7 @@ async def router_node(state: LearningAgentState) -> LearningAgentState:
         "need_retrieval": intent in {"qa", "study_plan", "resource_generation", "comprehensive"},
         "need_plan": intent in {"study_plan", "comprehensive"},
         "need_resources": intent in {"resource_generation", "comprehensive"},
+        "need_evaluation": intent in {"study_plan", "comprehensive"},
         "need_answer": True,
     }
     state["intent"] = intent

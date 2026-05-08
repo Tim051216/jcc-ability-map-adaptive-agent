@@ -1,5 +1,6 @@
 from langgraph.graph import END, StateGraph
 
+from app.agents.nodes.assessment_agent import assessment_node
 from app.agents.nodes.evaluator_agent import evaluator_node
 from app.agents.nodes.planner_agent import planner_node
 from app.agents.nodes.profile_agent import profile_node
@@ -18,6 +19,8 @@ def _route_after_router(state: LearningAgentState) -> str:
         return "planner_agent"
     if requested_outputs.get("need_resources"):
         return "resource_agent"
+    if requested_outputs.get("need_evaluation"):
+        return "assessment_agent"
     return "evaluator_agent"
 
 
@@ -27,6 +30,8 @@ def _route_after_retriever(state: LearningAgentState) -> str:
         return "planner_agent"
     if requested_outputs.get("need_resources"):
         return "resource_agent"
+    if requested_outputs.get("need_evaluation"):
+        return "assessment_agent"
     return "evaluator_agent"
 
 
@@ -34,6 +39,15 @@ def _route_after_planner(state: LearningAgentState) -> str:
     requested_outputs = state.get("requested_outputs", {})
     if requested_outputs.get("need_resources"):
         return "resource_agent"
+    if requested_outputs.get("need_evaluation"):
+        return "assessment_agent"
+    return "evaluator_agent"
+
+
+def _route_after_resource(state: LearningAgentState) -> str:
+    requested_outputs = state.get("requested_outputs", {})
+    if requested_outputs.get("need_evaluation"):
+        return "assessment_agent"
     return "evaluator_agent"
 
 
@@ -44,6 +58,7 @@ def build_learning_graph():
     graph.add_node("retriever_agent", retriever_node)
     graph.add_node("planner_agent", planner_node)
     graph.add_node("resource_agent", resource_node)
+    graph.add_node("assessment_agent", assessment_node)
     graph.add_node("evaluator_agent", evaluator_node)
     graph.add_node("safety_agent", safety_node)
 
@@ -56,6 +71,7 @@ def build_learning_graph():
             "retriever_agent": "retriever_agent",
             "planner_agent": "planner_agent",
             "resource_agent": "resource_agent",
+            "assessment_agent": "assessment_agent",
             "evaluator_agent": "evaluator_agent",
         },
     )
@@ -65,6 +81,7 @@ def build_learning_graph():
         {
             "planner_agent": "planner_agent",
             "resource_agent": "resource_agent",
+            "assessment_agent": "assessment_agent",
             "evaluator_agent": "evaluator_agent",
         },
     )
@@ -73,10 +90,19 @@ def build_learning_graph():
         _route_after_planner,
         {
             "resource_agent": "resource_agent",
+            "assessment_agent": "assessment_agent",
             "evaluator_agent": "evaluator_agent",
         },
     )
-    graph.add_edge("resource_agent", "evaluator_agent")
+    graph.add_conditional_edges(
+        "resource_agent",
+        _route_after_resource,
+        {
+            "assessment_agent": "assessment_agent",
+            "evaluator_agent": "evaluator_agent",
+        },
+    )
+    graph.add_edge("assessment_agent", "evaluator_agent")
     graph.add_edge("evaluator_agent", "safety_agent")
     graph.add_edge("safety_agent", END)
     return graph.compile()

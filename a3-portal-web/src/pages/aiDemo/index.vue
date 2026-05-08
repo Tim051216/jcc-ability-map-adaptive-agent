@@ -10,6 +10,9 @@
             `intent`、`agent_trace`、`generated_plan`、`generated_resources`
             结构化展示出来，方便你讲“检索增强 + 多智能体协作 + 教学资源生成”的完整闭环。
           </p>
+          <div class="heroQuickNav">
+            <router-link class="pathLink" to="/main/ai-path">进入正式学习路径页</router-link>
+          </div>
           <div class="heroStats">
             <div class="statCard">
               <span>网关入口</span>
@@ -164,6 +167,30 @@
         </div>
 
         <div class="resultBlock">
+          <div class="blockTitle">Learning Profile</div>
+          <div v-if="profileDimensions.length" class="profilePanel">
+            <div class="profileSummary">
+              <strong>{{ profileSummary || "已生成六维学习画像" }}</strong>
+              <p v-if="profileTags.length">标签：{{ profileTags.join(" / ") }}</p>
+            </div>
+            <div class="profileGrid">
+              <div v-for="item in profileDimensions" :key="item.key" class="profileCard">
+                <div class="profileHead">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.current_level || "待分析" }}</strong>
+                </div>
+                <p>{{ item.analysis || "当前维度已完成初步分析。" }}</p>
+                <div v-if="item.evidence?.length" class="profileEvidence">
+                  <span v-for="evidence in item.evidence" :key="evidence">{{ evidence }}</span>
+                </div>
+                <em>{{ item.study_advice || "后续会用于路径与资源调度。" }}</em>
+              </div>
+            </div>
+          </div>
+          <div v-else class="emptyState">运行后会展示知识基础、认知风格、学习进度等六维画像结果。</div>
+        </div>
+
+        <div class="resultBlock">
           <div class="blockTitle">Agent Trace</div>
           <div v-if="agentTrace.length" class="traceTimeline">
             <div v-for="(item, index) in agentTrace" :key="`${item}-${index}`" class="traceItem">
@@ -188,12 +215,23 @@
             <div class="blockTitle">Generated Plan</div>
             <div v-if="planSummary || generatedPlanSteps.length" class="planCard">
               <p v-if="planSummary" class="planSummary">{{ planSummary }}</p>
+              <div v-if="planStages.length" class="stageGrid">
+                <div v-for="stage in planStages" :key="`${stage.stage_no}-${stage.stage_name}`" class="stageCard">
+                  <span>{{ stage.stage_name || `Stage ${stage.stage_no}` }}</span>
+                  <strong>{{ stage.focus || "Current focus" }}</strong>
+                  <p>{{ stage.objective || "Path stage objective" }}</p>
+                  <em>{{ stage.status || "pending" }}</em>
+                </div>
+              </div>
               <div v-for="(step, index) in generatedPlanSteps" :key="index" class="planStep">
                 <span>{{ index + 1 }}</span>
                 <div>
                   <strong>{{ getPlanStepTitle(step, index) }}</strong>
                   <p>{{ getPlanStepDescription(step) }}</p>
                 </div>
+              </div>
+              <div v-if="planRiskAlerts.length" class="riskList">
+                <span v-for="risk in planRiskAlerts" :key="risk">{{ risk }}</span>
               </div>
             </div>
             <div v-else class="emptyState">当前场景没有生成学习计划时，这里会保持为空。</div>
@@ -210,6 +248,45 @@
             </div>
             <div v-else class="emptyState">当前回答未返回引用片段时，这里会保持为空。</div>
           </div>
+        </div>
+
+        <div class="resultBlock">
+          <div class="blockTitle">Evaluation Report</div>
+          <div v-if="generatedEvaluation" class="evaluationPanel">
+            <div class="evaluationSummary">
+              <div class="evaluationScore">
+                <span>Score</span>
+                <strong>{{ generatedEvaluation.overall_score || "--" }}</strong>
+              </div>
+              <div class="evaluationMeta">
+                <strong>{{ generatedEvaluation.mastery_level || "developing" }}</strong>
+                <p>{{ generatedEvaluation.report_summary || "Evaluation summary will be shown here." }}</p>
+              </div>
+            </div>
+            <div v-if="generatedEvaluationLayers.length" class="evaluationGrid">
+              <div
+                v-for="layer in generatedEvaluationLayers"
+                :key="layer.level"
+                class="evaluationCard"
+              >
+                <span>{{ layer.level }}</span>
+                <strong>{{ layer.score }}</strong>
+                <p>{{ layer.comment }}</p>
+              </div>
+            </div>
+            <div v-if="generatedEvaluationMetrics.length" class="metricList">
+              <div
+                v-for="metric in generatedEvaluationMetrics"
+                :key="metric.metric_name"
+                class="metricItem"
+              >
+                <strong>{{ metric.metric_name }}</strong>
+                <span>{{ metric.score }}</span>
+                <p>{{ metric.comment }}</p>
+              </div>
+            </div>
+          </div>
+          <div v-else class="emptyState">Run a path or comprehensive scene to visualize the evaluation loop.</div>
         </div>
 
         <div class="resultBlock">
@@ -303,17 +380,35 @@ const agentTrace = computed(() => responseData.value?.agent_trace || []);
 const citations = computed(() => responseData.value?.citations || []);
 const generatedResources = computed(() => responseData.value?.generated_resources || []);
 const generatedPlan = computed(() => responseData.value?.generated_plan || null);
+const generatedProfile = computed(() => responseData.value?.profile || null);
+const generatedEvaluation = computed(() => responseData.value?.generated_evaluation || null);
 const generatedPlanSteps = computed(() => generatedPlan.value?.steps || []);
+const planStages = computed(() => generatedPlan.value?.stages || []);
 const planSummary = computed(() => generatedPlan.value?.summary || "");
+const planRiskAlerts = computed(() => generatedPlan.value?.risk_alerts || []);
 const citationCount = computed(() => citations.value.length);
 const resourceCount = computed(() => generatedResources.value.length);
 const answerLength = computed(() => responseData.value?.answer?.length || 0);
 const planStepCount = computed(() => generatedPlanSteps.value.length);
+const profileSummary = computed(() => generatedProfile.value?.summary || "");
+const profileTags = computed(() => generatedProfile.value?.profile_tags || []);
+const generatedEvaluationMetrics = computed(() => generatedEvaluation.value?.metrics || []);
+const generatedEvaluationLayers = computed(() => generatedEvaluation.value?.layered_results || []);
+const profileDimensions = computed(() => {
+  const dimensions = generatedProfile.value?.dimensions || {};
+  const order = generatedProfile.value?.dimension_order || Object.keys(dimensions);
+  return order
+    .filter((key) => dimensions[key])
+    .map((key) => ({
+      key,
+      ...dimensions[key],
+    }));
+});
 const heroTracePreview = computed(() => {
   if (agentTrace.value.length) {
     return agentTrace.value.slice(0, 5);
   }
-  return ["profile", "router", "retriever", "planner", "resource"];
+  return ["profile", "router", "retriever", "planner", "assessment"];
 });
 const resultStatusText = computed(() => {
   if (loading.value && currentTaskId.value) {
@@ -447,9 +542,9 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   const baseTrace = ["profile", `router:${normalizedIntent}`];
   const traceByIntent = {
     qa: [...baseTrace, "retriever:4", "evaluator", "safety"],
-    study_plan: [...baseTrace, "planner:3", "evaluator", "safety"],
+    study_plan: [...baseTrace, "planner:3", "assessment:79", "evaluator", "safety"],
     resource_generation: [...baseTrace, "resource:2", "evaluator", "safety"],
-    comprehensive: [...baseTrace, "retriever:4", "planner:3", "resource:2", "evaluator", "safety"],
+    comprehensive: [...baseTrace, "retriever:4", "planner:3", "resource:2", "assessment:79", "evaluator", "safety"],
   };
 
   const citationsData = [
@@ -467,6 +562,29 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
     progress_hint: "当前进度按首次学习估计，可在后续接入真实用户画像后细化。",
     next_action: "优先完成第 1 天的概念理解与笔记整理，再进入练习和资源吸收阶段。",
     risk_alerts: ["当前为演示快照，后续可进一步接入真实学情与历史行为。"],
+    stages: [
+      {
+        stage_no: 1,
+        stage_name: "Foundation",
+        focus: "Concept diagnosis",
+        objective: "Confirm key concepts and baseline understanding.",
+        status: "in_progress",
+      },
+      {
+        stage_no: 2,
+        stage_name: "Weak-point Fix",
+        focus: "Overfitting and generalization",
+        objective: "Target common mistakes and model evaluation gaps.",
+        status: "pending",
+      },
+      {
+        stage_no: 3,
+        stage_name: "Consolidation",
+        focus: "Comprehensive application",
+        objective: "Output a complete explanation and practice result.",
+        status: "pending",
+      },
+    ],
     steps: [
       {
         day: 1,
@@ -521,14 +639,91 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
       "过拟合是模型对训练样本记忆过强、对新样本泛化不足的现象。我已经同时整理了学习计划和推荐资源，方便从概念理解一路推进到练习与复盘。",
   };
 
+  const evaluationData = {
+    overall_score: 78.6,
+    mastery_level: "stable",
+    report_summary: "The system has formed a first-round learning evaluation and can feed it back into profile and path planning.",
+    layered_results: [
+      { level: "Basic", score: 84, comment: "Core definitions are understandable and can support standard tasks." },
+      { level: "Advanced", score: 78, comment: "Need more practice on evaluation indicators and weak-point diagnosis." },
+      { level: "Challenge", score: 72, comment: "Comprehensive migration still needs staged reinforcement." },
+    ],
+    metrics: [
+      { metric_name: "Knowledge Mastery", score: 81, comment: "Good baseline understanding of the current topic." },
+      { metric_name: "Learning Engagement", score: 79, comment: "Task rhythm and path completion are relatively stable." },
+      { metric_name: "Resource Efficiency", score: 76, comment: "Generated materials are being used in the right stage." },
+      { metric_name: "Weak-point Repair", score: 74, comment: "Weak-point closure has started but is not complete yet." },
+    ],
+  };
+
   return {
     session_id: null,
     answer: answerByIntent[normalizedIntent] || answerByIntent.comprehensive,
     citations: normalizedIntent === "resource_generation" ? citationsData.slice(0, 2) : citationsData,
     intent: normalizedIntent,
     agent_trace: traceByIntent[normalizedIntent] || traceByIntent.comprehensive,
+    profile: {
+      summary: "已基于六维学习画像完成结构化分析，可直接驱动资源生成、路径规划与效果评估闭环。",
+      profile_tags: ["机器学习导论", "过拟合", "复习冲刺", "任务驱动"],
+      dimension_order: [
+        "knowledge_foundation",
+        "cognitive_style",
+        "learning_progress",
+        "weak_point_preference",
+        "interest_orientation",
+        "learning_habit",
+      ],
+      dimensions: {
+        knowledge_foundation: {
+          label: "知识基础",
+          current_level: "中等基础",
+          analysis: "当前对话表明用户已具备基础课程认知，但仍需围绕过拟合等重点知识点做系统巩固。",
+          evidence: ["ml_intro", "过拟合", "学习计划"],
+          study_advice: "先巩固核心定义，再通过题目和案例强化泛化误差理解。",
+        },
+        cognitive_style: {
+          label: "认知风格",
+          current_level: "结构规划型",
+          analysis: "用户同时需要解释、计划和资源，更适合分阶段、带结构的学习组织方式。",
+          evidence: ["解释问题", "学习计划", "推荐资源"],
+          study_advice: "后续资源优先按步骤化讲解和任务卡组织。",
+        },
+        learning_progress: {
+          label: "学习进度",
+          current_level: "复习巩固",
+          analysis: "当前需求带有明显复习和查漏补缺特征，适合先短期收敛核心知识点。",
+          evidence: ["3天计划", "复习", "资源推荐"],
+          study_advice: "建议按 3 天路径推进，并在每天结束后做一次小测回顾。",
+        },
+        weak_point_preference: {
+          label: "易错点偏好",
+          current_level: "待重点关注",
+          analysis: "过拟合、泛化误差与模型评估是当前最需要优先补强的主题。",
+          evidence: ["模型评估与过拟合", "监督学习基础"],
+          study_advice: "先补弱点，再扩展到特征工程和实验案例。",
+        },
+        interest_orientation: {
+          label: "兴趣取向",
+          current_level: "课程目标导向",
+          analysis: "用户当前以课程学习目标和比赛演示为中心，更关注直接可用的高价值内容。",
+          evidence: ["课程讲义", "分层练习题"],
+          study_advice: "后续资源优先围绕课程任务和答辩场景组织。",
+        },
+        learning_habit: {
+          label: "学习习惯",
+          current_level: "任务驱动",
+          analysis: "用户倾向于通过明确任务、资源和结果输出来推动学习。",
+          evidence: ["计划", "资源", "练习"],
+          study_advice: "建议保留任务清单、错题复盘和资源收藏闭环。",
+        },
+      },
+    },
     generated_plan: normalizedIntent === "qa" ? null : planData,
     generated_resources: normalizedIntent === "study_plan" ? [] : resourcesData,
+    generated_evaluation:
+      normalizedIntent === "study_plan" || normalizedIntent === "comprehensive"
+        ? evaluationData
+        : null,
   };
 };
 </script>
@@ -600,6 +795,28 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-top: 28px;
+}
+
+.heroQuickNav {
+  margin-top: 20px;
+}
+
+.pathLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 210px;
+  height: 46px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: #132c4d;
+  color: #fff;
+  font-weight: 700;
+
+  &:hover {
+    color: #fff;
+    background: #0f2440;
+  }
 }
 
 .statCard {
@@ -909,6 +1126,86 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   margin-top: 18px;
 }
 
+.profilePanel {
+  margin-top: 16px;
+}
+
+.profileSummary {
+  padding: 18px;
+  border-radius: 20px;
+  background: #fff;
+
+  strong {
+    color: #152942;
+    font-size: 18px;
+  }
+
+  p {
+    margin-top: 10px;
+    color: #607286;
+    line-height: 1.7;
+  }
+}
+
+.profileGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.profileCard {
+  padding: 18px;
+  border-radius: 20px;
+  background: #fff;
+
+  p {
+    margin-top: 10px;
+    color: #607286;
+    line-height: 1.7;
+  }
+
+  em {
+    display: block;
+    margin-top: 12px;
+    color: #1559b3;
+    font-style: normal;
+    line-height: 1.7;
+  }
+}
+
+.profileHead {
+  span {
+    display: block;
+    color: #6c7e95;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  strong {
+    display: block;
+    margin-top: 10px;
+    color: #13253f;
+    font-size: 20px;
+  }
+}
+
+.profileEvidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+
+  span {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef5fb;
+    color: #4f6277;
+    font-size: 12px;
+  }
+}
+
 .traceItem {
   display: flex;
   gap: 14px;
@@ -959,6 +1256,144 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
 .planSummary {
   margin-bottom: 16px;
   color: #44566f;
+}
+
+.stageGrid,
+.evaluationGrid,
+.metricList {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stageGrid,
+.evaluationGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stageCard,
+.evaluationCard,
+.metricItem {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f8fbff;
+}
+
+.stageCard,
+.evaluationCard {
+  span {
+    display: block;
+    color: #68809d;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  strong {
+    display: block;
+    margin-top: 10px;
+    color: #13253f;
+    font-size: 18px;
+  }
+
+  p {
+    margin-top: 8px;
+    color: #607286;
+    line-height: 1.7;
+  }
+
+  em {
+    display: inline-flex;
+    margin-top: 10px;
+    color: #1767c3;
+    font-style: normal;
+  }
+}
+
+.riskList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+
+  span {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #fff3dd;
+    color: #8a5a08;
+    font-size: 12px;
+  }
+}
+
+.evaluationPanel {
+  margin-top: 16px;
+}
+
+.evaluationSummary {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.evaluationScore,
+.evaluationMeta {
+  padding: 18px;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.evaluationScore {
+  span {
+    display: block;
+    color: #68809d;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  strong {
+    display: block;
+    margin-top: 12px;
+    color: #12233b;
+    font-size: 34px;
+  }
+}
+
+.evaluationMeta {
+  strong {
+    color: #13253f;
+    font-size: 20px;
+  }
+
+  p {
+    margin-top: 10px;
+    color: #607286;
+    line-height: 1.8;
+  }
+}
+
+.metricItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 14px;
+  align-items: start;
+
+  strong {
+    color: #15304f;
+  }
+
+  span {
+    color: #0c63d6;
+    font-weight: 700;
+  }
+
+  p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #67788d;
+    line-height: 1.7;
+  }
 }
 
 .planStep {
@@ -1112,7 +1547,14 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   }
 
   .fieldGrid,
-  .presetGroup {
+  .presetGroup,
+  .profileGrid,
+  .stageGrid,
+  .evaluationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .evaluationSummary {
     grid-template-columns: 1fr;
   }
 }
