@@ -78,6 +78,12 @@ spring:
           uri: lb://promotion-service
           predicates:
             - Path=/prs/**
+        - id: ai
+          uri: http://127.0.0.1:18080
+          predicates:
+            - Path=/ai/**
+          filters:
+            - PrefixPath=/api
       default-filters:
         - StripPrefix=1
       globalcors: # 全局的跨域处理
