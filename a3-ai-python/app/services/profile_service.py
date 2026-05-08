@@ -11,6 +11,23 @@ from app.services.profile_builder import build_profile_payload
 
 
 class ProfileService:
+    async def get_latest_profile(self, user_id: int) -> ProfileResponse | None:
+        async with async_session_factory() as session:
+            repo = ProfileRepository()
+            latest = await repo.latest_by_user(session, user_id)
+            if latest is None or not latest.profile_data:
+                return None
+            payload = latest.profile_data
+            return ProfileResponse(
+                user_id=user_id,
+                dimensions=payload.get("dimensions", {}),
+                dimension_order=payload.get("dimension_order", []),
+                profile_tags=payload.get("profile_tags", []),
+                recommended_resource_types=payload.get("recommended_resource_types", []),
+                summary=payload.get("summary", ""),
+                version=payload.get("profile_version", latest.version),
+            )
+
     async def build_profile(self, request: ProfileBuildRequest) -> ProfileResponse:
         try:
             user_profile = await UserClient().get_user(request.user_id)

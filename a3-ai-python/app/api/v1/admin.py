@@ -4,6 +4,7 @@ import httpx
 from app.integrations.llm.base import LLMMessage
 from app.integrations.llm.provider_factory import get_llm_provider
 from app.rag.ingest.pipelines import KnowledgeIngestPipeline
+from app.services.admin_service import AdminService
 from app.services.embedding_service import EmbeddingService
 
 router = APIRouter()
@@ -12,6 +13,11 @@ router = APIRouter()
 @router.get("/ping")
 async def ping() -> dict[str, str]:
     return {"message": "admin ok"}
+
+
+@router.get("/overview")
+async def overview() -> dict:
+    return await AdminService().get_overview()
 
 
 @router.post("/knowledge/{course_code}/ingest")

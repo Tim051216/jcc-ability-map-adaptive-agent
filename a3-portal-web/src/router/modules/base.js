@@ -38,6 +38,12 @@ export default [
         component: () => import("@/pages/learningReport/index.vue"),
         meta: { title: "AI 学习测评报告页" },
       },
+      {
+        path: "ai-ops",
+        name: "aiOps",
+        component: () => import("@/pages/aiOps/index.vue"),
+        meta: { title: "AI 运维总览页" },
+      },
     ],
   },
   {
