@@ -1,0 +1,31 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+  redis:
+    host: 127.0.0.1
+    port: 16379
+    database: 0
+    timeout: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+a3:
+  auth:
+    # 本地联调时放行 AI 路由，避免必须依赖完整登录态。
+    exclude-path:
+      - GET:/ai/**
+      - POST:/ai/**
+      - PUT:/ai/**
+      - DELETE:/ai/**
+      - OPTIONS:/ai/**
