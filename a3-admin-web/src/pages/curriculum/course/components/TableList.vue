@@ -11,7 +11,7 @@
       ref="tableItem"
     >
       <el-table-column type="index" align="center" width="100" label="序号" />
-      <el-table-column label="课程名称" min-width="250" class-name="textLeft">
+      <el-table-column label="内容名称" min-width="250" class-name="textLeft">
         <template #default="scope">
           <div class="head">
             <div class="ellipsisHidden2">
@@ -22,7 +22,7 @@
       </el-table-column>
       <!-- 当数据中出现小数，导致排序错乱时用 sort来解决 -->
       <el-table-column
-        label="课程价格"
+        label="内容价格"
         prop="price"
         sortable
         width="150"
@@ -42,21 +42,21 @@
       </el-table-column>
       <el-table-column
         prop="categories"
-        label="所属分类"
+        label="内容分类"
         width="290"
         class-name="textLeft"
       >
       </el-table-column>
       <el-table-column
         prop="sold"
-        label="报名人数"
+        label="学习报名人数"
         min-width="150"
         v-if="props.status !== 1"
       >
       </el-table-column>
       <el-table-column
         prop="score"
-        label="课程评分"
+        label="内容评分"
         min-width="150"
         sortable
         v-if="props.status !== 1"

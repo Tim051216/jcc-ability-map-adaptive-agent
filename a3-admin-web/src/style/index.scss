@@ -4,12 +4,41 @@
 html,
 body {
   color: var(--color-font1);
-  background-color: var(--color-bodybackground);
-  font-family: -apple-system, BlinkMacSystemFont;
+  background:
+    radial-gradient(circle at top left, rgba(255, 122, 69, 0.12), transparent 26%),
+    radial-gradient(circle at right 20%, rgba(83, 169, 255, 0.1), transparent 22%),
+    linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%);
+  font-family: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
   margin: 0;
   padding: 0;
-  min-width: 1220px;
+  min-width: 1280px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.52), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(255, 190, 152, 0.16), transparent 24%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+#app {
+  min-height: 100vh;
 }
 .bd-non {
   border: none !important;
@@ -39,9 +68,15 @@ p {
 * {
   box-sizing: border-box;
 }
+
+*::selection {
+  background: rgba(255, 122, 69, 0.2);
+}
+
 a {
   text-decoration: none;
   color: var(--color-main);
+  transition: color 0.2s ease;
   &:active {
     color: var(--color-font1);
   }
@@ -52,6 +87,7 @@ a {
 // 全局容器
 .container {
   margin: 0 auto;
+  width: 100%;
 }
 
 .logo img {
@@ -84,9 +120,21 @@ a {
 .addBox .el-button--primary {
   height: 40px;
   line-height: 40px;
-  border-radius: 20px;
+  border-radius: 999px;
   border: 0 none;
   padding: 0 30px;
+  box-shadow: 0 10px 24px rgba(255, 122, 69, 0.18);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+  &:hover {
+    transform: translateY(-1px);
+  }
+  &:active {
+    transform: translateY(0);
+  }
 }
 // 主按钮，例如搜索，添加
 .primary,
@@ -109,6 +157,7 @@ a {
 .buttonSub {
   background: var(--color-btnSubbackground);
   color: var(--color-font1);
+  box-shadow: none;
   &:hover,
   &:active,
   &:visited {
@@ -135,6 +184,7 @@ a {
   background: var(--color-white);
   color: var(--color-font7);
   border: 1px solid var(--color-font8);
+  box-shadow: none;
   &:hover,
   &:active {
     background: var(--color-white);
@@ -237,12 +287,12 @@ a {
   background-color: var(--color-background1);
 }
 .bg-wt {
-  background-color: var(--color-white);
+  background-color: var(--color-surface-strong);
 }
 // 圆角
 .radius {
-  box-shadow: 0 0 6px 0 rgba(144, 142, 142, 0.17);
-  border-radius: 12px;
+  box-shadow: var(--color-card-shadow);
+  border-radius: var(--radius-md);
 }
 // flex 布局
 .fx {
@@ -344,8 +394,12 @@ a {
 
 // 搜索
 .searchForm {
-  padding-top: 30px;
-  padding-bottom: 10px;
+  padding: 20px 24px 6px;
+  margin-bottom: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 246, 242, 0.96) 100%);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--color-card-shadow);
 }
 .btn {
   text-align: right;
@@ -358,6 +412,10 @@ a {
 .addBox {
   padding-bottom: 20px;
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   .upload-demo {
     display: inline-block;
     margin-right: 12px;
@@ -371,7 +429,7 @@ a {
 }
 // 分页
 .paginationBox {
-  padding: 25px 26px 0;
+  padding: 28px 0 0;
   justify-content: center;
   // 默认颜色
   .el-input__wrapper {
@@ -403,6 +461,52 @@ a {
   .btn-prev .el-icon:hover {
     color: var(--color-btnbackground);
   }
+}
+
+.mainWrapper > .bg-wt,
+.mainWrapper .searchForm + .bg-wt,
+.mainWrapper .bg-wt.radius {
+  border: 1px solid var(--color-card-border);
+  box-shadow: var(--color-card-shadow);
+}
+
+.page-section,
+.panel-card,
+.content-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(252, 248, 244, 0.96) 100%);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--color-card-shadow);
+}
+
+.page-title,
+.section-title {
+  color: var(--color-font7);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.section-desc,
+.page-subtitle {
+  color: var(--color-font5);
+  font-size: 13px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(152, 162, 179, 0.45);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 // td最多5行每行20字
 .ellipsisHidden {

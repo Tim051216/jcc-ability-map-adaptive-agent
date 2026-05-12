@@ -32,7 +32,7 @@
           </div>
           <div class="item-card">
             <div class="card">
-              <div class="tit">报名人数</div>
+              <div class="tit">学习报名人数</div>
               <div class="info">{{ courseData.data.enrollNum }}人</div>
             </div>
             <div class="card">
@@ -44,7 +44,7 @@
               <div class="info">{{ courseData.data.refundNum }}人</div>
             </div>
             <div class="card bd-non">
-              <div class="tit">课程实付金额</div>
+              <div class="tit">内容实付金额</div>
               <div class="info">
                 {{ (courseData.data.price / 100).toFixed(2) }}元
               </div>
@@ -59,7 +59,7 @@
                 }}</span>
               </div>
               <div class="tit-botom">
-                课程创建人：
+                内容创建人：
                 <span class="text-bottom">{{
                   courseData.data.createrName
                 }}</span>
@@ -73,13 +73,13 @@
             </div>
             <div class="card-bottom">
               <div class="tit-botom">
-                课程评分：
+                内容评分：
                 <span class="text-bottom">{{
                   courseData.data.coureScore
                 }}</span>
               </div>
               <div class="tit-botom">
-                课程更新人：
+                内容更新人：
                 <span class="text-bottom">{{
                   courseData.data.updaterName
                 }}</span>
@@ -100,23 +100,23 @@
           :data="tableBar"
           @changeTable="changeTable"
         ></TableSwitchBar>
-        <!-- 课程介绍 -->
+        <!-- 内容介绍 -->
         <CourseAbout
           v-show="actId == 1"
           :courseData="courseData.data"
           :courseTeacher="courseTeacher"
         ></CourseAbout>
-        <!-- 课程目录 -->
+        <!-- 内容目录 -->
         <courseCatalogue
           v-show="actId == 2"
           :courseListData="courseListData.value"
         ></courseCatalogue>
-        <!-- 课程视频 -->
+        <!-- 内容视频 -->
         <CourseVideo
           v-show="actId == 3"
           :courseVideoData="courseListData.value"
         ></CourseVideo>
-        <!-- 课程题目 -->
+        <!-- 内容题目 -->
         <Topic
           v-show="actId == 4"
           :courseTopicData="courseListData.value"
@@ -165,7 +165,7 @@ const courseTeacher = reactive({
 const detailId = ref(null)//当前课程详情id
 
 // table切换数据 - 静态数据
-const tableBar = [{ id: 1, name: '课程介绍' }, { id: 2, name: '课程目录' }, { id: 3, name: '课程视频' }, { id: 4, name: '课程题目' }]
+const tableBar = [{ id: 1, name: '内容介绍' }, { id: 2, name: '内容目录' }, { id: 3, name: '内容视频' }, { id: 4, name: '内容题目' }]
 // 课程目录数据
 const courseListData = reactive({
 })

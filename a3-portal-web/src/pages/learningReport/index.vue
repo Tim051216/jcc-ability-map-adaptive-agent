@@ -3,35 +3,36 @@
     <section class="heroSection">
       <div class="container heroInner">
         <div class="heroContent">
-          <div class="heroBadge">AI Evaluation Report</div>
-          <h1>学习测评与报告页</h1>
-          <p>
-            这里把多智能体给出的评估结果落成正式学生端报告，突出分层测评、指标量化、薄弱点分析和回流建议，
-            对应题目里的“学习效果评估 + 个性化报告 + 闭环反馈”。
-          </p>
+          <div class="heroBadge">A3 学习报告</div>
+          <h1>真实测评报告与学习进度统一查看</h1>
+          <p>这里直接读取真实测评报告，并联动本地记录的学习路径进度，不再回退到 demo 或 mock 报告。</p>
           <div class="heroActions">
-            <el-button type="primary" size="large" :loading="loading" @click="runEvaluation">
-              {{ loading ? "评估中..." : "重新生成评估" }}
+            <router-link class="navLink secondary" to="/main/index">返回首页</router-link>
+            <router-link class="navLink light" :to="`/main/ai-evaluation?courseId=${courseId}`">课程测评</router-link>
+            <router-link class="navLink dark" :to="`/main/ai-mistakes?courseId=${courseId}`">错题复盘</router-link>
+            <el-button type="primary" size="large" :loading="loading" @click="generateLatestReport">
+              {{ loading ? "正在生成..." : "生成综合学习报告" }}
             </el-button>
-            <el-button size="large" plain @click="loadLatestEvaluation">读取最近一次评估</el-button>
+            <el-button size="large" plain :loading="loading" @click="loadLatestReport(true)">读取最近报告</el-button>
           </div>
         </div>
+
         <div class="heroPanel">
           <div class="summaryCard">
-            <span>总分</span>
-            <strong>{{ evaluationData?.overall_score || "--" }}</strong>
+            <span>数据来源</span>
+            <strong>{{ reportDetail ? "真实报告" : "暂无报告" }}</strong>
+          </div>
+          <div class="summaryCard">
+            <span>课程 ID</span>
+            <strong>#{{ courseId }}</strong>
+          </div>
+          <div class="summaryCard">
+            <span>综合得分</span>
+            <strong>{{ reportScore }}</strong>
           </div>
           <div class="summaryCard">
             <span>掌握等级</span>
-            <strong>{{ evaluationData?.mastery_level || "待评估" }}</strong>
-          </div>
-          <div class="summaryCard">
-            <span>分层结果</span>
-            <strong>{{ layeredResults.length }}</strong>
-          </div>
-          <div class="summaryCard">
-            <span>指标项</span>
-            <strong>{{ metrics.length }}</strong>
+            <strong>{{ reportDetail?.masteryLevel || "--" }}</strong>
           </div>
         </div>
       </div>
@@ -40,91 +41,99 @@
     <section class="container contentSection">
       <div class="controlPanel">
         <div class="panelTitle">
-          <h2>评估参数</h2>
-          <p>模拟学生端提交阶段学习结果后的评估与报告生成。</p>
+          <h2>报告范围</h2>
+          <p>按课程读取你当前账号下的最近真实报告，也可以现场重新生成一份综合报告。</p>
         </div>
 
         <div class="fieldGrid">
           <label class="fieldItem">
-            <span>用户 ID</span>
-            <el-input-number v-model="form.user_id" :min="1" :max="999999" />
+            <span>课程 ID</span>
+            <el-input-number v-model="courseId" :min="1" />
           </label>
-          <label class="fieldItem">
-            <span>课程编码</span>
-            <el-input v-model="form.course_code" />
-          </label>
-          <label class="fieldItem">
-            <span>学习时长</span>
-            <el-input-number v-model="form.learning_duration_minutes" :min="30" :max="300" />
-          </label>
-          <label class="fieldItem">
-            <span>资源使用数</span>
-            <el-input-number v-model="form.resource_usage_count" :min="1" :max="20" />
-          </label>
-        </div>
-
-        <div v-if="errorMessage" class="errorPanel">
-          <strong>评估加载失败</strong>
-          <p>{{ errorMessage }}</p>
         </div>
 
         <div class="hintPanel">
-          <strong>建议演示话术</strong>
-          <p>在路径执行页展示完节点任务后，切到这里讲“系统如何量化掌握度、输出报告，并反向调整画像与路径”。</p>
+          <strong>联动说明</strong>
+          <p>学习路径页推进步骤后，这里会同步展示最近一条本地学习进度记录；报告内容本身仍以真实后端结果为准。</p>
+        </div>
+
+        <div v-if="errorMessage" class="errorPanel">
+          <strong>提示</strong>
+          <p>{{ errorMessage }}</p>
         </div>
       </div>
 
       <div class="resultPanel">
         <div class="resultHeader">
           <div>
-            <h2>测评报告总览</h2>
-            <p>{{ evaluationData?.report_summary || "生成后这里会展示测评报告摘要。" }}</p>
+            <h2>结果总览</h2>
+            <p>{{ reportSummary }}</p>
           </div>
-          <div class="statusPill" :class="{ ready: !!evaluationData }">
-            {{ evaluationData ? "报告已生成" : "等待生成" }}
+          <div class="statusPill" :class="{ ready: !!reportDetail }">
+            {{ reportDetail ? "已接入真实报告" : "当前没有可展示的报告" }}
           </div>
         </div>
 
-        <div v-if="layeredResults.length" class="layerGrid">
-          <div v-for="layer in layeredResults" :key="layer.level" class="layerCard">
-            <span>{{ layer.level }}</span>
-            <strong>{{ layer.score }}</strong>
-            <p>{{ layer.comment }}</p>
-            <em>{{ layer.status }}</em>
+        <div class="pathSyncCard">
+          <div>
+            <span>路径执行进度</span>
+            <strong>{{ planProgressSummary.rateText }}</strong>
           </div>
-        </div>
-        <div v-else class="emptyState">暂无分层测评结果，点击“重新生成评估”开始演示。</div>
-
-        <div class="resultBlock">
-          <div class="blockTitle">指标量化</div>
-          <div v-if="metrics.length" class="metricList">
-            <div v-for="metric in metrics" :key="metric.metric_name" class="metricCard">
-              <div class="metricHead">
-                <strong>{{ metric.metric_name }}</strong>
-                <span>{{ metric.score }}</span>
-              </div>
-              <p>{{ metric.comment }}</p>
-            </div>
+          <div>
+            <span>已完成步骤</span>
+            <strong>{{ planProgressSummary.completedText }}</strong>
           </div>
-          <div v-else class="emptyState">生成后这里会展示知识掌握度、投入度、资源效率等指标。</div>
+          <div>
+            <span>最近动作</span>
+            <strong>{{ planProgressSummary.currentStepTitle }}</strong>
+          </div>
+          <p>{{ planProgressSummary.hint }}</p>
         </div>
 
-        <div class="resultBlock dualBlock">
-          <div class="subBlock">
-            <div class="blockTitle">薄弱点与建议</div>
-            <div v-if="weakPoints.length || suggestions.length" class="adviceList">
-              <div v-for="item in weakPoints" :key="item" class="tagItem warn">{{ item }}</div>
-              <div v-for="item in suggestions" :key="item" class="adviceItem">{{ item }}</div>
+        <template v-if="reportDetail">
+          <div class="baseGrid">
+            <div class="baseCard">
+              <span>报告 ID</span>
+              <strong>{{ reportDetail.id }}</strong>
             </div>
-            <div v-else class="emptyState">暂无薄弱点与建议。</div>
-          </div>
-          <div class="subBlock">
-            <div class="blockTitle">回流方向</div>
-            <div v-if="feedbackItems.length" class="adviceList">
-              <div v-for="item in feedbackItems" :key="item" class="adviceItem">{{ item }}</div>
+            <div class="baseCard">
+              <span>报告类型</span>
+              <strong>{{ reportDetail.reportTypeDesc || reportDetail.reportType || "--" }}</strong>
             </div>
-            <div v-else class="emptyState">暂无闭环反馈方向。</div>
+            <div class="baseCard">
+              <span>关联测评</span>
+              <strong>{{ reportTestText }}</strong>
+            </div>
           </div>
+
+          <div class="resultBlock">
+            <div class="blockTitle">优势</div>
+            <div class="textCard">{{ reportDetail.strengths || "暂无" }}</div>
+          </div>
+
+          <div class="resultBlock dualBlock">
+            <div class="subBlock">
+              <div class="blockTitle">薄弱点</div>
+              <div class="textCard">{{ reportDetail.weaknesses || "暂无" }}</div>
+            </div>
+            <div class="subBlock">
+              <div class="blockTitle">改进建议</div>
+              <div class="textCard">{{ reportDetail.improvementSuggestions || "暂无" }}</div>
+            </div>
+          </div>
+
+          <div class="resultBlock">
+            <div class="blockTitle">跳转联动</div>
+            <div class="linkRow">
+              <router-link class="flowLink" :to="`/main/ai-evaluation?courseId=${courseId}`">查看课程测评</router-link>
+              <router-link class="flowLink" :to="reportLink">打开报告详情</router-link>
+              <router-link class="flowLink" :to="mistakesLink">进入错题复盘</router-link>
+            </div>
+          </div>
+        </template>
+
+        <div v-else class="emptyState">
+          当前课程还没有真实学习报告。可以先完成一次测评并生成报告，或者直接点击“生成综合学习报告”。
         </div>
       </div>
     </section>
@@ -132,97 +141,136 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { evaluateAiLearning, getLatestAiEvaluation, getLatestAiLearningPlan } from "@/api/ai";
+import { useRoute } from "vue-router";
+import request from "@/utils/request";
+import { getRecentPlanProgress } from "@/utils/a3StudentStore";
 
-const form = reactive({
-  user_id: 1,
-  course_code: "ml_intro",
-  learning_duration_minutes: 120,
-  resource_usage_count: 3,
-});
+const route = useRoute();
+const courseId = ref(Number(route.query.courseId || 1));
 
 const loading = ref(false);
-const evaluationData = ref(null);
-const latestPlan = ref(null);
+const reportDetail = ref(null);
 const errorMessage = ref("");
+const localPlanProgress = ref({ plan_id: null, items: [], completion_rate: 0 });
 
-const layeredResults = computed(() => evaluationData.value?.layered_results || []);
-const metrics = computed(() => evaluationData.value?.metrics || []);
-const weakPoints = computed(() => evaluationData.value?.weak_points || []);
-const suggestions = computed(() => evaluationData.value?.suggestions || []);
-const feedbackItems = computed(() => {
-  const items = [];
-  const pathFeedback = evaluationData.value?.path_feedback || {};
-  const profileFeedback = evaluationData.value?.profile_feedback || {};
-  if (pathFeedback.next_focus) {
-    items.push(`路径侧建议优先强化：${pathFeedback.next_focus}`);
+function toErrorMessage(error, fallback) {
+  const raw = error?.response?.data?.msg || error?.response?.data?.detail || error?.message || fallback;
+  if (/Connection refused|评估 AI 服务暂时不可用|请稍后重试/i.test(String(raw))) {
+    return "综合学习报告依赖 dev 联调中的 AI 评估服务，当前该服务未启动或不可用。";
   }
-  for (const item of pathFeedback.recommended_changes || []) {
-    items.push(`路径调整：${item}`);
-  }
-  if (profileFeedback.summary) {
-    items.push(`画像回流：${profileFeedback.summary}`);
-  }
-  return items;
+  return raw;
+}
+
+const reportScore = computed(() => {
+  const value = reportDetail.value?.overallScore;
+  if (value == null || value === "") return "--";
+  const score = Number(value);
+  return Number.isFinite(score) ? score.toFixed(1) : String(value);
 });
 
-const loadLatestPlan = async () => {
-  latestPlan.value = await getLatestAiLearningPlan({
-    user_id: form.user_id,
-    course_code: form.course_code,
-  });
+const reportSummary = computed(() => reportDetail.value?.reportSummary || "当前展示最新真实学习报告与路径进度联动。");
+const reportTestText = computed(() => {
+  const ids = reportDetail.value?.testIds;
+  return Array.isArray(ids) && ids.length ? ids.join("、") : "--";
+});
+const reportLink = computed(() =>
+  reportDetail.value?.id ? `/main/ai-evaluation/report/${reportDetail.value.id}?courseId=${courseId.value}` : `/main/ai-evaluation?courseId=${courseId.value}`,
+);
+const mistakesLink = computed(() => {
+  if (!reportDetail.value?.id) {
+    return `/main/ai-mistakes?courseId=${courseId.value}`;
+  }
+  const query = new URLSearchParams();
+  query.set("courseId", String(courseId.value));
+  query.set("reportId", String(reportDetail.value.id));
+  const firstTestId = reportDetail.value?.testIds?.[0];
+  if (firstTestId != null) {
+    query.set("testId", String(firstTestId));
+  }
+  return `/main/ai-mistakes?${query.toString()}`;
+});
+
+const syncLocalPlanProgress = () => {
+  localPlanProgress.value = getRecentPlanProgress();
 };
 
-const runEvaluation = async () => {
+const planProgressSummary = computed(() => {
+  const progressItems = Array.isArray(localPlanProgress.value?.items) ? localPlanProgress.value.items : [];
+  const completedCount = progressItems.filter((item) => item.status === "completed").length;
+  const latestItem = [...progressItems].sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0];
+  const currentItem =
+    progressItems.find((item) => item.status === "in_progress") ||
+    progressItems.find((item) => item.status === "paused") ||
+    latestItem;
+
+  return {
+    rateText: `${localPlanProgress.value?.completion_rate || 0}%`,
+    completedText: progressItems.length ? `${completedCount} / ${progressItems.length}` : "--",
+    currentStepTitle: currentItem?.step_id || "暂无记录",
+    hint: latestItem?.last_action
+      ? `最近动作：${latestItem.last_action}，更新时间：${latestItem.updated_at || "--"}`
+      : "本地还没有学习路径推进记录，可先到“学习路径”页面操作后再回来查看。",
+  };
+});
+
+async function loadLatestReport(showMessage = false) {
   loading.value = true;
   errorMessage.value = "";
+  reportDetail.value = null;
+  syncLocalPlanProgress();
   try {
-    await loadLatestPlan();
-    evaluationData.value = await evaluateAiLearning({
-      user_id: form.user_id,
-      course_code: form.course_code,
-      scene: "comprehensive",
-      plan: latestPlan.value,
-      profile: {
-        dimensions: {
-          weak_point_preference: {
-            evidence: ["过拟合与泛化", "模型评估"],
-          },
-        },
-      },
-      resources: (latestPlan.value?.steps || []).flatMap((step) => step.resource_pushes || []),
-      learning_duration_minutes: form.learning_duration_minutes,
-      resource_usage_count: form.resource_usage_count,
-      answers: [],
+    const listRes = await request.get("/api/evaluation/report/list", {
+      params: { courseId: courseId.value },
     });
-    ElMessage.success("学习评估报告已生成");
+    const list = Array.isArray(listRes.data) ? listRes.data : [];
+    const latest = list[0];
+    if (!latest?.id) {
+      errorMessage.value = "当前课程还没有真实报告。";
+      return;
+    }
+    const detailRes = await request.get(`/api/evaluation/report/${latest.id}`);
+    reportDetail.value = detailRes.data || null;
+    if (showMessage) {
+      ElMessage.success("已读取最近报告");
+    }
   } catch (error) {
-    errorMessage.value = error?.response?.data?.detail || error?.message || "学习评估生成失败";
+    errorMessage.value = toErrorMessage(error, "报告加载失败");
   } finally {
     loading.value = false;
   }
-};
+}
 
-const loadLatestEvaluation = async () => {
+async function generateLatestReport() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    evaluationData.value = await getLatestAiEvaluation({
-      user_id: form.user_id,
-      course_code: form.course_code,
+    const res = await request.post("/api/evaluation/report/generate/comprehensive", null, {
+      params: { courseId: courseId.value },
     });
-    ElMessage.success("已加载最近一次学习评估");
+    const generatedId = res.data;
+    if (!generatedId) {
+      throw new Error("生成报告失败");
+    }
+    const detailRes = await request.get(`/api/evaluation/report/${generatedId}`);
+    reportDetail.value = detailRes.data || null;
+    syncLocalPlanProgress();
+    ElMessage.success("综合学习报告已生成");
   } catch (error) {
-    errorMessage.value = error?.response?.data?.detail || error?.message || "暂无历史学习评估";
+    errorMessage.value = toErrorMessage(error, "综合学习报告生成失败");
   } finally {
     loading.value = false;
   }
-};
+}
 
-onMounted(async () => {
-  await loadLatestEvaluation();
+onMounted(() => {
+  syncLocalPlanProgress();
+  loadLatestReport(false);
+});
+
+watch(courseId, () => {
+  loadLatestReport(false);
 });
 </script>
 
@@ -300,9 +348,34 @@ onMounted(async () => {
   display: flex;
   gap: 12px;
   margin-top: 24px;
+  flex-wrap: wrap;
 }
 
-.summaryCard {
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 180px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #15304f;
+  color: #fff;
+  font-weight: 700;
+}
+
+.navLink.secondary {
+  background: #e0f2fe;
+  color: #123b74;
+}
+
+.navLink.light {
+  background: #eef6ff;
+  color: #1f4f8f;
+}
+
+.summaryCard,
+.baseCard {
   padding: 18px;
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(244, 248, 253, 0.98), rgba(230, 240, 247, 0.92));
@@ -361,11 +434,6 @@ onMounted(async () => {
   margin-top: 18px;
   padding: 16px 18px;
   border-radius: 18px;
-
-  p {
-    margin-top: 8px;
-    line-height: 1.7;
-  }
 }
 
 .hintPanel {
@@ -391,55 +459,43 @@ onMounted(async () => {
   color: #19724f;
 }
 
-.layerGrid,
-.metricList,
-.adviceList {
+.pathSyncCard {
   display: grid;
-  gap: 14px;
-}
-
-.layerGrid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 24px;
-}
-
-.layerCard,
-.metricCard,
-.subBlock,
-.emptyState {
-  border-radius: 22px;
-  background: #fff;
-}
-
-.layerCard {
-  padding: 18px;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(12, 99, 214, 0.08), rgba(232, 123, 22, 0.12));
 
   span {
-    color: #6c7e95;
+    display: block;
     font-size: 12px;
-    letter-spacing: 0.08em;
+    color: #5f7390;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
 
   strong {
     display: block;
-    margin-top: 10px;
-    color: #13253f;
-    font-size: 28px;
+    margin-top: 8px;
+    font-size: 20px;
+    color: #132238;
   }
 
   p {
-    margin-top: 8px;
-    color: #607286;
+    grid-column: 1 / -1;
+    margin: 2px 0 0;
+    color: #55657d;
     line-height: 1.7;
   }
+}
 
-  em {
-    display: inline-flex;
-    margin-top: 10px;
-    color: #d46d0b;
-    font-style: normal;
-  }
+.baseGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 24px;
 }
 
 .resultBlock {
@@ -455,34 +511,6 @@ onMounted(async () => {
   color: #12233b;
 }
 
-.metricCard {
-  padding: 18px;
-}
-
-.metricHead {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: baseline;
-
-  strong {
-    color: #15304f;
-    font-size: 18px;
-  }
-
-  span {
-    color: #0c63d6;
-    font-weight: 700;
-    font-size: 20px;
-  }
-}
-
-.metricCard p {
-  margin-top: 10px;
-  color: #5f7186;
-  line-height: 1.8;
-}
-
 .dualBlock {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -490,39 +518,54 @@ onMounted(async () => {
 }
 
 .subBlock {
+  border-radius: 22px;
+  background: #fff;
   padding: 18px;
 }
 
-.adviceList {
+.textCard {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: #fff;
+  color: #4f6277;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.linkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 14px;
 }
 
-.adviceItem,
-.tagItem {
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: #f6f9fc;
-  color: #4f6277;
-  line-height: 1.7;
-}
-
-.tagItem.warn {
-  background: #fff3dd;
-  color: #8a5a08;
+.flowLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 160px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #0c63d6;
+  font-weight: 600;
 }
 
 .emptyState {
-  margin-top: 16px;
-  padding: 20px;
-  border: 1px dashed #cad8e6;
-  color: #6b7d92;
-  background: rgba(255, 255, 255, 0.55);
+  margin-top: 22px;
+  padding: 22px;
+  border-radius: 24px;
+  background: #fff7ed;
+  color: #9a3412;
+  line-height: 1.8;
 }
 
 @media screen and (max-width: 1280px) {
   .heroInner,
   .contentSection,
-  .layerGrid,
+  .pathSyncCard,
+  .baseGrid,
   .dualBlock,
   .fieldGrid,
   .heroPanel {

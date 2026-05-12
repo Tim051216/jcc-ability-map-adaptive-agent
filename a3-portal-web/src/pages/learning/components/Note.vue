@@ -23,13 +23,17 @@
         <div class="time fx-sb">
           <div class="tm">{{ item.createTime }}</div>
           <div class="actBut">
-            <span v-if="userInfo.id == item.authorId" class="marg-rt-10" @click="editNoteHandle(item)">
+            <span v-if="currentUserId === item.authorId" class="marg-rt-10" @click="editNoteHandle(item)">
               <i class="iconfont zhy-a-icon-xiugai22x"></i> 编辑
             </span>
-            <span v-if="userInfo.id != item.authorId" :class="{ activeLiked: false && item.isGathered }" @click="gathersHandle(item)">
+            <span
+              v-if="currentUserId !== item.authorId"
+              :class="{ activeLiked: false && item.isGathered }"
+              @click="gathersHandle(item)"
+            >
               <i class="iconfont zhy-a-ico-caiji2x"></i> {{ item.isGathered ? "已采集" : "采集" }}
             </span>
-            <span v-if="userInfo.id == item.authorId" @click="delNoteHandle(item)">
+            <span v-if="currentUserId === item.authorId" @click="delNoteHandle(item)">
               <i class="iconfont zhy-a-icon-delete22x" style="font-size: 23px; top: 3px;"></i> 删除
             </span>
           </div>
@@ -60,7 +64,7 @@
   </div>
 </template>
 <script setup>
-import { onMounted, ref, reactive, watchEffect } from "vue";
+import { computed, onMounted, reactive, ref, watchEffect } from "vue";
 import { getAllNotes, addNotes, delNote, updateNotes, notesGathers, unNotesGathers } from "@/api/notes.js";
 import { ElMessage } from "element-plus";
 import { useUserStore, dataCacheStore } from "@/store";
@@ -69,6 +73,7 @@ import Empty from "@/components/Empty.vue";
 const currentPlayData = dataCacheStore().getCurrentPlayData;
 const store = useUserStore();
 const userInfo = ref(null);
+const currentUserId = computed(() => Number(userInfo.value?.id || 0));
 
 const props = defineProps({
   id: {

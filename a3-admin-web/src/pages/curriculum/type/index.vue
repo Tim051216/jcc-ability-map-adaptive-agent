@@ -126,7 +126,7 @@ const handleReset = () => {
 // 打开新增弹层
 const handleAdd = (val) => {
 
-  title.value = "新增课程分类"
+  title.value = "新建内容分类"
   dialogFormVisible.value = true
   if (val) {
     parentId.value = val.id
@@ -146,7 +146,7 @@ const handleAdd = (val) => {
 // 打开编辑弹层
 const handleEdit = (val) => {
   // parentId.value = id
-  title.value = "编辑课程分类"
+  title.value = "编辑内容分类"
   dialogFormVisible.value = true
   // fromData.value = val
   getDetailData(val.id)

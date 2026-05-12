@@ -83,7 +83,7 @@ import TableList from "./components/TableList.vue"
 const router = useRouter()
 const search = ref() //定义搜索ref
 const statusBase = statusData //状态数据
-const text = ref("新增题目") //弹层标题
+const text = ref("新增测评题目") //弹层标题
 const loading = ref(false) //加载数据
 let total = ref(null) //数据总条数
 let dialogSucceeVisible = ref(false) //创建成功弹层显示

@@ -12,7 +12,7 @@
       class="demo-ruleForm"
       algin="right"
     >
-      <el-form-item label="后台用户名称：" prop="name">
+      <el-form-item label="管理账号名称：" prop="name">
         <el-input
           v-model="fromData.name"
           placeholder="请输入"
@@ -23,7 +23,7 @@
           >{{ nameNumVal }}/20</span
         >
       </el-form-item>
-      <el-form-item label="后台用户手机号：" prop="cellPhone">
+      <el-form-item label="管理账号手机号：" prop="cellPhone">
         <el-input
           v-model="fromData.cellPhone"
           placeholder="请输入"
@@ -134,7 +134,7 @@ const rules = reactive({
         // 延迟执行0.3s，防止重复校验和校验不准确
         setTimeout(() => {
           if (isPhone.value === true) {
-            callback(new Error("后台用户手机号已存在，请重新输入"))
+            callback(new Error("管理账号手机号已存在，请重新输入"))
           } else {
             callback()
           }

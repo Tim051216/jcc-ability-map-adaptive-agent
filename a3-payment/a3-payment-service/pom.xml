@@ -106,6 +106,9 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <mainClass>com.cnsoftbei.a3.pay.PayApplication</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>

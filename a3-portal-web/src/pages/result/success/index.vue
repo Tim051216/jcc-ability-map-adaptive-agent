@@ -5,7 +5,7 @@
     <div class="ft-14 marg-bt-20 ft-cl-des">
       你的内容已经提交成功，后续可以继续回到课程链路中查看学习与互动效果。
     </div>
-    <div class="ask bt ft-14" @click="goBack">返回上一页</div>
+    <div class="ask bt ft-14" @click="goBack">返回首页</div>
   </div>
 </template>
 
@@ -16,7 +16,7 @@ import IconSuccess from "@/assets/icon_success.svg";
 const router = useRouter();
 
 const goBack = () => {
-  router.go(-2);
+  router.push("/main/index");
 };
 </script>
 

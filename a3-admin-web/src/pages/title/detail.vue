@@ -121,7 +121,7 @@
             </tr>
             <tr>
               <td class="tabletitle" style="border-left: 1px solid #f5efee">
-                所属分类
+                内容分类
               </td>
               <td colspan="3">
                 <span v-if="detailData.data.categories">

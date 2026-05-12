@@ -14,6 +14,7 @@ import { store } from "./store";
 import router from "./router";
 // 防止用户频繁点击按钮
 import preventReClick from "@/utils/preventRepeatClick";
+
 const app = createApp(App);
 app.use(ElementPlus);
 app.use(store);

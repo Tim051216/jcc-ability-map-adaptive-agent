@@ -3,7 +3,7 @@
   <div class="dialogMain markDialog">
     <el-dialog
       v-model="dialogVisible"
-      title="设置领用/使用期限"
+      title="设置领取/有效期限"
       :before-close="handleClose"
     >
       <el-form
@@ -13,7 +13,7 @@
         label-width="130px"
         class="demo-ruleForm"
       >
-        <el-form-item label="发放方式：" prop="grantWay">
+        <el-form-item label="发布方式：" prop="grantWay">
           <el-radio-group v-model="fromData.grantWay" @change="handleType">
             <el-radio
               v-for="item in grantTypeData"
@@ -25,7 +25,7 @@
         </el-form-item>
         <!-- 立刻发放 -->
         <el-form-item
-          label="领用期限："
+          label="领取期限："
           prop="endTime"
           v-if="fromData.grantWay === 1"
           style="margin-bottom: 10px; margin-top: 10px"
@@ -49,7 +49,7 @@
         <!-- end -->
         <!-- 定时发放 -->
         <el-form-item
-          label="领用期限："
+          label="领取期限："
           v-if="fromData.grantWay === 2"
           prop="dateReceivePicker"
           class="timeFrom"
@@ -73,7 +73,7 @@
         </el-form-item>
         <!-- end -->
         <el-form-item
-          label="使用期限方式："
+          label="有效期方式："
           prop="deadlineType"
           style="margin-top: 10px"
         >
@@ -91,7 +91,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item
-          label="使用期限："
+          label="有效期限："
           prop="termValidity"
           v-if="fromData.deadlineType === 1"
           style="margin-bottom: 15px; margin-top: 10px"
@@ -109,7 +109,7 @@
           </span>
         </el-form-item>
         <el-form-item
-          label="使用期限："
+          label="有效期限："
           prop="dateUsePicker"
           v-if="fromData.deadlineType === 2"
           style="margin-bottom: 15px; margin-top: 10px"
@@ -245,11 +245,11 @@ const expireTimeOption = (time) => {
 //   }
 // };
 
-// 领用期限当天时间之前(包含当天)禁止选择
+// 领取期限当天时间之前(包含当天)禁止选择
 const dateReceiveTimeOption = (time) => {
   return moment(time).isBefore(Date.now() - 24 * 60 * 60 * 1000)
 }
-// 使用期限应该晚于领用开始时间
+// 有效期限应该晚于领取开始时间
 const dateUseTimeOption = (time) => {
   let data=fromData.value
   const dateReceivePicker = data.dateReceivePicker
@@ -285,21 +285,20 @@ const dateUseTimeOption = (time) => {
 //     }
 //   }
 // };
-// 立刻发放
+// 立刻发布
 const validatorImmediatelyEndTime = (rule, value, callback) => {
   const froms = fromData.value
   let presentEnd = new Date(new Date()).getTime() //当前时间戳
-  let end = new Date(value).getTime() //选择的领用结束时间
-  let termStartTime = new Date(froms.dateUsePicker[0]).getTime() //使用开始时间戳
-  let termEndTime = new Date(froms.dateUsePicker[1]).getTime() //使用结束时间戳
+  let end = new Date(value).getTime() //选择的领取结束时间
+  let termStartTime = new Date(froms.dateUsePicker[0]).getTime() //有效期开始时间戳
+  let termEndTime = new Date(froms.dateUsePicker[1]).getTime() //有效期结束时间戳
   if (!value) {
-    callback(new Error("领用期限为空，请设置领用期限"))
+    callback(new Error("领取期限为空，请设置领取期限"))
   }
   if (end < presentEnd) {
-    callback(new Error("领用期限需晚于当前时间"))
+    callback(new Error("领取期限需晚于当前时间"))
   } else if (end > termEndTime) {
-
-    callback(new Error("领用结束时间需等于/早于使用结束时间"))
+    callback(new Error("领取结束时间需等于/早于有效期结束时间"))
   } else {
     callback()
   }
@@ -307,7 +306,7 @@ const validatorImmediatelyEndTime = (rule, value, callback) => {
 // 
 const validatorTermValidity = (rule, value, callback) => {
   if (!value) {
-    callback(new Error("使用期限为空，请设置使用期限"))
+    callback(new Error("有效期限为空，请设置有效期限"))
   } else {
     if (Number(value) < 1 || Number(value) > 99) {
       callback(new Error("请输入1-99的整数"))
@@ -316,57 +315,57 @@ const validatorTermValidity = (rule, value, callback) => {
     }
   }
 }
-// 发放方式：定时发放的结束时间应该晚于(大于)开始时间
+// 发布方式：定时发布的结束时间应该晚于(大于)开始时间
 const validatorEndTime = (rule, value, callback) => {
   const froms = fromData.value
-  let start = new Date(froms.dateReceivePicker[0]).getTime() //领用开始时间戳
-  let dateEnd = new Date(froms.dateReceivePicker[1]).getTime() //领用结束时间戳
+  let start = new Date(froms.dateReceivePicker[0]).getTime() //领取开始时间戳
+  let dateEnd = new Date(froms.dateReceivePicker[1]).getTime() //领取结束时间戳
   let end = new Date(new Date()).getTime() //当前时间戳
-  let termStartTime = new Date(froms.dateUsePicker[0]).getTime() //使用开始时间戳
-  let termEndTime = new Date(froms.dateUsePicker[1]).getTime() //使用结束时间戳
+  let termStartTime = new Date(froms.dateUsePicker[0]).getTime() //有效期开始时间戳
+  let termEndTime = new Date(froms.dateUsePicker[1]).getTime() //有效期结束时间戳
   if (start < end) {
-    callback(new Error("领用期限需晚于当前时间"))
+    callback(new Error("领取期限需晚于当前时间"))
   } else if (termStartTime < start) {
-    callback(new Error("领用开始时间需等于/早于使用开始时间"))
+    callback(new Error("领取开始时间需等于/早于有效期开始时间"))
   } else if (termEndTime < dateEnd) {
-    callback(new Error("领用结束时间需等于/早于使用结束时间"))
+    callback(new Error("领取结束时间需等于/早于有效期结束时间"))
   } else if (start === dateEnd) {
-    callback(new Error("领用结束时间需晚于领用开始时间"))
+    callback(new Error("领取结束时间需晚于领取开始时间"))
   } else {
     callback()
   }
 
   // validatorTime(rule, value, callback, froms.dateReceivePicker[0], text);
 }
-// 使用期限：固定时间段的结束时间应该晚于(大于)开始时间
+// 有效期限：固定时间段的结束时间应该晚于(大于)开始时间
 const validatorTermEndTime = (rule, value, callback) => {
   const froms = fromData.value
   // validatorTime(rule, value, callback, fromData.value.termStartTime,text);
   if (!value) {
-    callback(new Error("领用期限为空，请设置领用期限"))
+    callback(new Error("领取期限为空，请设置领取期限"))
   } else {
     let presentEnd = new Date(new Date()).getTime() //当前时间戳
     let end = new Date(value).getTime() //结束时间戳
-    let startTime = new Date(froms.dateReceivePicker[0]).getTime() //领用开始时间
-    let TermStartTime = new Date(froms.dateUsePicker[0]).getTime() //使用开始时间戳
-    let termStartTime = new Date(froms.dateUsePicker[0]).getTime() //使用开始时间戳
+    let startTime = new Date(froms.dateReceivePicker[0]).getTime() //领取开始时间
+    let TermStartTime = new Date(froms.dateUsePicker[0]).getTime() //有效期开始时间戳
+    let termStartTime = new Date(froms.dateUsePicker[0]).getTime() //有效期开始时间戳
 
     if (froms.dateReceivePicker !== undefined) {
       if (froms.grantWay === 1) {
-        let endTime = new Date(froms.endTime).getTime() //领用结束时间
+        let endTime = new Date(froms.endTime).getTime() //领取结束时间
         if (termStartTime < presentEnd) {
-          callback(new Error("使用期限需晚于当前时间"))
+          callback(new Error("有效期限需晚于当前时间"))
         } else if (endTime > end) {
-          callback(new Error("使用结束时间需等于/晚于领用结束时间"))
+          callback(new Error("有效期结束时间需等于/晚于领取结束时间"))
         } else {
           callback()
         }
       } else {
-        let endTime = new Date(froms.dateReceivePicker[1]).getTime() //定时发放结束时间戳
+        let endTime = new Date(froms.dateReceivePicker[1]).getTime() //定时发布结束时间戳
         if (endTime > end) {
-          callback(new Error("使用结束时间需等于/晚于领用结束时间"))
+          callback(new Error("有效期结束时间需等于/晚于领取结束时间"))
         } else if (TermStartTime < startTime) {
-          callback(new Error("使用开始时间需等于/晚于领用开始时间"))
+          callback(new Error("有效期开始时间需等于/晚于领取开始时间"))
         } else {
           callback()
         }
@@ -398,7 +397,7 @@ const validatorTermEndTime = (rule, value, callback) => {
 //     }
 //   }
 // };
-// 领用期限
+// 领取期限
 const endTime = [
   {
     required: true,
@@ -416,12 +415,12 @@ const termValidity = [
     trigger: "blur",
   }
 ]
-// 领用期限
+// 领取期限
 const dateReceivePicker = [
   {
     type: "array",
     required: true,
-    message: "领用期限为空，请设置领用期限",
+    message: "领取期限为空，请设置领取期限",
     fields: {
       0: { type: "string", required: true, message: "请选择开始日期" },
       1: {
@@ -433,12 +432,12 @@ const dateReceivePicker = [
     // trigger: "change",
   },
 ]
-// 使用期限
+// 有效期限
 const dateUsePicker = [
   {
     type: "array",
     required: true,
-    message: "使用期限为空，请设置使用期限",
+    message: "有效期限为空，请设置有效期限",
     fields: {
       0: { type: "string", required: true, message: "请选择开始日期" },
       1: {
@@ -455,14 +454,14 @@ const rules = reactive({
   grantWay: [
     {
       required: true,
-      message: "发放方式为空，请选择发放方式",
+      message: "发布方式为空，请选择发布方式",
       trigger: "change",
     },
   ],
   deadlineType: [
     {
       required: true,
-      message: "使用期限为空，请设置使用期限",
+      message: "有效期限为空，请设置有效期限",
       trigger: "change",
     },
   ],

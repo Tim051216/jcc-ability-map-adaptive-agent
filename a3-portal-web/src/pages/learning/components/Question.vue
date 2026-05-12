@@ -90,14 +90,12 @@ const quest = reactive({
 });
 
 const askListsDataes = ref([]);
-const total = ref(0);
 
 const getAskListsDataes = async () => {
   await getAskList(params.value)
     .then((res) => {
       if (res.code == 200) {
         askListsDataes.value = res.data.list;
-        total.value = Number(res.data.total);
       }
     })
     .catch(() => {

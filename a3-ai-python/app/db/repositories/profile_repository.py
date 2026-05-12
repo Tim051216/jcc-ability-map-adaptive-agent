@@ -5,6 +5,22 @@ from app.db.models.user_profile import UserProfileSnapshot
 
 
 class ProfileRepository:
+    async def list_by_user(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        *,
+        limit: int = 10,
+    ) -> list[UserProfileSnapshot]:
+        stmt = (
+            select(UserProfileSnapshot)
+            .where(UserProfileSnapshot.user_id == user_id)
+            .order_by(UserProfileSnapshot.id.desc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def latest_by_user(self, session: AsyncSession, user_id: int) -> UserProfileSnapshot | None:
         stmt = (
             select(UserProfileSnapshot)

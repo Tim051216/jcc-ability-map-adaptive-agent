@@ -1,8 +1,8 @@
 import { useRoute, createRouter, createWebHashHistory } from "vue-router";
 
-import baseRouters from "./modules/base";
-import componentsRouters from "./modules/components";
-import othersRouters from "./modules/others";
+import baseRouters from "./modules/base.js";
+import componentsRouters from "./modules/components.js";
+import othersRouters from "./modules/others.js";
 
 // 存放业务页面路由
 export const asyncRouterList = [...baseRouters, ...componentsRouters, ...othersRouters];

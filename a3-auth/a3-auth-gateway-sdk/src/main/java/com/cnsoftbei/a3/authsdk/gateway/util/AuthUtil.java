@@ -56,6 +56,9 @@ public class AuthUtil {
         }
         JWT jwt = null;
         try {
+            if (jwtSignerHolder.getJwtSigner() == null) {
+                return R.error(INVALID_TOKEN_CODE, INVALID_TOKEN);
+            }
             jwt = JWT.of(token).setSigner(jwtSignerHolder.getJwtSigner());
         } catch (Exception e) {
             return R.error(INVALID_TOKEN_CODE, INVALID_TOKEN);

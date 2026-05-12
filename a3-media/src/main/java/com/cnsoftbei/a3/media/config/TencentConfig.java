@@ -16,7 +16,6 @@ import com.cnsoftbei.a3.media.storage.IFileStorage;
 import com.cnsoftbei.a3.media.storage.IMediaStorage;
 import com.cnsoftbei.a3.media.storage.tencent.TencentFileStorage;
 import com.cnsoftbei.a3.media.storage.tencent.TencentMediaStorage;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

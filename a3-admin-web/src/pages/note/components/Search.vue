@@ -24,7 +24,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="课程名称" prop="noteName">
+            <el-form-item label="内容名称" prop="noteName">
               <el-input
                 placeholder="请输入"
                 clearable

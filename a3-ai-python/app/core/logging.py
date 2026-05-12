@@ -17,3 +17,7 @@ def configure_logging() -> None:
 
 def get_logger(name: str):
     return structlog.get_logger(name)
+
+
+# 兼容自模块 `from app.core.logging import logger` 的写法（智能体节点等）
+logger = structlog.get_logger("app")

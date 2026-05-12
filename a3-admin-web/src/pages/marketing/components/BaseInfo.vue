@@ -1,4 +1,4 @@
-<!--新增、编辑优惠券-->
+<!--新增、编辑活动-->
 <template>
   <el-form
     :model="fromData"
@@ -7,7 +7,7 @@
     label-width="130px"
     class="demo-ruleForm"
   >
-    <el-form-item label="优惠券名称：" prop="name">
+    <el-form-item label="活动名称：" prop="name">
       <div class="el-input">
         <el-input
           v-model="fromData.name"
@@ -52,7 +52,7 @@
         </el-cascader>
       </div>
     </el-form-item>
-    <el-form-item label="优惠券类型：" prop="type">
+    <el-form-item label="活动类型：" prop="type">
       <el-radio-group v-model="fromData.type" @change="handleType">
         <el-radio
           v-for="item in couponsTypeData"
@@ -157,7 +157,7 @@
         </el-date-picker>
       </div>
     </el-form-item> -->
-    <div class="tit"><span>优惠券推广方式</span></div>
+    <div class="tit"><span>活动投放方式</span></div>
     <el-form-item label="推广方式：" prop="obtainWay">
       <el-radio-group v-model="fromData.obtainWay" @change="handWay">
         <el-radio
@@ -168,7 +168,7 @@
         >
       </el-radio-group>
     </el-form-item>
-    <el-form-item label="发放数量：" prop="totalNum">
+    <el-form-item label="发布数量：" prop="totalNum">
       <div class="subtractInfo">
         <div class="inputW inputRight">
           <el-input
@@ -312,11 +312,11 @@ const validatorMaxAmount = (rule, value, callback) => {
 // 发放数量校验
 const validatorTotalNum = (rule, value, callback) => {
   if (!value) {
-    callback(new Error("发放数量为空，请设置发放数量"))
+    callback(new Error("发布数量为空，请设置发布数量"))
   }
   first(value, callback)
   if (Number(value) < Number(fromData.value.perNum)) {
-    callback(new Error("发放数量需大于限领数量"))
+    callback(new Error("发布数量需大于限领数量"))
   }
   if (Number(value) > 5000 || Number(value) <= 0) {
     callback(new Error("请输入1～5000的整数"))
@@ -333,7 +333,7 @@ const validatorPerNum = (rule, value, callback) => {
     callback(new Error("请输入大于0，小于11的正整"))
   }
   if (Number(value) > Number(fromData.value.totalNum)) {
-    callback(new Error("限量数量不能大于发放数量"))
+    callback(new Error("限量数量不能大于发布数量"))
   }
 
   callback()
@@ -373,7 +373,7 @@ const rules = reactive({
   name: [
     {
       required: true,
-      message: "优惠券名称为空，请输入优惠券名称",
+      message: "活动名称为空，请输入活动名称",
       trigger: "blur",
     },
     {
@@ -392,14 +392,14 @@ const rules = reactive({
   cateIds: [
     {
       required: true,
-      message: "请选择课程分类",
+      message: "请选择内容分类",
       trigger: "change",
     },
   ],
   type: [
     {
       required: true,
-      message: "优惠券类型为空，请设置优惠券类型",
+      message: "活动类型为空，请设置活动类型",
       trigger: "change",
     },
   ],
@@ -417,7 +417,7 @@ const rules = reactive({
   totalType: [
     {
       required: true,
-      message: "发放数量为空，请设置发放数量",
+      message: "发布数量为空，请设置发布数量",
       trigger: "change",
     },
   ],

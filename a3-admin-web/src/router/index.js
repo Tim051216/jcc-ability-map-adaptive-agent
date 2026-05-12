@@ -26,7 +26,7 @@ const defaultRouterList = [
     path: "/video/:id",
     name: "video",
     component: () => import("@/pages/curriculum/media/video.vue"),
-    meta: { title: "媒资管理" },
+    meta: { title: "资源素材" },
   },
   {
     path: '/:w+',

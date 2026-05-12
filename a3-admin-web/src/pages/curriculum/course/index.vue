@@ -122,7 +122,7 @@ import TableList from "./components/TableList.vue";
 const store = useUserStore();
 //初始化路由
 const router = useRouter();
-const text = ref("新增课程"); //弹层标题
+const text = ref("创建课程内容"); //弹层标题
 const loading = ref(false); //加载数据
 const serchInfo = ref(); //定义搜索ref
 let total = ref(null); //数据总条数

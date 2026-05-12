@@ -4,7 +4,7 @@
     <div
       v-for="(item, index) in data.searchKeys"
       :key="index"
-      :class="{ active: activeId === item.id, checkBox: true, 'font-bt1': true }"
+      :class="{ active: activeId === String(item.id), checkBox: true, 'font-bt1': true }"
       @click="activeHandle(item.id)"
     >
       {{ item.name }}
@@ -13,7 +13,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 
 const props = defineProps({
   data: {
@@ -26,19 +26,26 @@ const props = defineProps({
   },
 });
 
-const activeId = ref(props.active);
+const activeId = ref(String(props.active));
 const emit = defineEmits(["searchKey"]);
 
 onMounted(() => {
   const items = props.data?.searchKeys || [];
-  const current = items.filter((item) => item.id === props.active);
+  const current = items.filter((item) => String(item.id) === String(props.active));
   if (current.length === 0) {
     activeId.value = "all";
   }
 });
 
+watch(
+  () => props.active,
+  (value) => {
+    activeId.value = String(value ?? "all");
+  },
+);
+
 const activeHandle = (id) => {
-  activeId.value = id;
+  activeId.value = String(id);
   emit("searchKey", { key: props.data.subKey, value: id });
 };
 </script>

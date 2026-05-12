@@ -33,3 +33,4 @@
 - `docker exec a3-mysql mysql -uroot -pa3mysql123 -e "SHOW TABLES FROM tj_learning;"`
 - `mvnw.cmd -f a3-learning\pom.xml -DskipTests spring-boot:run -Dspring-boot.run.profiles=local`
 - `http://127.0.0.1:8090/doc.html` 返回 `200`
+- 当前 `local` 配置已可直接生效，不再依赖额外的 `-Dspring.cloud.*=false` JVM 参数。

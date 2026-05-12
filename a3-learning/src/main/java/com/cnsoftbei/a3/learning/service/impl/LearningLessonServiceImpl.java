@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cnsoftbei.a3.api.client.course.CatalogueClient;
 import com.cnsoftbei.a3.api.client.course.CourseClient;
-import com.cnsoftbei.a3.api.client.learning.LearningClient;
 import com.cnsoftbei.a3.api.dto.course.CataSimpleInfoDTO;
 import com.cnsoftbei.a3.api.dto.course.CourseFullInfoDTO;
 import com.cnsoftbei.a3.api.dto.course.CourseSimpleInfoDTO;
@@ -29,14 +28,11 @@ import com.cnsoftbei.a3.learning.mapper.LearningLessonMapper;
 import com.cnsoftbei.a3.learning.mapper.LearningRecordMapper;
 import com.cnsoftbei.a3.learning.service.ILearningLessonService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.cnsoftbei.a3.learning.service.ILearningRecordService;
+import com.cnsoftbei.a3.learning.service.IPointsRecordService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.checkerframework.checker.units.qual.A;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -62,6 +58,8 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
     private final CatalogueClient catalogueClient;
 
     private final LearningRecordMapper recordMapper;
+
+    private final IPointsRecordService pointsRecordService;
 
     //用service会循环依赖，暂时用mapper
     // private final ILearningRecordService recordService;
@@ -236,10 +234,6 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
         Map<Long, CourseSimpleInfoDTO> collect = infoList.stream().collect(Collectors.toMap(CourseSimpleInfoDTO::getId, c -> c));
         return collect;
     }
-    //远程批量查询课程的本周已学小节数量
-    private Map<Long, Integer> queryCourseLearnedSectionNum(List<Long> ids) {
-        return null;
-    }
     //根据用户id和课程id查询lesson
     @Override
     public LearningLesson queryByUserAndCourseId(Long userId, Long courseId) {
@@ -269,14 +263,14 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
         LearningPlanPageVO planPageVO = new LearningPlanPageVO();
         //1.获取用户
         Long user = UserContext.getUser();
-        //2.TODO 积分奖励
-        planPageVO.setWeekPoints(0);
-        //3.查询课程表信息
-        //3.1获取本周内时间
+        //2.查询课程表信息
+        //2.1获取本周内时间
         LocalDate now = LocalDate.now();
         LocalDateTime begin = DateUtils.getWeekBeginTime(now);
         LocalDateTime end = DateUtils.getWeekEndTime(now);
-        //3.2获取本周已完成小节总数
+        //本周积分（points_record：自然周内 create_time 落在本周内的积分之和）
+        planPageVO.setWeekPoints(pointsRecordService.sumPointsByUserBetween(user, begin, end));
+        //2.2获取本周已完成小节总数
         Integer weekFinished = recordMapper.selectCount(new LambdaQueryWrapper<LearningRecord>()
                 .eq(LearningRecord::getUserId, user)
                 .eq(LearningRecord::getFinished, true)
@@ -285,7 +279,7 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
         );
         planPageVO.setWeekFinished(weekFinished);
 
-        //3.3获取用户所有计划小节数量
+        //2.3获取用户所有计划小节数量
         QueryWrapper<LearningLesson> wrapper = new QueryWrapper<>();
         wrapper.select("SUM(week_freq) AS plansTotal");
         wrapper.eq("user_id", user);
@@ -301,7 +295,7 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
         }else{
             planPageVO.setWeekTotalPlan(0);
         }
-        //3.4查询所有有计划的课程集合
+        //2.4查询所有有计划的课程集合
         Page<LearningLesson> lessonPage = lambdaQuery()
                 .eq(LearningLesson::getUserId, user)
                 .eq(LearningLesson::getPlanStatus, PlanStatus.PLAN_RUNNING)
@@ -325,7 +319,7 @@ public class LearningLessonServiceImpl extends ServiceImpl<LearningLessonMapper,
         //也可以在mapper写sql查出，做法在在线文档就已经实现
         Map<Long, Long> weekLearnedSections = recordMapper.selectList(
                 new LambdaQueryWrapper<LearningRecord>()
-                .eq(LearningRecord::getUserId, 2)
+                .eq(LearningRecord::getUserId, user)
                 .eq(LearningRecord::getFinished, 1)
                 .gt(LearningRecord::getFinishTime, begin)
                 .lt(LearningRecord::getFinishTime, end)

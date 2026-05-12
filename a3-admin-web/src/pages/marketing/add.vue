@@ -1,10 +1,10 @@
-<!-- 添加、编辑优惠券 -->
+<!-- 添加、编辑活动 -->
 <template>
   <div class="contentBox">
     <div class="bg-wt radius marg-tp-20">
       <div class="detailBox" :key="keyTime">
         <!-- 标题 -->
-        <div class="tit"><span>优惠券基本信息</span></div>
+        <div class="tit"><span>活动基本信息</span></div>
         <!-- end -->
         <!-- 基本信息 -->
         <BaseInfo

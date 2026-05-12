@@ -14,17 +14,17 @@
             <div class="title">{{ baseDetailsData.name }}</div>
             <div class="item fx">
               <div class="card">
-                <div class="tit">&#x8BFE;&#x7A0B;&#x8282;&#x6570;</div>
-                <div class="info">{{ baseDetailsData.cataTotalNum }} &#x8282;</div>
+                <div class="tit">课程节数</div>
+                <div class="info">{{ baseDetailsData.cataTotalNum }} 节</div>
               </div>
               <div class="card">
-                <div class="tit">&#x6709;&#x6548;&#x671F;</div>
+                <div class="tit">有效期</div>
                 <div class="info">
-                  {{ baseDetailsData.validDuration > 99 ? "&#x957F;&#x671F;&#x6709;&#x6548;" : `${baseDetailsData.validDuration} 个月` }}
+                  {{ baseDetailsData.validDuration > 99 ? "长期有效" : `${baseDetailsData.validDuration} 个月` }}
                 </div>
               </div>
               <div class="card bd-non">
-                <div class="tit">&#x63A8;&#x8350;&#x6307;&#x6570;</div>
+                <div class="tit">推荐指数</div>
                 <div class="info">{{ baseDetailsData.score / 10 }}</div>
               </div>
             </div>
@@ -35,11 +35,11 @@
                 @click="collectionHandle"
               >
                 <i :class="{ iconfont: true, 'zhy-btn_shoucang': !isCollection, 'zhy-btn_yishoucang': isCollection }"></i>
-                &#x6536;&#x85CF;&#x8BFE;&#x7A0B;
+                收藏课程
               </div>
               <div class="bt-wt bt-round ft-14">
                 <weixin class="wx" />
-                &#x5206;&#x4EAB;&#x4ECB;&#x7ECD;
+                分享介绍
               </div>
             </div>
           </div>
@@ -50,26 +50,26 @@
             <div class="fx-ct">
               <span class="price">¥</span>
               <span class="price">{{ (baseDetailsData.price / 100).toFixed(2) }}</span>
-              <span class="desc">&#x5F53;&#x524D;&#x9875;&#x9762;&#x4F18;&#x5148;&#x670D;&#x52A1;&#x8D5B;&#x9898;&#x6F14;&#x793A;&#x4E0E;&#x524D;&#x7AEF;&#x9A8C;&#x6536;&#xFF0C;&#x540E;&#x7EED;&#x53EF;&#x9010;&#x6B65;&#x5207;&#x56DE;&#x771F;&#x5B9E;&#x4E0B;&#x5355;&#x94FE;&#x8DEF;&#x3002;</span>
+              <span class="desc">当前页面优先服务赛题演示与前端验收，后续可逐步切回真实下单链路。</span>
             </div>
             <div v-if="!isSignUp" class="buy">
-              <span class="bt-red1 bt-round marg-rt-20" @click="addCarts">&#x52A0;&#x5165;&#x8D2D;&#x7269;&#x8F66;</span>
-              <span class="bt-red bt-round" @click="payHandle">&#x7ACB;&#x5373;&#x8D2D;&#x4E70;</span>
+              <span class="bt-red1 bt-round marg-rt-20" @click="addCarts">加入购物车</span>
+              <span class="bt-red bt-round" @click="payHandle">立即购买</span>
             </div>
             <div v-else class="buy" @click="goLearning">
-              <span class="bt-red bt-round">&#x8FDB;&#x5165;&#x5B66;&#x4E60;</span>
+              <span class="bt-red bt-round">进入学习</span>
             </div>
           </div>
 
           <div v-else class="buyCont fx-sb">
             <div class="fx-ct">
-              <span class="price">&#x514D;&#x8D39;</span>
+              <span class="price">免费</span>
             </div>
             <div v-if="!isSignUp" class="buy" @click="signUpHandle">
-              <span class="bt-red bt-round">&#x52A0;&#x5165;&#x5B66;&#x4E60;</span>
+              <span class="bt-red bt-round">加入学习</span>
             </div>
             <div v-else class="buy" @click="goLearning">
-              <span class="bt-red bt-round">&#x8FDB;&#x5165;&#x5B66;&#x4E60;</span>
+              <span class="bt-red bt-round">进入学习</span>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@
         <ClassAsk v-if="isLogin() && isSignUp" v-show="actId === 3" :id="detailsId" :title="baseDetailsData.name" />
         <Note v-if="isLogin() && isSignUp" v-show="actId === 4" :id="detailsId" />
         <div v-show="actId === 5" class="fx-ct ft-cl-des" style="height: 400px">
-          &#x6F14;&#x793A;&#x7248;&#x672C;&#x6682;&#x672A;&#x5F00;&#x653E;&#x5B66;&#x5458;&#x8BC4;&#x4EF7;&#x529F;&#x80FD;&#x3002;
+          演示版本暂未开放学员评价功能。
         </div>
       </div>
 
@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import weixin from "@/assets/icon_weixin.svg";
@@ -131,58 +131,58 @@ const isSignUp = ref(false);
 const planData = ref();
 
 const fullTableBar = [
-  { id: 1, name: "\u8BFE\u7A0B\u4ECB\u7ECD" },
-  { id: 2, name: "\u8BFE\u7A0B\u76EE\u5F55" },
-  { id: 3, name: "\u95EE\u7B54" },
-  { id: 4, name: "\u7B14\u8BB0" },
-  { id: 5, name: "\u8BC4\u4EF7" },
+  { id: 1, name: "课程介绍" },
+  { id: 2, name: "课程目录" },
+  { id: 3, name: "问答" },
+  { id: 4, name: "笔记" },
+  { id: 5, name: "评价" },
 ];
 
 const guestTableBar = [
-  { id: 1, name: "\u8BFE\u7A0B\u4ECB\u7ECD" },
-  { id: 2, name: "\u8BFE\u7A0B\u76EE\u5F55" },
-  { id: 5, name: "\u8BC4\u4EF7" },
+  { id: 1, name: "课程介绍" },
+  { id: 2, name: "课程目录" },
+  { id: 5, name: "评价" },
 ];
 
 const tableBar = computed(() => (isLogin() && isSignUp.value ? fullTableBar : guestTableBar));
 
 const askData = [
   {
-    ask: "\u62A5\u540D\u540E\u7684\u8BFE\u7A0B\u5728\u54EA\u91CC\u67E5\u770B\uFF1F",
-    answer: "\u767B\u5F55\u540E\u53EF\u4EE5\u8FDB\u5165\u5B66\u4E60\u4E2D\u5FC3\uFF0C\u6216\u524D\u5F80\u4E2A\u4EBA\u4E2D\u5FC3\u7684\u201C\u6211\u7684\u8BFE\u7A0B\u201D\u67E5\u770B\u5F53\u524D\u5B66\u4E60\u8FDB\u5EA6\u3002",
+    ask: "报名后的课程在哪里查看？",
+    answer: "登录后可以进入学习中心，或前往个人中心的“我的课程”查看当前学习进度。",
   },
   {
-    ask: "\u4E3A\u4EC0\u4E48\u6F14\u793A\u6A21\u5F0F\u4E0B\u53EF\u4EE5\u76F4\u63A5\u8FDB\u5165\u8BFE\u7A0B\uFF1F",
-    answer: "\u5F53\u524D\u7248\u672C\u4E3B\u8981\u7528\u4E8E\u8D5B\u9898\u9A8C\u6536\u6F14\u793A\uFF0C\u90E8\u5206\u8BFE\u7A0B\u6570\u636E\u7531\u524D\u7AEF\u672C\u5730\u6F14\u793A\u6570\u636E\u5140\u5E95\u63D0\u4F9B\u3002",
+    ask: "为什么演示模式下可以直接进入课程？",
+    answer: "当前版本主要用于赛题验收演示，部分课程数据由前端本地演示数据兜底提供。",
   },
   {
-    ask: "\u540E\u7EED\u8FD8\u80FD\u5207\u56DE\u771F\u5B9E\u540E\u7AEF\u5417\uFF1F",
-    answer: "\u53EF\u4EE5\u3002\u73B0\u5728\u7684\u6F14\u793A\u6570\u636E\u53EA\u662F\u5728\u4FDD\u62A4\u524D\u7AEF\u6D41\u7A0B\uFF0C\u540E\u7EED\u4ECD\u53EF\u9010\u6B65\u5207\u56DE\u771F\u5B9E\u670D\u52A1\u3002",
+    ask: "后续还能切回真实后端吗？",
+    answer: "可以。现在的演示数据只是在保护前端流程，后续仍可逐步切回真实服务。",
   },
   {
-    ask: "\u5EFA\u8BAE\u600E\u4E48\u6F14\u793A\u8FD9\u6761\u94FE\u8DEF\uFF1F",
-    answer: "\u63A8\u8350\u6309\u9996\u9875\u3001\u641C\u7D22\u3001\u8BE6\u60C5\u3001\u5B66\u4E60\u3001\u7EC3\u4E60\u7684\u987A\u5E8F\u6F14\u793A\uFF0C\u8BB2\u89E3\u4F1A\u66F4\u5B8C\u6574\u3002",
+    ask: "建议怎么演示这条链路？",
+    answer: "推荐按首页、搜索、详情、学习、练习的顺序演示，讲解会更完整。",
   },
 ];
 
 const likeData = ref([
   {
     id: 201,
-    name: "Vue 3 \u9879\u76EE\u5DE5\u7A0B\u5316\u843D\u5730",
+    name: "Vue 3 项目工程化落地",
     coverUrl: banner3,
     price: 9900,
     sections: 18,
     sold: 740,
-    teacher: "\u524D\u7AEF\u67B6\u6784\u7EC4",
+    teacher: "前端架构组",
   },
   {
     id: 301,
-    name: "\u5927\u6A21\u578B\u5E94\u7528\u5F00\u53D1\u5BFC\u8BBA",
+    name: "大模型应用开发导论",
     coverUrl: banner2,
     price: 12900,
     sections: 20,
     sold: 680,
-    teacher: "A3 AI \u5B9E\u9A8C\u5BA4",
+    teacher: "A3 AI 实验室",
   },
 ]);
 
@@ -194,27 +194,34 @@ watch(baseDetailsData, (value) => {
   likeData.value = [
     {
       id: value.id === 201 ? 101 : 201,
-      name: value.id === 201 ? "A3 \u667A\u80FD\u5B66\u4E60\u52A9\u624B\u5B9E\u6218" : "Vue 3 \u9879\u76EE\u5DE5\u7A0B\u5316\u843D\u5730",
+      name: value.id === 201 ? "A3 智能学习助手实战" : "Vue 3 项目工程化落地",
       coverUrl: value.id === 201 ? value.coverUrl : banner3,
       price: value.id === 201 ? 0 : 9900,
       sections: value.id === 201 ? 24 : 18,
       sold: value.id === 201 ? 1260 : 740,
-      teacher: value.id === 201 ? "A3 \u6559\u5B66\u56E2\u961F" : "\u524D\u7AEF\u67B6\u6784\u7EC4",
+      teacher: value.id === 201 ? "A3 教学团队" : "前端架构组",
     },
     {
       id: value.id === 301 ? 302 : 301,
-      name: value.id === 301 ? "\u8F6F\u8003\u8D5B\u9898\u9879\u76EE\u5B9E\u8BAD" : "\u5927\u6A21\u578B\u5E94\u7528\u5F00\u53D1\u5BFC\u8BBA",
+      name: value.id === 301 ? "软考赛题项目实训" : "大模型应用开发导论",
       coverUrl: value.id === 301 ? value.coverUrl : banner2,
       price: value.id === 301 ? 0 : 12900,
       sections: value.id === 301 ? 28 : 20,
       sold: value.id === 301 ? 1500 : 680,
-      teacher: value.id === 301 ? "\u7ADE\u8D5B\u8F85\u5BFC\u7EC4" : "A3 AI \u5B9E\u9A8C\u5BA4",
+      teacher: value.id === 301 ? "竞赛辅导组" : "A3 AI 实验室",
     },
   ];
 });
 
-onMounted(async () => {
-  detailsId.value = route.query.id;
+const loadCourseDetailsPage = async (courseId) => {
+  detailsId.value = courseId;
+  baseDetailsData.value = {};
+  baseClassTeacher.value = [];
+  baseClassTeacherData.value = [];
+  classListData.value = [];
+  planData.value = undefined;
+  isSignUp.value = false;
+
   await getClassDetailsData();
   await getClassTeachersData();
   await getClassListData();
@@ -228,7 +235,18 @@ onMounted(async () => {
     teacherData: baseClassTeacherData.value,
     planData: planData.value,
   });
-});
+};
+
+watch(
+  () => route.query.id,
+  async (courseId) => {
+    if (!courseId) {
+      return;
+    }
+    await loadCourseDetailsPage(courseId);
+  },
+  { immediate: true },
+);
 
 const getClassDetailsData = async () => {
   try {
@@ -237,9 +255,9 @@ const getClassDetailsData = async () => {
       baseDetailsData.value = res.data;
       return;
     }
-    ElMessage({ message: res.msg || "\u8BFE\u7A0B\u8BE6\u60C5\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "课程详情加载失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u8BFE\u7A0B\u8BE6\u60C5\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: "课程详情加载失败", type: "error" });
   }
 };
 
@@ -263,9 +281,9 @@ const getClassTeachersData = async () => {
       baseClassTeacher.value = grouped;
       return;
     }
-    ElMessage({ message: res.msg || "\u5BFC\u5E08\u4FE1\u606F\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "导师信息加载失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u5BFC\u5E08\u4FE1\u606F\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: "导师信息加载失败", type: "error" });
   }
 };
 
@@ -276,9 +294,9 @@ const getClassListData = async () => {
       classListData.value = res.data || [];
       return;
     }
-    ElMessage({ message: res.msg || "\u8BFE\u7A0B\u76EE\u5F55\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "课程目录加载失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u8BFE\u7A0B\u76EE\u5F55\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: "课程目录加载失败", type: "error" });
   }
 };
 
@@ -298,13 +316,13 @@ const signUpHandle = async () => {
   try {
     const res = await enrolledFreeCourse(detailsId.value);
     if (res.code === 200) {
-      ElMessage({ message: "\u5DF2\u52A0\u5165\u5B66\u4E60", type: "success" });
+      ElMessage({ message: "已加入学习", type: "success" });
       isSignUp.value = true;
       return;
     }
-    ElMessage({ message: res.msg || "\u52A0\u5165\u5B66\u4E60\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "加入学习失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u52A0\u5165\u5B66\u4E60\u5931\u8D25", type: "error" });
+    ElMessage({ message: "加入学习失败", type: "error" });
   }
 };
 
@@ -336,9 +354,9 @@ const payHandle = () => {
 
 const validation = () => {
   if (!isLogin()) {
-    ElMessageBox.confirm("\u8BF7\u5148\u767B\u5F55\u540E\u518D\u7EE7\u7EED\u64CD\u4F5C\u3002", "\u9700\u8981\u767B\u5F55", {
-      confirmButtonText: "\u53BB\u767B\u5F55",
-      cancelButtonText: "\u7EE7\u7EED\u6D4F\u89C8",
+    ElMessageBox.confirm("请先登录后再继续操作。", "需要登录", {
+      confirmButtonText: "去登录",
+      cancelButtonText: "继续浏览",
       type: "warning",
     }).then(() => {
       router.push({ path: "/login" });
@@ -356,12 +374,12 @@ const addCarts = async () => {
   try {
     const res = await putCarts({ courseId: detailsId.value });
     if (res.code === 200) {
-      ElMessage({ message: "\u5DF2\u52A0\u5165\u8D2D\u7269\u8F66", type: "success" });
+      ElMessage({ message: "已加入购物车", type: "success" });
       return;
     }
-    ElMessage({ message: res.msg || "\u52A0\u5165\u8D2D\u7269\u8F66\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "加入购物车失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u52A0\u5165\u8D2D\u7269\u8F66\u5931\u8D25", type: "error" });
+    ElMessage({ message: "加入购物车失败", type: "error" });
   }
 };
 </script>

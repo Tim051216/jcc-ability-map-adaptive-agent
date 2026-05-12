@@ -1,0 +1,617 @@
+"""智能辅导 HTTP 接口烟测（通过 Mock TutoringService 避免依赖数据库与 LLM）。"""
+
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.deps import get_current_user_id, get_db_session
+from app.api.v1 import tutoring
+from app.schemas.tutoring import TutoringHistoryResponse
+from app.services.tutoring_service import TutoringService
+
+app = FastAPI()
+app.include_router(tutoring.router, prefix="/api/v1/tutoring")
+
+
+async def fake_user_id() -> int:
+    return 1001
+
+
+def _async_session_mock() -> MagicMock:
+    db = MagicMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+    )
+    db.delete = AsyncMock()
+    return db
+
+
+async def fake_db_session():
+    yield _async_session_mock()
+
+
+app.dependency_overrides[get_current_user_id] = fake_user_id
+app.dependency_overrides[get_db_session] = fake_db_session
+
+client = TestClient(app)
+
+
+def _patch_ws_db_session(monkeypatch: object) -> None:
+    """WebSocket 处理器内部自建 session，需单独打桩。"""
+
+    @asynccontextmanager
+    async def _cm():
+        yield _async_session_mock()
+
+    monkeypatch.setattr("app.api.v1.tutoring.async_session_factory", lambda: _cm())
+
+
+def test_websocket_stream_completed_sends_complete(monkeypatch: object) -> None:
+    _patch_ws_db_session(monkeypatch)
+
+    class Q:
+        user_id = 1001
+        has_answer = True
+
+    class A:
+        id = 99
+        answer_text = "已有解答"
+        answer_diagrams = []
+        answer_videos = []
+        reference_sources = []
+        confidence_score = 70.0
+        generation_time = 50
+
+    async def fake_get_question(self, qid: int):
+        assert qid == 42
+        return Q()
+
+    async def fake_get_answer_by_question(self, qid: int):
+        assert qid == 42
+        return A()
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "_get_answer_by_question", fake_get_answer_by_question)
+
+    with client.websocket_connect("/api/v1/tutoring/stream/42?user_id=1001") as ws:
+        msg = ws.receive_json()
+    assert msg["chunk_type"] == "complete"
+    assert msg["content"]["answer_id"] == 99
+    assert msg["content"]["answer_text"] == "已有解答"
+    assert msg["content"]["should_escalate"] is False
+
+
+def test_websocket_stream_pending_emits_step_and_saved(monkeypatch: object) -> None:
+    _patch_ws_db_session(monkeypatch)
+
+    class Q:
+        user_id = 1001
+        has_answer = False
+
+    async def fake_get_question(self, qid: int):
+        return Q()
+
+    async def fake_generate(self, qid: int, uid: int, on_event=None):
+        assert qid == 42 and uid == 1001
+        if on_event:
+            await on_event(
+                {
+                    "chunk_type": "step",
+                    "content": "analyzing",
+                    "metadata": {"label": "问题分析"},
+                }
+            )
+        return {
+            "answer_id": 501,
+            "answer_text": "流式生成",
+            "diagrams": [],
+            "videos": [],
+            "reference_sources": [],
+            "confidence_score": 80.0,
+            "generation_time": 10,
+            "should_escalate": False,
+        }
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "generate_answer", fake_generate)
+
+    with client.websocket_connect(
+        "/api/v1/tutoring/stream/42",
+        headers={"x-user-id": "1001"},
+    ) as ws:
+        m1 = ws.receive_json()
+        m2 = ws.receive_json()
+    assert m1["chunk_type"] == "step"
+    assert m1["content"] == "analyzing"
+    assert m2["chunk_type"] == "saved"
+    assert m2["content"]["answer_text"] == "流式生成"
+
+
+def test_websocket_stream_forbidden_wrong_user(monkeypatch: object) -> None:
+    _patch_ws_db_session(monkeypatch)
+
+    class Q:
+        user_id = 9999
+        has_answer = False
+
+    async def fake_get_question(self, qid: int):
+        return Q()
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+
+    with client.websocket_connect("/api/v1/tutoring/stream/42?user_id=1001") as ws:
+        msg = ws.receive_json()
+    assert msg["chunk_type"] == "error"
+    assert "无权" in msg["content"] or "不存在" in msg["content"]
+
+
+def test_websocket_stream_missing_user_when_not_debug(monkeypatch: object) -> None:
+    _patch_ws_db_session(monkeypatch)
+
+    with client.websocket_connect("/api/v1/tutoring/stream/42") as ws:
+        msg = ws.receive_json()
+    assert msg["chunk_type"] == "error"
+    assert "auth" in msg["content"].lower() or "missing" in msg["content"].lower()
+
+
+def test_websocket_stream_accepts_access_token(monkeypatch: object) -> None:
+    _patch_ws_db_session(monkeypatch)
+
+    class Q:
+        user_id = 1001
+        has_answer = True
+
+    class A:
+        id = 77
+        answer_text = "Token 登录解答"
+        answer_diagrams = []
+        answer_videos = []
+        reference_sources = []
+        confidence_score = 88.0
+        generation_time = 18
+
+    async def fake_get_question(self, qid: int):
+        assert qid == 42
+        return Q()
+
+    async def fake_get_answer_by_question(self, qid: int):
+        assert qid == 42
+        return A()
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "_get_answer_by_question", fake_get_answer_by_question)
+
+    with client.websocket_connect("/api/v1/tutoring/stream/42?access_token=student-demo") as ws:
+        msg = ws.receive_json()
+    assert msg["chunk_type"] == "complete"
+    assert msg["content"]["answer_id"] == 77
+
+
+def test_submit_question_validation_returns_400(monkeypatch: object) -> None:
+    async def bad_submit(self, user_id: int, request: object):
+        raise ValueError("问题内容不能为空")
+
+    monkeypatch.setattr(TutoringService, "submit_question", bad_submit)
+
+    response = client.post(
+        "/api/v1/tutoring/question",
+        json={
+            "question_text": " ",
+            "question_images": None,
+            "course_id": 1,
+            "section_id": None,
+            "session_id": None,
+        },
+    )
+    assert response.status_code == 400
+    assert "问题" in response.json()["detail"]
+
+
+def test_submit_question_returns_ids(monkeypatch: object) -> None:
+    async def fake_submit(self, user_id: int, request: object) -> dict:
+        assert user_id == 1001
+        return {"question_id": 9001, "session_id": 8001}
+
+    monkeypatch.setattr(TutoringService, "submit_question", fake_submit)
+
+    response = client.post(
+        "/api/v1/tutoring/question",
+        json={
+            "question_text": "什么是梯度下降？",
+            "question_images": None,
+            "course_id": 1,
+            "section_id": None,
+            "session_id": None,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["question_id"] == 9001
+    assert body["session_id"] == 8001
+
+
+def test_get_answer_completed_includes_should_escalate(monkeypatch: object) -> None:
+    class Q:
+        user_id = 1001
+        has_answer = True
+
+    class A:
+        id = 42
+        answer_text = "解答"
+        answer_diagrams = []
+        answer_videos = []
+        reference_sources = []
+        confidence_score = 55.0
+        generation_time = 100
+
+    async def fake_get_question(self, qid: int):
+        assert qid == 1
+        return Q()
+
+    async def fake_get_answer_by_question(self, qid: int):
+        return A()
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "_get_answer_by_question", fake_get_answer_by_question)
+
+    response = client.get("/api/v1/tutoring/answer/1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["answer_id"] == 42
+    assert body["should_escalate"] is True
+
+
+def test_history_returns_payload(monkeypatch: object) -> None:
+    async def fake_query_history(self, user_id: int, query: object) -> dict:
+        assert user_id == 1001
+        return {"total": 0, "page": 1, "page_size": 20, "items": []}
+
+    monkeypatch.setattr(TutoringService, "query_history", fake_query_history)
+
+    response = client.get("/api/v1/tutoring/history")
+
+    assert response.status_code == 200
+    parsed = TutoringHistoryResponse.model_validate(response.json())
+    assert parsed.total == 0
+    assert parsed.items == []
+
+
+def test_history_forwards_query_params_to_service(monkeypatch: object) -> None:
+    captured: dict = {}
+
+    async def fake_query_history(self, user_id: int, query: object) -> dict:
+        captured["user_id"] = user_id
+        captured["course_id"] = query.course_id
+        captured["section_id"] = query.section_id
+        captured["question_type"] = query.question_type
+        captured["keyword"] = query.keyword
+        captured["start_date"] = query.start_date
+        captured["end_date"] = query.end_date
+        captured["page"] = query.page
+        captured["page_size"] = query.page_size
+        return {"total": 0, "page": query.page, "page_size": query.page_size, "items": []}
+
+    monkeypatch.setattr(TutoringService, "query_history", fake_query_history)
+
+    response = client.get(
+        "/api/v1/tutoring/history"
+        "?course_id=7&section_id=12&question_type=concept&keyword=grad"
+        "&start_date=2026-05-01T00:00:00&end_date=2026-05-10T00:00:00&page=2&page_size=10"
+    )
+    assert response.status_code == 200
+    assert captured["user_id"] == 1001
+    assert captured["course_id"] == 7
+    assert captured["section_id"] == 12
+    assert captured["question_type"] == "concept"
+    assert captured["keyword"] == "grad"
+    assert captured["start_date"] is not None
+    assert captured["start_date"].year == 2026
+    assert captured["start_date"].month == 5
+    assert captured["start_date"].day == 1
+    assert captured["end_date"] is not None
+    assert captured["end_date"].year == 2026
+    assert captured["end_date"].month == 5
+    assert captured["end_date"].day == 10
+    assert captured["page"] == 2
+    assert captured["page_size"] == 10
+
+
+def test_evaluate_answer(monkeypatch: object) -> None:
+    async def fake_evaluate(self, user_id: int, request: object) -> dict:
+        assert user_id == 1001
+        return {"status": "success"}
+
+    monkeypatch.setattr(TutoringService, "evaluate_answer", fake_evaluate)
+
+    response = client.post(
+        "/api/v1/tutoring/evaluate",
+        json={
+            "answer_id": 42,
+            "is_helpful": True,
+            "user_rating": 5,
+            "user_feedback": "很好",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+
+def test_escalate(monkeypatch: object) -> None:
+    async def fake_escalate(self, user_id: int, request: object) -> dict:
+        assert user_id == 1001
+        return {"status": "success", "escalation_id": 7001}
+
+    monkeypatch.setattr(TutoringService, "create_escalation", fake_escalate)
+
+    response = client.post(
+        "/api/v1/tutoring/escalate",
+        json={"question_id": 1, "escalation_reason": 3},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["escalation_id"] == 7001
+
+
+def test_get_answer_404_when_question_belongs_to_other_user(monkeypatch: object) -> None:
+    class Q:
+        user_id = 9999
+        has_answer = False
+
+    async def fake_get_question(self, qid: int):
+        assert qid == 1
+        return Q()
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+
+    response = client.get("/api/v1/tutoring/answer/1")
+    assert response.status_code == 404
+
+
+def test_add_favorite_success(monkeypatch: object) -> None:
+    class Q:
+        user_id = 1001
+
+    class A:
+        question_id = 1
+
+    async def fake_get_question(self, qid: int):
+        assert qid == 1
+        return Q()
+
+    async def fake_get_answer(self, aid: int):
+        assert aid == 42
+        return A()
+
+    async def fake_not_favorited(self, uid: int, qid: int):
+        assert uid == 1001 and qid == 1
+        return False
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "_get_answer", fake_get_answer)
+    monkeypatch.setattr(TutoringService, "_is_favorited", fake_not_favorited)
+    monkeypatch.setattr(TutoringService, "_generate_id", staticmethod(lambda: 88001))
+
+    response = client.post(
+        "/api/v1/tutoring/favorite",
+        params={"question_id": 1, "answer_id": 42, "note": "mark"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["favorite_id"] == 88001
+
+
+def test_add_favorite_duplicate_returns_400(monkeypatch: object) -> None:
+    class Q:
+        user_id = 1001
+
+    class A:
+        question_id = 1
+
+    async def fake_get_question(self, qid: int):
+        return Q()
+
+    async def fake_get_answer(self, aid: int):
+        return A()
+
+    async def fake_already_favorited(self, uid: int, qid: int):
+        return True
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "_get_answer", fake_get_answer)
+    monkeypatch.setattr(TutoringService, "_is_favorited", fake_already_favorited)
+
+    response = client.post(
+        "/api/v1/tutoring/favorite",
+        params={"question_id": 1, "answer_id": 42},
+    )
+    assert response.status_code == 400
+    assert "已收藏" in response.json()["detail"]
+
+
+def test_remove_favorite_success() -> None:
+    fav = MagicMock()
+
+    async def session_with_row():
+        db = MagicMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none = MagicMock(return_value=fav)
+        db.execute = AsyncMock(return_value=exec_result)
+        db.delete = AsyncMock()
+        db.commit = AsyncMock()
+        yield db
+
+    prev = app.dependency_overrides[get_db_session]
+    app.dependency_overrides[get_db_session] = session_with_row
+    try:
+        response = client.delete("/api/v1/tutoring/favorite/55")
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+    finally:
+        app.dependency_overrides[get_db_session] = prev
+
+
+def test_get_answer_404_when_question_not_found(monkeypatch: object) -> None:
+    async def fake_get_question(self, qid: int):
+        assert qid == 99
+        return None
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+
+    response = client.get("/api/v1/tutoring/answer/99")
+    assert response.status_code == 404
+
+
+def test_get_answer_calls_generate_when_pending(monkeypatch: object) -> None:
+    class Q:
+        user_id = 1001
+        has_answer = False
+
+    async def fake_get_question(self, qid: int):
+        assert qid == 77
+        return Q()
+
+    async def fake_generate(self, qid: int, uid: int, on_event=None):
+        assert qid == 77 and uid == 1001
+        return {
+            "answer_id": 501,
+            "answer_text": "生成解答",
+            "diagrams": [],
+            "videos": [],
+            "reference_sources": [],
+            "confidence_score": 82.0,
+            "generation_time": 12,
+            "should_escalate": False,
+        }
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "generate_answer", fake_generate)
+
+    response = client.get("/api/v1/tutoring/answer/77")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["answer_text"] == "生成解答"
+    assert body["answer_id"] == 501
+
+
+def test_add_favorite_404_when_answer_not_for_question(monkeypatch: object) -> None:
+    class Q:
+        user_id = 1001
+
+    class A:
+        question_id = 999
+
+    async def fake_get_question(self, qid: int):
+        return Q()
+
+    async def fake_get_answer(self, aid: int):
+        return A()
+
+    monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
+    monkeypatch.setattr(TutoringService, "_get_answer", fake_get_answer)
+
+    response = client.post(
+        "/api/v1/tutoring/favorite",
+        params={"question_id": 1, "answer_id": 42},
+    )
+    assert response.status_code == 404
+
+
+def test_ocr_preview_invalid_base64_returns_400() -> None:
+    response = client.post(
+        "/api/v1/tutoring/ocr-preview",
+        json={"image_base64": "@@@not-base64@@@"},
+    )
+    assert response.status_code == 400
+
+
+def test_ocr_preview_minimal_png_returns_200() -> None:
+    """1x1 PNG；无 OCR 依赖时 engine=none，有 Pillow+Tesseract 时可能识别出空串。"""
+
+    png_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    response = client.post(
+        "/api/v1/tutoring/ocr-preview",
+        json={"image_base64": png_b64},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["engine"] in ("none", "tesseract")
+    assert "text" in body
+    assert "hint" in body
+
+
+def test_upload_image_returns_url(monkeypatch: object) -> None:
+    def fake_upload(user_id: int, data: bytes, content_type: str) -> str:
+        assert user_id == 1001
+        assert data == b"png-bytes"
+        assert content_type == "image/png"
+        return "https://minio.example/learning/t.png"
+
+    monkeypatch.setattr(
+        "app.api.v1.tutoring.upload_tutoring_question_image",
+        fake_upload,
+    )
+    response = client.post(
+        "/api/v1/tutoring/upload-image",
+        files={"file": ("a.png", b"png-bytes", "image/png")},
+    )
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://minio.example/learning/t.png"
+
+
+def test_upload_image_validation_returns_400(monkeypatch: object) -> None:
+    def bad_upload(*_a, **_k):
+        raise ValueError("仅支持 JPEG、PNG、WebP、GIF")
+
+    monkeypatch.setattr(
+        "app.api.v1.tutoring.upload_tutoring_question_image",
+        bad_upload,
+    )
+    response = client.post(
+        "/api/v1/tutoring/upload-image",
+        files={"file": ("a.txt", b"x", "text/plain")},
+    )
+    assert response.status_code == 400
+
+
+def test_upload_image_storage_returns_503(monkeypatch: object) -> None:
+    def fail_upload(*_a, **_k):
+        raise RuntimeError("minio refused")
+
+    monkeypatch.setattr(
+        "app.api.v1.tutoring.upload_tutoring_question_image",
+        fail_upload,
+    )
+    response = client.post(
+        "/api/v1/tutoring/upload-image",
+        files={"file": ("a.png", b"x", "image/png")},
+    )
+    assert response.status_code == 503
+
+
+def test_remove_favorite_not_found_returns_404() -> None:
+    async def session_empty():
+        db = MagicMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none = MagicMock(return_value=None)
+        db.execute = AsyncMock(return_value=exec_result)
+        yield db
+
+    prev = app.dependency_overrides[get_db_session]
+    app.dependency_overrides[get_db_session] = session_empty
+    try:
+        response = client.delete("/api/v1/tutoring/favorite/999")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides[get_db_session] = prev

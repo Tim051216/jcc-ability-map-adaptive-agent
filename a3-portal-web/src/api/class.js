@@ -1,5 +1,12 @@
 ﻿import request from "@/utils/request.js";
 import {
+  getAiLearningCourseDetail,
+  listAiCourseCategories,
+  listAiInterestCourses,
+  listAiRecommendCourses,
+  searchAiCourses,
+} from "@/api/ai.js";
+import {
   demoInterests,
   demoRecommendCourses,
   enrollDemoCourse,
@@ -36,6 +43,7 @@ const MEDIA_API_PREFIX = "/ms";
 const PROMOTION_API_PREFIX = "/prs";
 const EXAM_API_PREFIX = "/es";
 const isA3LocalMode = import.meta.env.MODE === "a3local";
+const shouldUseAiCourseApi = () => isA3LocalMode && !isPortalDemoMode();
 
 const A3_PORTAL_CATEGORIES = [
   {
@@ -133,9 +141,29 @@ const shouldFallbackCategories = (categories = []) =>
 export const normalizeCategoryData = (categories = []) =>
   shouldFallbackCategories(categories) ? cloneDemoData(A3_PORTAL_CATEGORIES) : categories;
 
+const normalizeAiCourseCard = (course = {}) => ({
+  id: course.id,
+  courseCode: course.course_code,
+  name: course.name,
+  coverUrl: course.cover_url,
+  price: course.price,
+  sold: course.sold,
+  sections: course.sections,
+  teacher: course.teacher,
+  teacherName: course.teacher_name,
+  summary: course.summary,
+  categoryPath: course.category_path,
+  validDuration: course.valid_duration,
+  score: course.score,
+});
+
+const wrapAiData = (data) => ({ code: 200, data });
+
 export const getClassCategorys = (params) =>
-  isPortalDemoMode() || isA3LocalMode
+  isPortalDemoMode()
     ? Promise.resolve({ code: 200, data: cloneDemoData(A3_PORTAL_CATEGORIES) })
+    : shouldUseAiCourseApi()
+      ? listAiCourseCategories().then((data) => wrapAiData(normalizeCategoryData(data || [])))
     : request({
         url: `${COURSE_API_PREFIX}/categorys/all`,
         method: "get",
@@ -151,18 +179,22 @@ export const getClassCategorys = (params) =>
       });
 
 export const getRecommendClassList = (type) =>
-  isPortalDemoMode() || isA3LocalMode
+  isPortalDemoMode()
     ? Promise.resolve({
         code: 200,
         data: normalizeRecommendCourseCards(demoRecommendCourses[type] || []),
       })
+    : shouldUseAiCourseApi()
+      ? listAiRecommendCourses(type).then((data) => wrapAiData((data || []).map(normalizeAiCourseCard)))
     : request({
         url: `${SEARCH_API_PREFIX}/recommend/${type}`,
         method: "get",
       });
 
 export const getClassList = (id) =>
-  request({
+  shouldUseAiCourseApi()
+    ? listAiInterestCourses(id).then((data) => wrapAiData((data || []).map(normalizeAiCourseCard)))
+    : request({
     url: `${SEARCH_API_PREFIX}/interests/${id}/courses`,
     method: "get",
   });
@@ -190,6 +222,13 @@ export const classSeach = (params) =>
         code: 200,
         data: getDemoSearchPage(params),
       })
+    : shouldUseAiCourseApi()
+      ? searchAiCourses(params).then((data) =>
+          wrapAiData({
+            ...data,
+            list: (data?.list || []).map(normalizeAiCourseCard),
+          }),
+        )
     : request({
         url: `${SEARCH_API_PREFIX}/courses/portal`,
         method: "get",
@@ -202,6 +241,35 @@ export const getLearningClassDetails = (id) =>
         code: 200,
         data: getDemoLearningDetails(id),
       })
+    : shouldUseAiCourseApi()
+      ? getAiLearningCourseDetail(id).then((data) =>
+          wrapAiData({
+            id: data.id,
+            courseCode: data.course_code,
+            name: data.name,
+            coverUrl: data.cover_url,
+            teacherName: data.teacher_name,
+            lessonId: data.lesson_id,
+            latestSectionId: data.latest_section_id,
+            moment: data.moment,
+            chapters: (data.chapters || []).map((chapter) => ({
+              id: chapter.id,
+              index: chapter.index,
+              name: chapter.name,
+              mediaDuration: chapter.media_duration,
+              sections: (chapter.sections || []).map((section) => ({
+                id: section.id,
+                index: section.index,
+                name: section.name,
+                type: section.type,
+                mediaDuration: section.media_duration,
+                trailer: section.trailer,
+                subjectNum: section.subject_num,
+                moment: section.moment,
+              })),
+            })),
+          }),
+        )
     : request({
         url: `${COURSE_API_PREFIX}/courses/${id}/catalogs`,
         method: "get",

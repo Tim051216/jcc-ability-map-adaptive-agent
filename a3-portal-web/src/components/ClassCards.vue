@@ -61,9 +61,7 @@ const isUnsuitableBannerCover = computed(() => {
   return /banner\d+\.[a-z0-9]+$/i.test(coverUrl) || /\/assets\/banner\d+\./i.test(coverUrl);
 });
 
-const showImage = computed(
-  () => Boolean(props.data?.coverUrl) && !imageFailed.value && !isUnsuitableBannerCover.value,
-);
+const showImage = computed(() => Boolean(props.data?.coverUrl) && !imageFailed.value && !isUnsuitableBannerCover.value);
 const coverStyle = computed(() => ({
   background: visual.value.gradient,
 }));
@@ -125,10 +123,10 @@ const goDetails = (id) => {
     }
 
     img {
+      display: block;
       width: 100%;
       height: 100%;
       object-fit: cover;
-      display: block;
     }
   }
 

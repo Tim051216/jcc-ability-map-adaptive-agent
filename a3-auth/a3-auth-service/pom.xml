@@ -85,6 +85,7 @@
                 </executions>
                 <configuration>
                     <mainClass>com.cnsoftbei.a3.auth.AuthApplication</mainClass>
+                    <jvmArguments>--add-opens java.base/java.lang.invoke=ALL-UNNAMED</jvmArguments>
                 </configuration>
             </plugin>
         </plugins>

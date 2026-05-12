@@ -34,7 +34,7 @@
         <img
           :src="learningClassDetails?.coverUrl"
           alt=""
-          @click="router.push({ path: '/classDetails', query: { id: learningClassDetails?.id } })"
+          @click="router.push({ path: '/details', query: { id: learningClassDetails?.id } })"
         />
         <div>
           <div class="tit">{{ learningClassDetails?.name }}</div>
@@ -92,7 +92,8 @@ import router from "../../router";
 
 const route = useRoute();
 const store = dataCacheStore();
-const isDemoMode = isPortalDemoMode();
+// 本地 A3 联调阶段课程目录已切到后端，但视频签名链路尚未完成，先统一回退到演示播放态。
+const isDemoMode = isPortalDemoMode() || import.meta.env.MODE === "a3local";
 
 const tableBar = [
   { id: 1, name: "\u76EE\u5F55" },
@@ -369,7 +370,11 @@ const open = () => {
 const goBack = () => {
   window.clearInterval(timer);
   timer = 0;
-  router.go(-1);
+  if (learningClassDetails.value?.id) {
+    router.push({ path: "/details", query: { id: learningClassDetails.value.id } });
+    return;
+  }
+  router.push("/main/index");
 };
 
 const load = () => {};

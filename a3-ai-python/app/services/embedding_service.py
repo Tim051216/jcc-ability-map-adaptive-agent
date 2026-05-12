@@ -65,17 +65,19 @@ class EmbeddingService:
     async def ping(self) -> dict:
         if not self._remote_enabled():
             return {
-                "status": "fallback",
+                "status": "local",
+                "active_backend": "hash",
                 "provider": settings.embedding_provider,
                 "model": settings.embedding_model,
                 "dimension": settings.milvus_dimension,
-                "message": "未配置真实 embedding 服务，当前使用本地哈希向量。",
+                "message": "未配置远程 embedding 服务，当前使用本地哈希向量。",
             }
 
         try:
             vector = await self._request_remote_embedding("embedding health check")
             return {
                 "status": "ok",
+                "active_backend": "remote",
                 "provider": settings.embedding_provider,
                 "model": settings.embedding_model,
                 "dimension": len(vector),
@@ -83,9 +85,10 @@ class EmbeddingService:
             }
         except Exception as exc:
             return {
-                "status": "unavailable",
+                "status": "degraded",
+                "active_backend": "hash",
                 "provider": settings.embedding_provider,
                 "model": settings.embedding_model,
                 "dimension": settings.milvus_dimension,
-                "message": str(exc),
+                "message": f"真实 embedding 服务不可用，已切换到本地哈希向量：{exc}",
             }

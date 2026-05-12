@@ -24,7 +24,7 @@
         </el-table-column>
         <el-table-column
           prop=""
-          label="课程所属章节"
+          label="内容所属章节"
           width="350"
           class-name="textLeft"
         >
@@ -32,9 +32,9 @@
             {{ scope.row.chapterName }}-{{ scope.row.sectionName }}
           </template>
         </el-table-column>
-        <el-table-column label="课程名称" prop="courseName" width="350">
+        <el-table-column label="内容名称" prop="courseName" width="350">
         </el-table-column>
-        <el-table-column prop="categoryName" label="课程分类" width="350">
+        <el-table-column prop="categoryName" label="内容分类" width="350">
         </el-table-column>
         <el-table-column prop="userName" label="提问学员昵称" min-width="150">
         </el-table-column>

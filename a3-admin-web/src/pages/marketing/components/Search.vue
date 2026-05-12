@@ -1,11 +1,11 @@
-<!--优惠券搜索-->
+<!--活动搜索-->
 <template>
   <div class="bg-wt radius marg-tp-20">
     <div class="pad-30 searchForm">
       <el-form ref="ruleForm" :inline="true" :model="searchData">
         <el-row :gutter="30">
           <el-col :span="6">
-            <el-form-item label="优惠券类型" prop="type">
+            <el-form-item label="活动类型" prop="type">
               <div class="el-input">
                 <el-select
                   v-model="searchData.type"
@@ -24,7 +24,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="优惠券状态" prop="status">
+            <el-form-item label="活动状态" prop="status">
               <div class="el-input">
                 <el-select
                   v-model="searchData.status"
@@ -43,7 +43,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="优惠券名称" prop="name">
+            <el-form-item label="活动名称" prop="name">
               <el-input
                 placeholder="请输入"
                 v-model="searchData.name"

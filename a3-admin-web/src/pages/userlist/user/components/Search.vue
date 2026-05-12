@@ -4,7 +4,7 @@
       <el-form ref="ruleForm" :inline="true" :model="searchData">
         <el-row :gutter="30">
           <el-col :span="6">
-            <el-form-item label="后台用户状态" prop="status">
+            <el-form-item label="管理账号状态" prop="status">
               <div class="el-input">
                 <el-select
                   v-model="searchData.status"
@@ -23,7 +23,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="后台用户名称" prop="name">
+            <el-form-item label="管理账号名称" prop="name">
               <el-input
                 placeholder="请输入"
                 v-model="searchData.name"
@@ -33,7 +33,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="后台用户手机号" prop="phone">
+            <el-form-item label="管理账号手机号" prop="phone">
               <el-input placeholder="请输入" clearable v-model="searchData.phone" />
             </el-form-item>
           </el-col>

@@ -17,6 +17,7 @@ import com.cnsoftbei.a3.pay.third.IPayService;
 import com.cnsoftbei.a3.pay.third.model.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -29,6 +30,7 @@ import static com.cnsoftbei.a3.pay.sdk.constants.PayConstants.ALI_CHANNEL_CODE;
 
 @Slf4j
 @Service(ALI_CHANNEL_CODE)
+@ConditionalOnProperty(prefix = "a3.pay.stub", name = "enabled", havingValue = "false", matchIfMissing = true)
 @RequiredArgsConstructor
 public class AliPayService implements IPayService {
 

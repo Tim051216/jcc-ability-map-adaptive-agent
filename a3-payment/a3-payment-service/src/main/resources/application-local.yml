@@ -1,0 +1,43 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:13306/tj_pay?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: a3mysql123
+  redis:
+    host: 127.0.0.1
+    port: 16379
+    database: 0
+    timeout: 10s
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    dynamic: false
+    listener:
+      simple:
+        auto-startup: false
+        missing-queues-fatal: false
+      direct:
+        auto-startup: false
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+a3:
+  redisson:
+    enabled: false
+  xxl-job:
+    enabled: false
+  pay:
+    stub:
+      enabled: true
+    wx:
+      enabled: false

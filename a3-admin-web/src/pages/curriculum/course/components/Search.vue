@@ -5,7 +5,7 @@
       <el-form ref="ruleForm" :inline="true" :model="searchData">
         <el-row :gutter="30">
           <el-col :span="6">
-            <el-form-item label="课程分类" prop="categoryIdLv3">
+            <el-form-item label="内容分类" prop="categoryIdLv3">
               <div class="el-input">
                 <el-cascader
                   v-model="searchData.categoryIdLv3"
@@ -64,7 +64,7 @@
             </el-form-item>
           </el-col> -->
           <el-col :span="6">
-            <el-form-item label="课程名称" prop="keyword">
+            <el-form-item label="内容名称" prop="keyword">
               <el-input
                 placeholder="请输入"
                 clearable

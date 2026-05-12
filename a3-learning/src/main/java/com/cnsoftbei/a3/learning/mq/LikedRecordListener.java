@@ -10,6 +10,7 @@ import org.springframework.amqp.rabbit.annotation.Exchange;
 import org.springframework.amqp.rabbit.annotation.Queue;
 import org.springframework.amqp.rabbit.annotation.QueueBinding;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ import static com.cnsoftbei.a3.common.constants.MqConstants.Key.QA_LIKED_TIMES_K
 @RequiredArgsConstructor
 @Component
 @Slf4j
+@ConditionalOnProperty(prefix = "a3.mq.listeners", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class LikedRecordListener {
     private final IInteractionReplyService replyService;
 

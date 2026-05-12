@@ -1,3 +1,15 @@
+a3:
+  evaluation-ai:
+    base-url: http://127.0.0.1:18080
+    profile-forward-enabled: true
+  redisson:
+    enabled: false
+  mq:
+    listeners:
+      enabled: false
+  xxl-job:
+    enabled: false
+
 spring:
   cloud:
     nacos:
@@ -20,9 +32,13 @@ spring:
     port: 5672
     username: guest
     password: guest
+    dynamic: false
     listener:
       simple:
+        auto-startup: false
         missing-queues-fatal: false
+      direct:
+        auto-startup: false
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher

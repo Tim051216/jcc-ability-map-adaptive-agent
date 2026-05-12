@@ -27,8 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static net.sf.jsqlparser.util.validation.metadata.NamedObject.user;
-
 /**
  * <p>
  * 学习积分记录，每个月底清零 服务实现类
@@ -135,5 +133,26 @@ public class PointsRecordServiceImpl extends ServiceImpl<PointsRecordMapper, Poi
             list.add(vo);
         }
         return list;
+    }
+
+    @Override
+    public int sumPointsByUserBetween(Long userId, LocalDateTime start, LocalDateTime end) {
+        if (userId == null || start == null || end == null) {
+            return 0;
+        }
+        QueryWrapper<PointsRecord> wrapper = new QueryWrapper<>();
+        wrapper.select("IFNULL(SUM(points), 0) AS points");
+        wrapper.eq("user_id", userId);
+        wrapper.ge("create_time", start);
+        wrapper.le("create_time", end);
+        Map<String, Object> row = getMap(wrapper);
+        if (row == null || row.get("points") == null) {
+            return 0;
+        }
+        Object p = row.get("points");
+        if (p instanceof Number) {
+            return ((Number) p).intValue();
+        }
+        return Integer.parseInt(p.toString());
     }
 }

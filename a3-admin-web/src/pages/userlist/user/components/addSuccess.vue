@@ -4,9 +4,9 @@
       <div class="icon"><component :is="Result403Icon"></component></div>
       <div class="succeeCon" :model="fromData">
         <p class="tit">恭喜您，<span>{{fromData.name}}</span> 的账号创建成功！</p>
-        <p class="phone">后台用户手机号：{{fromData.cellPhone}}</p>
+        <p class="phone">管理账号手机号：{{fromData.cellPhone}}</p>
         <p class="tip">
-          注：请通知后台用户登录账号后，尽快修改密码，并完善个人信息
+          注：请通知相关管理人员首次登录后尽快修改密码，并完善个人信息
         </p>
       </div>
       <div class="btn">

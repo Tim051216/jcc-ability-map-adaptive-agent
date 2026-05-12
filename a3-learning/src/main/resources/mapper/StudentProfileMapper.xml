@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cnsoftbei.a3.learning.mapper.StudentProfileMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.cnsoftbei.a3.learning.domain.po.StudentProfile">
+        <id column="id" property="id" />
+        <result column="user_id" property="userId" />
+        <result column="version" property="version" />
+        <result column="knowledge_base" property="knowledgeBase" />
+        <result column="cognitive_style" property="cognitiveStyle" />
+        <result column="learning_progress" property="learningProgress" />
+        <result column="error_preference" property="errorPreference" />
+        <result column="interest_direction" property="interestDirection" />
+        <result column="learning_habit" property="learningHabit" />
+        <result column="tags" property="tags" />
+        <result column="completeness" property="completeness" />
+        <result column="status" property="status" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+        <result column="last_behavior_time" property="lastBehaviorTime" />
+    </resultMap>
+
+</mapper>

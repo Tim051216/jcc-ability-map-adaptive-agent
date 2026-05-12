@@ -35,6 +35,7 @@
           {{ item.name }}
         </div>
       </div>
+      <div v-if="payMethodList.length === 0" class="emptyPayChannel">暂无可用支付渠道，请稍后重试或返回首页继续演示其他页面。</div>
     </div>
 
     <el-dialog v-model="dialogVisible" width="440px" :before-close="handleClose">
@@ -50,7 +51,7 @@
       <template #footer>
         <div class="dialog-footer">
           <p>请使用 <em>{{ payMethod.name }}</em> 扫码</p>
-          <p>或者直接点击上方按钮，继续演示支付成功页</p>
+          <p>或直接点击上方按钮，继续演示支付成功页面。</p>
         </div>
       </template>
     </el-dialog>
@@ -95,6 +96,9 @@ const getPayMethodList = async () => {
     const res = await getPayMethod();
     if (res.code === 200) {
       payMethodList.value = res.data || [];
+      if (payMethodList.value.length > 0 && !payMethod.value.id) {
+        payMethod.value = payMethodList.value[0];
+      }
       return;
     }
     ElMessage({ type: "error", message: res.msg || "支付渠道加载失败" });
@@ -172,5 +176,13 @@ const timeOver = () => {
   display: flex;
   justify-content: center;
   margin-top: 20px;
+}
+
+.emptyPayChannel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #f7f9fb;
+  color: #5b6570;
 }
 </style>

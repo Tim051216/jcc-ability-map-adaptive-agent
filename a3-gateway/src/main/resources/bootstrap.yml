@@ -78,7 +78,13 @@ spring:
           uri: lb://promotion-service
           predicates:
             - Path=/prs/**
+        - id: ai-api
+          order: -100
+          uri: http://127.0.0.1:18080
+          predicates:
+            - Path=/ai/api/**
         - id: ai
+          order: -90
           uri: http://127.0.0.1:18080
           predicates:
             - Path=/ai/**

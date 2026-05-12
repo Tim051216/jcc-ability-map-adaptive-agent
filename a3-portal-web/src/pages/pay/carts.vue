@@ -3,7 +3,7 @@
     <div class="container bg-wt marg-bt-20">
       <div class="title">课程采购清单<span>共 {{ carts.length }} 门课程</span></div>
       <div v-if="carts.length > 0" class="introBanner">
-        当前页面用于演示课程采购与结算链路，已切换成 A3 赛题场景文案，支持直接继续走到结算与支付页。
+        当前页面用于演示课程采购与结算链路，已统一为 A3 赛题场景文案，支持继续进入结算与支付页面。
       </div>
       <div v-if="carts.length > 0" class="tab">
         <div class="tabHead fx-sb">
@@ -80,7 +80,7 @@ onMounted(() => {
 });
 
 const goDetails = (id) => {
-  router.push({ path: "/classDetails", query: { id } });
+  router.push({ path: "/details", query: { id } });
 };
 
 const getCartsData = async () => {

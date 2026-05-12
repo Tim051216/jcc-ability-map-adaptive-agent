@@ -32,7 +32,6 @@ import com.wechat.pay.contrib.apache.httpclient.exception.ValidationException;
 import com.wechat.pay.contrib.apache.httpclient.notification.Notification;
 import com.wechat.pay.contrib.apache.httpclient.notification.NotificationHandler;
 import com.wechat.pay.contrib.apache.httpclient.notification.NotificationRequest;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
@@ -43,13 +42,25 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class NotifyServiceImpl implements INotifyService {
     private final CertificatesManager certificatesManager;
     private final WxPayProperties properties;
     private final IPayOrderService payOrderService;
     private final RabbitMqHelper rabbitMqHelper;
     private final IRefundOrderService refundOrderService;
+
+    public NotifyServiceImpl(
+            @Nullable CertificatesManager certificatesManager,
+            @Nullable WxPayProperties properties,
+            IPayOrderService payOrderService,
+            RabbitMqHelper rabbitMqHelper,
+            IRefundOrderService refundOrderService) {
+        this.certificatesManager = certificatesManager;
+        this.properties = properties;
+        this.payOrderService = payOrderService;
+        this.rabbitMqHelper = rabbitMqHelper;
+        this.refundOrderService = refundOrderService;
+    }
 
     @Override
     public void handleWxPayNotify(NotificationRequest request) {
@@ -229,6 +240,9 @@ public class NotifyServiceImpl implements INotifyService {
 
     @Nullable
     private Notification checkWxNotifyRequest(NotificationRequest request) {
+        if (certificatesManager == null || properties == null) {
+            throw new BadRequestException(400, "当前环境未启用微信支付回调处理");
+        }
         try {
             Verifier verifier = certificatesManager.getVerifier(properties.getMchId());
             String apiV3Key = properties.getApiV3Key();

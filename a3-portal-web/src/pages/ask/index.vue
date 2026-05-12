@@ -14,11 +14,12 @@
             label-position="left"
           >
             <el-form-item label="&#x6240;&#x5C5E;&#x8BFE;&#x7A0B;">
-              <span>{{ classInfo.title }}</span>
+              <span>{{ classInfo.title || "当前课程" }}</span>
             </el-form-item>
             <el-form-item label="&#x5BF9;&#x5E94;&#x7AE0;&#x8282;:" prop="pass">
               <div>
                 <el-cascader v-model="value" :options="options" :props="props" @change="handleChange" />
+                <div v-if="options.length === 0" class="desc">当前暂无可选章节，仍可先补充问题标题和描述，后续再补齐章节信息。</div>
                 <div class="desc">&#x53EF;&#x4EE5;&#x9009;&#x62E9;&#x5177;&#x4F53;&#x7AE0;&#x8282;&#xFF0C;&#x8BA9;&#x95EE;&#x9898;&#x66F4;&#x51C6;&#x786E;&#x5F52;&#x5C5E;&#x5230;&#x8BFE;&#x7A0B;&#x5185;&#x5BB9;&#x91CC;&#x3002;</div>
               </div>
             </el-form-item>
@@ -107,9 +108,9 @@ const getClassCoursesDataes = async () => {
       }));
       return;
     }
-    ElMessage({ message: res.msg || "\u7AE0\u8282\u6570\u636E\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "章节数据加载失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u7AE0\u8282\u6570\u636E\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: "章节数据加载失败", type: "error" });
   }
 };
 
@@ -128,9 +129,9 @@ const getQuestionsDetailsData = async () => {
       value.value = [data.chapterId, data.sectionId];
       return;
     }
-    ElMessage({ message: res.msg || "\u95EE\u9898\u8BE6\u60C5\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: res.msg || "问题详情加载失败", type: "error" });
   } catch (error) {
-    ElMessage({ message: "\u95EE\u9898\u8BE6\u60C5\u52A0\u8F7D\u5931\u8D25", type: "error" });
+    ElMessage({ message: "问题详情加载失败", type: "error" });
   }
 };
 
@@ -171,9 +172,9 @@ const submitForm = (formEl) => {
         router.push({ path: "/result/success", query: { from: "ask" } });
         return;
       }
-      ElMessage({ message: res.msg || "\u95EE\u9898\u63D0\u4EA4\u5931\u8D25", type: "error" });
+      ElMessage({ message: res.msg || "问题提交失败", type: "error" });
     } catch (error) {
-      ElMessage({ message: type.value === "edit" ? "\u95EE\u9898\u4FEE\u6539\u5931\u8D25" : "\u95EE\u9898\u53D1\u5E03\u5931\u8D25", type: "error" });
+      ElMessage({ message: type.value === "edit" ? "问题修改失败" : "问题发布失败", type: "error" });
     }
   });
 };

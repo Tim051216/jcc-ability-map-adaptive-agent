@@ -51,3 +51,20 @@ class ProfileService:
             summary=payload["summary"],
             version=payload["profile_version"],
         )
+
+    async def get_latest_profile(self, user_id: int) -> ProfileResponse | None:
+        async with async_session_factory() as session:
+            snapshot = await ProfileRepository().latest_by_user(session, user_id)
+            if snapshot is None:
+                return None
+
+        profile_data = snapshot.profile_data or {}
+        return ProfileResponse(
+            user_id=user_id,
+            dimensions=profile_data.get("dimensions", {}),
+            dimension_order=profile_data.get("dimension_order", []),
+            profile_tags=profile_data.get("profile_tags", []),
+            recommended_resource_types=profile_data.get("recommended_resource_types", []),
+            summary=profile_data.get("summary"),
+            version=snapshot.version,
+        )

@@ -3,8 +3,10 @@
 import NProgress from 'nprogress'; // progress bar
 import 'nprogress/nprogress.css'; // progress bar style
 
+import { TOKEN_NAME } from '@/config/global';
 import { getPermissionStore, getToken } from '@/store';
 import router from '@/router';
+import { clearDevSession, ensureDevSession, isDevAuthEnabled } from '@/utils/devAuth';
 
 const permissionStore = getPermissionStore();
 const userStore = getToken();
@@ -16,10 +18,22 @@ const { whiteListRouters } = permissionStore;
 // 登录状态效验
 router.beforeEach(async (to, from, next) => {
   NProgress.start();
-  const { token } = userStore;
+  if (!isDevAuthEnabled()) {
+    clearDevSession();
+  }
+  const devSession = ensureDevSession();
+  if (devSession) {
+    userStore.token = devSession.token;
+    userStore.adminUserInfo = devSession.user;
+  }
+  const token = userStore.token || sessionStorage.getItem(TOKEN_NAME);
   
   if (token) {
     if (to.path === '/login') {
+      if (isDevAuthEnabled()) {
+        next(to.query.redirect || '/main/index');
+        return;
+      }
       userStore.logout();
       localStorage.removeItem('openeds')
       localStorage.removeItem('defaultIndex')

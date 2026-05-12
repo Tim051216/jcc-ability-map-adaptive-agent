@@ -92,19 +92,19 @@ export const stepData = [
   },
   {
     value: 2,
-    label: "课程目录",
+    label: "内容目录",
   },
   {
     value: 3,
-    label: "课程视频",
+    label: "内容视频",
   },
   {
     value: 4,
-    label: "课程题目",
+    label: "内容题目",
   },
   {
     value: 5,
-    label: "课程老师",
+    label: "内容讲师",
   }
 ]
 // 优惠卷类型数据
@@ -130,7 +130,7 @@ export const couponsTypeData = [
 export const couponsStatusData = [
   {
     value: 1,
-    label: "待发放",
+    label: "待发布",
   },
   {
     value: 2,
@@ -157,7 +157,7 @@ export const couponsScopeData = [
   },
   {
     value: 1,
-    label: "指定课程分类",
+    label: "指定内容分类",
   }
 ]
 // 优惠券推广方式数据
@@ -168,7 +168,7 @@ export const couponsWayData = [
   },
   {
     value: 2,
-    label: "指定发放",
+    label: "指定发布",
   }
 ]
 // 优惠券发放数量数据

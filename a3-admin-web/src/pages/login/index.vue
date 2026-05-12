@@ -15,16 +15,48 @@
   </div>
 </template>
 <script setup>
-import { ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 // 组件
 // 用户登录组件
 import LoginPass from "./components/LoginPass.vue";
+import { clearDevSession, ensureDevSession, isDevAuthEnabled } from "@/utils/devAuth";
 // ------定义方法------
 // 选中方法
 const act = ref("pass");
+const route = useRoute();
+const router = useRouter();
 // 切换登录方式
 const changeLoginType = (type) => {
   act.value = type;
 };
+
+function redirectWithDevSession() {
+  if (!isDevAuthEnabled()) {
+    clearDevSession();
+    return;
+  }
+  ensureDevSession();
+  const target = route.query.redirect || "/main/index";
+  if (route.fullPath !== target) {
+    router.replace(target);
+  }
+}
+
+redirectWithDevSession();
+
+onMounted(() => {
+  nextTick(() => {
+    redirectWithDevSession();
+  });
+});
+
+watch(
+  () => route.fullPath,
+  () => {
+    redirectWithDevSession();
+  },
+  { immediate: true }
+);
 </script>
 <style lang="scss" src="./index.scss"></style>

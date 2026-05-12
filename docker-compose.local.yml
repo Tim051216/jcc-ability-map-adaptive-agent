@@ -37,7 +37,7 @@ services:
       - "5672:5672"
       - "15672:15672"
     volumes:
-      - ./docker/rabbitmq:/var/lib/rabbitmq
+      - a3-rabbitmq-data:/var/lib/rabbitmq
 
   postgres:
     image: postgres:16-alpine
@@ -102,3 +102,6 @@ services:
     depends_on:
       - etcd
       - minio
+
+volumes:
+  a3-rabbitmq-data:

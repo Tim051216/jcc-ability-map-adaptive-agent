@@ -1,0 +1,40 @@
+CREATE TABLE IF NOT EXISTS `student_profile` (
+  `id` bigint NOT NULL,
+  `user_id` bigint NOT NULL,
+  `version` int NOT NULL DEFAULT 1,
+  `knowledge_base` text COLLATE utf8mb4_unicode_ci,
+  `cognitive_style` text COLLATE utf8mb4_unicode_ci,
+  `learning_progress` text COLLATE utf8mb4_unicode_ci,
+  `error_preference` text COLLATE utf8mb4_unicode_ci,
+  `interest_direction` text COLLATE utf8mb4_unicode_ci,
+  `learning_habit` text COLLATE utf8mb4_unicode_ci,
+  `tags` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `completeness` int NOT NULL DEFAULT 0,
+  `status` tinyint NOT NULL DEFAULT 1,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `last_behavior_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_student_profile_user_id` (`user_id`) USING BTREE,
+  KEY `idx_student_profile_status` (`status`) USING BTREE,
+  KEY `idx_student_profile_update_time` (`update_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `learning_behavior` (
+  `id` bigint NOT NULL,
+  `user_id` bigint NOT NULL,
+  `profile_id` bigint DEFAULT NULL,
+  `behavior_type` tinyint NOT NULL,
+  `behavior_data` json DEFAULT NULL,
+  `resource_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `resource_id` bigint DEFAULT NULL,
+  `result` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `duration` int DEFAULT NULL,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_learning_behavior_user_id` (`user_id`) USING BTREE,
+  KEY `idx_learning_behavior_profile_id` (`profile_id`) USING BTREE,
+  KEY `idx_learning_behavior_type` (`behavior_type`) USING BTREE,
+  KEY `idx_learning_behavior_resource` (`resource_type`,`resource_id`) USING BTREE,
+  KEY `idx_learning_behavior_create_time` (`create_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

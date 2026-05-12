@@ -107,7 +107,7 @@ const courseCatalog101 = [
       {
         id: "1010102",
         index: 2,
-        name: "学习路径规划与个性化推荐",
+        name: "模型评估与过拟合",
         type: 2,
         mediaDuration: 600,
         trailer: false,
@@ -625,7 +625,7 @@ let demoLessonList = [
     learnedSections: 8,
     latestSectionId: "1010102",
     latestSectionIndex: 2,
-    latestSectionName: "学习路径规划与个性化推荐",
+    latestSectionName: "模型评估与过拟合",
     weekFreq: 4,
   }),
   createLesson({
@@ -677,7 +677,7 @@ const demoExamList = [
     id: 9001,
     courseId: 101,
     courseName: courseMap[101].name,
-    sectionName: "学习路径规划与个性化推荐",
+    sectionName: "模型评估与过拟合",
     commitTime: "2026-05-06 20:10:00",
     type: 1,
     score: 92,

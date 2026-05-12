@@ -8,18 +8,18 @@
     </div>
 
     <div class="bg-wt pd-tp-30">
-      <OpenClass title="平台公开演示" class="container bg-wt" :data="demoCourses" />
+      <OpenClass title="免费入门课程" class="container bg-wt" :data="demoCourses" />
     </div>
 
     <div class="globalTopBanner a3ListBanner">
       <div class="bannerInner">
         <div class="bannerEyebrow">A3 课程展示页</div>
-        <div class="bannerTitle">课程清单已切换为更适合赛题讲解、演示验收和前端联调的 A3 版本</div>
+        <div class="bannerTitle">课程列表已统一为更适合赛题讲解、演示验收和前端联调的 A3 中文成品态</div>
       </div>
     </div>
 
     <div class="bg-wt pd-tp-30">
-      <OpenClass title="项目实战专题" class="container bg-wt" :data="bestCourses" />
+      <OpenClass title="精选实战课程" class="container bg-wt" :data="bestCourses" />
     </div>
   </div>
 </template>
@@ -39,23 +39,23 @@ const bestCourses = ref([]);
 const images = [
   {
     eyebrow: "A3 课程导览",
-    title: "从首页到课程列表，统一为赛题化演示表达",
+    title: "从首页到课程列表，统一为赛题化展示表达",
     desc: "这里展示的是更适合答辩现场介绍、课程筛选和项目能力讲解的内容版式。",
     badge: "课程总览",
     background: "linear-gradient(135deg, #0f766e 0%, #2563eb 58%, #1e293b 100%)",
   },
   {
     eyebrow: "前台体验优化",
-    title: "列表页也不再只是堆卡片，而是具备结构、层次和展示重点",
-    desc: "让课程推荐、专题呈现和演示讲解有更清晰的主次关系，减少原项目痕迹。",
+    title: "列表页不再只是堆卡片，而是具备结构、层次和展示重点",
+    desc: "让课程推荐、专题呈现和演示讲解有更清晰的主次关系，减少旧项目痕迹。",
     badge: "A3 Portal",
     background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #14b8a6 100%)",
   },
 ];
 
 onMounted(() => {
-  getClassCategoryData();
-  getCourseBlocks();
+  void getClassCategoryData();
+  void getCourseBlocks();
 });
 
 const getClassCategoryData = async () => {

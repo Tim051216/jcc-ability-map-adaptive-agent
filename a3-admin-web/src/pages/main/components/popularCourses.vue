@@ -15,25 +15,25 @@
         </template>
       </el-table-column>
       <el-table-column
-        label="课程分类"
+        label="内容分类"
         min-width="220px"
         class-name="textLeft"
         prop="category"
         show-overflow-tooltip="true"
       >
       </el-table-column>
-      <el-table-column label="课程名称" min-width="250px" prop="name"  show-overflow-tooltip="true">
+      <el-table-column label="内容名称" min-width="250px" prop="name"  show-overflow-tooltip="true">
       </el-table-column>
       <el-table-column
         prop="newStuNum"
-        label="新增学员（人）"
+        label="新增学习人数（人）"
         min-width="122px"
         align="center"
       >
       </el-table-column>
       <el-table-column
         prop="orderAmount"
-        label="课程金额（元）"
+        label="成交金额（元）"
         min-width="125px"
         class-name="textLeft"
         align="center"

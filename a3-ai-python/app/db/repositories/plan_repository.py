@@ -5,6 +5,23 @@ from app.db.models.learning_plan import LearningPlan
 
 
 class PlanRepository:
+    async def get_by_id(self, session: AsyncSession, plan_id: int) -> LearningPlan | None:
+        return await session.get(LearningPlan, plan_id)
+
+    async def list_by_user(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> list[LearningPlan]:
+        stmt = (
+            select(LearningPlan)
+            .where(LearningPlan.user_id == user_id)
+            .order_by(LearningPlan.id.desc())
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def latest_by_user_course(
         self,
         session: AsyncSession,

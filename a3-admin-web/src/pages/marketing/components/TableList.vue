@@ -1,25 +1,25 @@
-<!--优惠券列表-->
+<!--活动列表-->
 <template>
   <div>
     <!-- 表格 -->
     <el-table :data="baseData" border stripe v-loading="loading">
       <el-table-column type="index" align="center" width="100" label="序号" />
-      <el-table-column label="优惠券名称" min-width="200" class-name="textLeft">
+      <el-table-column label="活动名称" min-width="200" class-name="textLeft">
         <template #default="scope">
           <div class="ellipsisHidden2">
             {{ scope.row.name }}
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="rule" label="优惠券规则" min-width="320" />
+      <el-table-column prop="rule" label="活动规则" min-width="320" />
       <el-table-column label="使用范围" prop="" min-width="150">
         <template #default="scope">
-          {{ scope.row.specific ? "指定课程分类" : "全部课程分类" }}
+          {{ scope.row.specific ? "指定内容分类" : "全部内容分类" }}
         </template>
       </el-table-column>
       <el-table-column prop="obtainWay" label="推广方式" min-width="150">
         <template #default="scope">
-          {{ scope.row.obtainWay === 1 ? "手动领取" : "指定发放" }}
+          {{ scope.row.obtainWay === 1 ? "手动领取" : "指定发布" }}
         </template>
       </el-table-column>
       <el-table-column
@@ -35,7 +35,7 @@
       </el-table-column>
       <el-table-column prop="createTime" min-width="220" label="创建时间" :formatter="formatTime">
       </el-table-column>
-      <el-table-column min-width="220" label="领用期限">
+      <el-table-column min-width="220" label="领取期限">
         <template #default="scope">
           <div v-if="scope.row.issueBeginTime && scope.row.issueEndTime">
             <p>{{ scope.row.issueBeginTime }}</p>
@@ -44,10 +44,10 @@
           <div v-else>--</div>
         </template>
       </el-table-column>
-      <el-table-column min-width="220" label="使用期限">
+      <el-table-column min-width="220" label="有效期限">
         <template #default="scope">
           <div v-if="scope.row.termDays">
-            领券起{{scope.row.termDays}}天有效
+            领取后{{scope.row.termDays}}天有效
           </div>
           <div v-else-if="scope.row.termBeginTime&&scope.row.termEndTime">
             <p>{{ scope.row.termBeginTime }}</p>
@@ -59,7 +59,7 @@
 
       <el-table-column label="状态" min-width="120">
         <template #default="scope">
-          <span v-if="scope.row.status === 1">待发放</span>
+          <span v-if="scope.row.status === 1">待发布</span>
           <span v-if="scope.row.status === 3">进行中</span>
           <span v-if="scope.row.status === 4">已结束</span>
           <span v-if="scope.row.status === 5">已暂停</span>
@@ -91,7 +91,7 @@
               @click="handleStatusOpen(scope.row)"
               :class="scope.row.status === 3 || scope.row.status === 4  ? 'textForbidden' : 'textDefault'"
               v-if="scope.row.status === 1 || scope.row.status === 5"
-              >发放</span
+              >发布</span
             >
             <span
               @click="handleGrant(scope.row)"
@@ -104,7 +104,7 @@
               :class="
                scope.row.obtainWay === 2 ? 'textDefault' : 'textForbidden'
               "
-              >查看兑换码</span
+              >查看活动码</span
             >
             <span
               @click="handleDeleteOpen(scope.row)"
@@ -153,7 +153,7 @@
       @handleClose="handleGrantClose"
     ></Grant>
     <!-- end -->
-    <!-- 查看兑换码 -->
+    <!-- 查看活动码 -->
     <RedeemLook
       :dialogVisible="dialogRedeemVisible"
       ref="redeem"
@@ -211,7 +211,7 @@ const props = defineProps({
 // ------定义变量------
 const emit = defineEmits(); //子组件获取父组件事件传值
 const router = useRouter();
-const deleteText = ref("此操作将永久删除该优惠券，是否继续？");
+const deleteText = ref("此操作将永久删除该活动，是否继续？");
 let redeem = ref(); //定义兑换码弹层的ref
 let couponId = ref(""); //优惠券id
 let dialogDeleteVisible = ref(false); //删除弹层显示隐藏

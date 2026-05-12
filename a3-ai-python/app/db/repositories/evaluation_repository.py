@@ -5,6 +5,28 @@ from app.db.models.evaluation_record import EvaluationRecord
 
 
 class EvaluationRepository:
+    async def get_by_id(self, session: AsyncSession, record_id: int) -> EvaluationRecord | None:
+        return await session.get(EvaluationRecord, record_id)
+
+    async def list_by_user_course(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        course_code: str,
+        evaluation_type: str | None = None,
+        limit: int = 10,
+    ) -> list[EvaluationRecord]:
+        stmt = select(EvaluationRecord).where(
+            EvaluationRecord.user_id == user_id,
+            EvaluationRecord.course_code == course_code,
+        )
+        if evaluation_type:
+            stmt = stmt.where(EvaluationRecord.evaluation_type == evaluation_type)
+        stmt = stmt.order_by(EvaluationRecord.id.desc()).limit(limit)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def latest_by_user_course(
         self,
         session: AsyncSession,

@@ -64,7 +64,7 @@ import Add from "./components/add.vue";
 // 创建成功
 import CreateSuccess from "./components/addSuccess.vue";
 // ------定义变量------
-const text = ref("新增后台用户");
+const text = ref("新增管理账号");
 const loading = ref(false);
 const add = ref()
 let title = ref("");
@@ -131,12 +131,12 @@ const handleCurrentChange = (val) => {
 };
 // 打开新增弹层
 const handleAdd = () => {
-  title.value = "新增后台用户账号信息";
+  title.value = "新增管理账号信息";
   dialogFormVisible.value = true;
 };
 // 打开编辑弹层
 const handleEdit = (id) => {
-  title.value = "编辑后台用户账号信息";
+  title.value = "编辑管理账号信息";
   dialogFormVisible.value = true;
   getDetailData(id);
 };

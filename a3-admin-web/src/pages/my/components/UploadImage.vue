@@ -36,7 +36,7 @@ import { ElMessage } from "element-plus";
 import { Plus } from "@element-plus/icons-vue";
 import proxy from '@/config/proxy';
 import {TOKEN_NAME} from '@/config/global';
-const env = import.meta.env.MODE || "development";
+const env = import.meta.env.MODE || "devlocal";
 // 获取父组件值、方法
 const props = defineProps({
   // 搜索对象
@@ -61,7 +61,7 @@ watch(
 // 定义变量
 let imageUrl = ref(""); //上传的图片路径
 const emit = defineEmits(); //子组件获取父组件事件传值
-let actions = proxy[env].host+'/ms/files' //上传图片地址
+let actions = (proxy[env]?.host || proxy.devlocal.host) + '/ms/files' //上传图片地址
 let uploadHeaders={"authorization":sessionStorage.getItem(TOKEN_NAME)}//上传图片时需要添加token
 // ------定义方法------
 // 获取上传的图片路径

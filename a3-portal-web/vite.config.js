@@ -8,13 +8,15 @@ import path from "path";
 
 const CWD = process.cwd();
 const LOCAL_MODE = "a3local";
-const LOCAL_API_TARGET = "http://127.0.0.1:10010";
+const LOCAL_API_TARGET = "http://127.0.0.1:8090";
+const LOCAL_AI_TARGET = "http://127.0.0.1:18080";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, CWD, "");
   const apiTarget =
     env.VITE_API_PROXY_TARGET ||
     (mode === LOCAL_MODE ? LOCAL_API_TARGET : LOCAL_API_TARGET);
+  const aiTarget = env.VITE_AI_PROXY_TARGET || (mode === LOCAL_MODE ? LOCAL_AI_TARGET : LOCAL_API_TARGET);
   const imageTarget = env.VITE_IMG_PROXY_TARGET || apiTarget;
   const mockTarget = env.VITE_MOCK_PROXY_TARGET || "http://127.0.0.1:8321/mock/3359";
   const rewriteApiPath =
@@ -76,9 +78,10 @@ export default defineConfig(({ mode }) => {
           rewrite: rewriteApiPath,
         },
         "/aigw": {
-          target: LOCAL_API_TARGET,
+          target: aiTarget,
           changeOrigin: true,
-          rewrite: (proxyPath) => proxyPath.replace(/^\/aigw/, "/ai"),
+          rewrite: (proxyPath) =>
+            mode === LOCAL_MODE ? proxyPath.replace(/^\/aigw/, "/api") : proxyPath.replace(/^\/aigw/, "/ai"),
           timeout: 120000,
           proxyTimeout: 120000,
         },

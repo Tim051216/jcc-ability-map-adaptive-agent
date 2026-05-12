@@ -1,31 +1,51 @@
-<!-- 架构页面 -->
 <template>
   <div class="layoutsWrapper">
-    <LeftSide></LeftSide>
+    <LeftSide />
     <div class="contain fx-1">
-      <Header></Header>
-      <router-view class="mainWrapper" />
+      <Header />
+      <main class="contentShell">
+        <div class="contentBackdrop"></div>
+        <router-view class="mainWrapper" />
+      </main>
     </div>
   </div>
 </template>
+
 <script setup>
 import LeftSide from "./components/LeftSide.vue";
 import Header from "./components/Header.vue";
 </script>
+
 <style lang="scss" scoped>
 .layoutsWrapper {
-  // min-height: 100vh;
   display: flex;
+  min-height: 100vh;
+
   .contain {
-    padding-left: 226px;
-    overflow: hidden;
-    min-width: 1366px;
+    position: relative;
+    min-width: 1280px;
+    padding-left: var(--layout-sidebar-width);
   }
-  .mainWrapper {
-    padding-top: 66px;
-    padding-left: 20px;
-    padding-right: 20px;
-    // padding-bottom: 20px;
-  }
+}
+
+.contentShell {
+  position: relative;
+  min-height: 100vh;
+  padding: calc(var(--layout-header-height) + 20px) 24px 28px;
+}
+
+.contentBackdrop {
+  position: absolute;
+  inset: 0 24px 24px;
+  border-radius: 36px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.18) 100%),
+    radial-gradient(circle at top right, rgba(255, 122, 69, 0.12), transparent 24%);
+  pointer-events: none;
+}
+
+.mainWrapper {
+  position: relative;
+  z-index: 1;
 }
 </style>

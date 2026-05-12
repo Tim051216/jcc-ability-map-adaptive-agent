@@ -98,6 +98,10 @@
             <version>${seata-version}</version>
             <exclusions>
                 <exclusion>
+                    <groupId>com.alibaba</groupId>
+                    <artifactId>druid</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>com.sun</groupId>
                     <artifactId>tools</artifactId>
                 </exclusion>
@@ -121,6 +125,10 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <mainClass>com.cnsoftbei.a3.exam.ExamApplication</mainClass>
+                    <jvmArguments>--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED</jvmArguments>
+                </configuration>
             </plugin>
         </plugins>
     </build>

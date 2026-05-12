@@ -28,6 +28,7 @@ import com.cnsoftbei.a3.learning.domain.vo.ReplyVO;
 import com.cnsoftbei.a3.learning.enums.QuestionStatus;
 import com.cnsoftbei.a3.learning.mapper.InteractionQuestionMapper;
 import com.cnsoftbei.a3.learning.mapper.InteractionReplyMapper;
+import com.cnsoftbei.a3.learning.service.ILearningBehaviorCollectionService;
 import com.cnsoftbei.a3.learning.service.IInteractionQuestionService;
 import com.cnsoftbei.a3.learning.service.IInteractionReplyService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -54,6 +55,7 @@ public class InteractionReplyServiceImpl extends ServiceImpl<InteractionReplyMap
     private final InteractionQuestionMapper questionMapper;
     private final UserClient userClient;
     private final RemarkClient remarkClient;
+    private final ILearningBehaviorCollectionService learningBehaviorCollectionService;
 
 //    private final SearchClient searchClient;
 //    private final CatalogueClient catalogueClient;
@@ -75,6 +77,21 @@ public class InteractionReplyServiceImpl extends ServiceImpl<InteractionReplyMap
             //更新AnswerId为0并累计回答次数
             question.setAnswerTimes(question.getAnswerTimes()+1);
             question.setLatestAnswerId(reply.getId());
+            if (!Boolean.FALSE.equals(dto.getIsStudent())) {
+                Map<String, Object> payload = new HashMap<>(4);
+                payload.put("source", "interaction_qa");
+                payload.put("question_id", dto.getQuestionId());
+                payload.put("reply_id", reply.getId());
+                learningBehaviorCollectionService.collect(
+                        user,
+                        4,
+                        payload,
+                        "question",
+                        dto.getQuestionId(),
+                        "completed",
+                        null
+                );
+            }
         }else{
             //3.2是评论
             //更新被评论对象的被评论次数

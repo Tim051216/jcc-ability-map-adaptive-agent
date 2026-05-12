@@ -11,11 +11,13 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Data
 @Accessors(chain = true, fluent = true)
 public class CookieBuilder {
+    private static final Pattern IPV4_PATTERN = Pattern.compile("^\\d{1,3}(?:\\.\\d{1,3}){3}$");
     private Charset charset = StandardCharsets.UTF_8;
     private int maxAge = -1;
     private String path = "/";
@@ -44,8 +46,10 @@ public class CookieBuilder {
             cookie.setDomain(domain);
         }else if (request != null) {
             String serverName = request.getServerName();
-            serverName = StringUtils.subAfter(serverName, ".", false);
-            cookie.setDomain("." + serverName);
+            if (shouldSetDomain(serverName)) {
+                serverName = StringUtils.subAfter(serverName, ".", false);
+                cookie.setDomain("." + serverName);
+            }
         }
         cookie.setHttpOnly(httpOnly);
         cookie.setMaxAge(maxAge);
@@ -62,5 +66,15 @@ public class CookieBuilder {
      */
     public String decode(String cookieValue){
         return URLDecoder.decode(cookieValue, charset);
+    }
+
+    private boolean shouldSetDomain(String serverName) {
+        if (StringUtils.isBlank(serverName)) {
+            return false;
+        }
+        if ("localhost".equalsIgnoreCase(serverName) || IPV4_PATTERN.matcher(serverName).matches()) {
+            return false;
+        }
+        return StringUtils.contains(serverName, ".");
     }
 }

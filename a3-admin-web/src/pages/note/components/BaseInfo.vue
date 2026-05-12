@@ -2,18 +2,18 @@
 <template>
   <div class="orderInfo">
     <!-- 标题 -->
-    <div class="tit"><span>笔记课程信息</span></div>
+    <div class="tit"><span>笔记内容信息</span></div>
     <!-- end -->
     <div class="noteItem">
       <table class="tableBox">
         <tr>
           <td>ID编号</td>
           <td colspan="2">{{fromData.id}}</td>
-          <td>课程分类</td>
+          <td>内容分类</td>
           <td colspan="2">{{fromData.categoryNames}}</td>
         </tr>
         <tr>
-          <td>所属章节</td>
+          <td>内容章节</td>
           <td colspan="5">{{fromData.chapterName}}/{{fromData.chapterName}}</td>
         </tr>
         <tr>
@@ -29,11 +29,11 @@
         <li>
           <div class="tit">ID编号</div>
           <div>ID编号</div>
-          <div class="tit">课程分类</div>
+          <div class="tit">内容分类</div>
           <div>ID编号</div>
         </li>
         <li>
-          <div class="tit">所属章节</div>
+          <div class="tit">内容章节</div>
           <div>ID编号</div>
         </li>
         <li>

@@ -421,4 +421,54 @@ header {
     margin-right: 10px;
   }
 }
+
+@media (max-width: 1100px) {
+  header {
+    padding: 10px 0 14px;
+
+    .container {
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .courseClass {
+      margin-left: 0;
+      line-height: 40px;
+    }
+
+    .courseClassList {
+      left: 0;
+      top: 42px;
+    }
+
+    .fx-1.fx-ct {
+      order: 3;
+      width: 100%;
+      flex: 1 0 100%;
+    }
+
+    .headerSearch {
+      width: 100%;
+      max-width: none;
+    }
+
+    .pt-rt {
+      margin-left: auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .marg-lr-40 {
+      margin-left: 0;
+      margin-right: 0;
+    }
+
+    .learningCont {
+      left: auto;
+      right: 0;
+      width: min(330px, calc(100vw - 32px));
+    }
+  }
+}
 </style>

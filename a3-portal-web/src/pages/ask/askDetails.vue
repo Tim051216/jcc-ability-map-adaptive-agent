@@ -27,7 +27,7 @@
           <div class="answerCont bg-wt marg-bt-20">
             <div class="sectionTitle">补充回答</div>
             <div class="answer fx">
-              <img :src="store.getUserInfo.icon" alt="" />
+              <img :src="currentUserIcon" alt="" />
               <div class="fx-1">
                 <el-input
                   v-model="description"
@@ -119,7 +119,7 @@
                       />
                     </div>
                   </div>
-                  <div v-else class="emptyReplies">这条回答还没有追问，欢迎补充细节。</div>
+                  <div v-else class="emptyReplies">这条回答还没有追问，欢迎继续补充细节。</div>
                   <div v-if="replyTotal > 5" class="dialogEntry" @click="openReplyDialog(item)">
                     查看全部 {{ replyTotal }} 条回复
                   </div>
@@ -129,7 +129,7 @@
               <p v-if="!noMore" class="loadMore" @click="clickLoad">点击查看更多回答</p>
               <p v-else class="loadMore done">已经到底了</p>
             </div>
-            <div v-else class="emptyReplies">当前还没有回答，适合拿来演示“从提问到互动补充”的链路。</div>
+            <div v-else class="emptyReplies">当前还没有回答，适合用于演示“从提问到互动补充”的链路。</div>
           </div>
         </div>
 
@@ -185,6 +185,7 @@ import ReplayForm from "./components/ReplayForm.vue";
 const route = useRoute();
 const store = useUserStore();
 const dataCache = dataCacheStore();
+const currentUserIcon = computed(() => store.getUserInfo?.icon || "/src/assets/anonymity.png");
 
 const askInfo = ref(null);
 const description = ref("");
@@ -223,7 +224,7 @@ const buildFallbackQuestion = () => {
   }
   return {
     ...cached,
-    description: cached.description || "这是从课程问答页带过来的问题，当前页面优先保证演示链路可看、可追问、可互动。",
+    description: cached.description || "这是从课程问答页带过来的问题，当前页面优先保障演示链路可看、可追问、可互动。",
   };
 };
 

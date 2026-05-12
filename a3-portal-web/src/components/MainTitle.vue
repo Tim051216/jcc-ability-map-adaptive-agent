@@ -4,7 +4,7 @@
       <div class="titleText">{{ title }}</div>
       <div v-if="subtitle" class="subtitle">{{ subtitle }}</div>
     </div>
-    <div v-if="more" class="more ft-14" @click="() => $router.push(moreUrl)">
+    <div v-if="more" class="more ft-14" @click="goMore">
       查看全部
       <i class="iconfont zhy-btn_more" style="font-size: 24px"></i>
     </div>
@@ -12,7 +12,11 @@
 </template>
 
 <script setup>
-defineProps({
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+
+const props = defineProps({
   title: {
     type: String,
     default: "课程专题",
@@ -30,6 +34,10 @@ defineProps({
     default: "/search/index",
   },
 });
+
+const goMore = () => {
+  router.push(props.moreUrl);
+};
 </script>
 
 <style lang="scss" scoped>

@@ -1,44 +1,62 @@
 :root {
-  // 主题色板
+  --layout-sidebar-width: 248px;
+  --layout-header-height: 76px;
+  --layout-page-gap: 24px;
 
-  --color-main: #2080f7;
-  --color-hover: #83c0ff;
-  --color-active: #1c55cf;
-  --color-success: #00be76;
-  --color-warning: #ffad33;
-  --color-error: #d9021c;
-  --color-error2: #FD7065;
-  --color-error2hover: #da5658;
-  --color-fonttip: #FF1B1B;
-  --color-background: #f9f9f9;
-  --color-background1: #fdfafa;
-  --color-btnbackground: #ff734f;
-  --color-btnhoverbackground: #f16440;
-  --color-tabBtnbackground: #FFEDE9;
-  --color-btnselectbackground: #ffebe2;
-  --color-btnSubbackground: #f5efef;
-  --color-tabheadbackground: #f2ebe5;
-  --color-tabbackground: #fdfcfa;
-  --color-tabhoverbackground: #f7f3f0;
-  --color-rawerbackground: #FAF7F7;
-  --color-tabborder: #f5efee;
-  --color-bodybackground: #f4f8fb;
-  --color-seletebackground: #FAF4EE;
-  --color-forbidden: #f3ebeb;
-  --color-tabsgbg: #F9F1EA;
-  --color-font1: #332929;
-  --color-font2: #666666;
-  --color-font3: #e9e9eb;
-  --color-font4: #bac0cd;
-  --color-font5: #887e7e;
-  --color-font6: #bdbdbd;
-  --color-font7: #333333;
-  --color-font8: #e5e4e4;
-  --color-font9: #B5ABAB;;
+  --color-main: #ff7a45;
+  --color-hover: #ff9469;
+  --color-active: #e96334;
+  --color-success: #1fa971;
+  --color-warning: #ffb547;
+  --color-error: #e45151;
+  --color-error2: #ff6b63;
+  --color-error2hover: #e15b54;
+  --color-fonttip: #ff3b30;
+
+  --color-background: #f6f8fc;
+  --color-background1: #ffffff;
+  --color-bodybackground: #f4f7fb;
+  --color-rawerbackground: #faf7f4;
+  --color-surface: rgba(255, 255, 255, 0.86);
+  --color-surface-strong: #ffffff;
+  --color-surface-muted: #f8f2ed;
+  --color-card-border: rgba(100, 77, 60, 0.08);
+  --color-card-shadow: 0 16px 40px rgba(31, 41, 55, 0.08);
+  --color-card-shadow-hover: 0 22px 44px rgba(31, 41, 55, 0.12);
+
+  --color-btnbackground: #ff7a45;
+  --color-btnhoverbackground: #ec6837;
+  --color-btnselectbackground: #fff0e8;
+  --color-btnSubbackground: #f6efe9;
+  --color-tabBtnbackground: #fff2ea;
+  --color-tabheadbackground: #f5ece4;
+  --color-tabbackground: #fffdfb;
+  --color-tabhoverbackground: #fff5ef;
+  --color-tabborder: #efe3db;
+  --color-seletebackground: #fbf4ee;
+  --color-forbidden: #f3efeb;
+  --color-tabsgbg: #fcf4ee;
+
+  --color-font1: #1f2937;
+  --color-font2: #4b5563;
+  --color-font3: #dbe3ef;
+  --color-font4: #a8b3c7;
+  --color-font5: #6b7280;
+  --color-font6: #c4ccd9;
+  --color-font7: #111827;
+  --color-font8: #d8dee8;
+  --color-font9: #98a2b3;
   --color-black: #000000;
   --color-white: #ffffff;
+
   --font-size12: 12px;
   --font-size13: 13px;
   --font-size14: 14px;
   --font-size16: 16px;
+
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
 }

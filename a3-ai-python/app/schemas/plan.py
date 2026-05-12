@@ -30,6 +30,7 @@ class LearningPlanStage(BaseModel):
 
 
 class LearningPlanStep(BaseModel):
+    step_id: str | None = None
     day: int
     title: str
     objective: str | None = None
@@ -47,6 +48,7 @@ class LearningPlanStep(BaseModel):
 
 
 class LearningPlanResponse(BaseModel):
+    plan_id: int | None = None
     user_id: int
     course_code: str
     course_name: str
@@ -61,3 +63,33 @@ class LearningPlanResponse(BaseModel):
     recommended_checkpoints: list[str] = Field(default_factory=list)
     stages: list[LearningPlanStage] = Field(default_factory=list)
     steps: list[LearningPlanStep] = Field(default_factory=list)
+
+
+class PlanStepActionRequest(BaseModel):
+    user_id: int
+
+
+class PlanStepProgressItem(BaseModel):
+    step_id: str
+    status: str
+    progress_note: str | None = None
+    last_action: str
+    updated_at: str | None = None
+
+
+class PlanProgressResponse(BaseModel):
+    plan_id: int
+    user_id: int
+    completion_rate: float
+    completed_steps: int
+    total_steps: int
+    items: list[PlanStepProgressItem] = Field(default_factory=list)
+
+
+class LearningPlanSummaryResponse(BaseModel):
+    user_id: int
+    total: int = 0
+    average_completion_rate: float = 0.0
+    by_status: dict[str, int] = Field(default_factory=dict)
+    by_course: dict[str, int] = Field(default_factory=dict)
+    latest_updated_at: str | None = None

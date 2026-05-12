@@ -4,8 +4,8 @@ import { tryRefreshToken } from "./refreshToken";
 import {USER_KEY, TOKEN_NAME} from "../config/global";
 import  router  from '../router';
 import proxy from '../config/proxy';
-const env = import.meta.env.MODE || "local";
-const host = proxy[env]?.host || proxy.local.host;
+const env = import.meta.env.MODE || "devlocal";
+const host = proxy[env]?.host || proxy.devlocal.host;
 // const host = "http://172.17.2.134/api-test";
 const CODE = {
   LOGIN_TIMEOUT: 1000,
@@ -25,11 +25,19 @@ const instance = axios.create({
 
 instance.interceptors.request.use((config) => {
   const TOKEN = sessionStorage.getItem(TOKEN_NAME);
-  config.headers = {
-    "Content-Type": "application/json",
-    "authorization": TOKEN
+  const headers = { ...(config.headers || {}) };
+  if (TOKEN) {
+    headers.authorization = TOKEN;
   }
-  return config
+  const isFormData =
+    typeof FormData !== "undefined" && config.data instanceof FormData;
+  if (isFormData) {
+    delete headers["Content-Type"];
+  } else if (!headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  config.headers = headers;
+  return config;
 });
 
 instance.defaults.timeout = 5000;

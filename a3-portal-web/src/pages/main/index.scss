@@ -1,6 +1,9 @@
 .mainWrapper {
+  overflow-x: clip;
+
   .heroSection {
     padding: 26px 0 20px;
+    align-items: stretch;
   }
 
   .categorys {
@@ -50,6 +53,32 @@
       width: 34px;
       height: 34px;
       margin: 0;
+    }
+  }
+}
+
+@media (max-width: 1100px) {
+  .mainWrapper {
+    .heroSection {
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .categorys {
+      width: 100%;
+      height: auto;
+    }
+
+    .floatCont {
+      right: 14px;
+      bottom: 8vh;
+
+      .couponEntry,
+      .cont {
+        width: 56px;
+        height: 56px;
+        border-radius: 18px;
+      }
     }
   }
 }

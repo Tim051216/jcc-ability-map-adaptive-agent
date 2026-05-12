@@ -5,7 +5,7 @@
     <el-table :data="baseData" border stripe v-loading="loading">
       <el-table-column type="index" align="center" width="100" label="序号" />
       <el-table-column
-        label="课程名称"
+        label="内容名称"
         prop=""
         min-width="350"
         class-name="textLeft"
@@ -17,7 +17,7 @@
 
       <el-table-column
         prop=""
-        label="所属章节"
+        label="内容章节"
         width="350"
         class-name="textLeft"
       >

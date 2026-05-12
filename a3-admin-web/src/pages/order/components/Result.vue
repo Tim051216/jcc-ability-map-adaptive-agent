@@ -22,12 +22,12 @@
       >
     </div>
     <!-- end -->
-    <!-- 课程信息 -->
+    <!-- 内容信息 -->
     <div class="coureseInfo">
       <div class="infoList">
         <div class="headInfo">
-          <p>课程名称</p>
-          <p>课程价格(元)</p>
+          <p>内容名称</p>
+          <p>内容价格(元)</p>
           <p>学习有效期</p>
         </div>
         <div class="con">
@@ -42,7 +42,7 @@
               }}
             </p>
             <p v-if="baseData.refundStatus == 5" class="disabledStudy">
-              退款课程无法学习
+              退款内容无法学习
             </p>
           </div>
         </div>
@@ -52,7 +52,7 @@
           子订单总价<label>{{ (baseData.price / 100).toFixed(2) }}元</label>
         </p>
         <p>
-          优惠券<label>{{
+          活动权益<label>{{
             !baseData.couponRule ? '无' : baseData.couponRule
           }}</label>
         </p>

@@ -11,13 +11,13 @@
 
       <div class="title">全部课程</div>
       <SearchKey :data="searchType" :active="activeId" :key="activeId" @searchKey="searchKey" />
-      <SearchKey :data="searchCost" @searchKey="searchKey" />
+      <SearchKey :data="searchCost" :active="activeCostId" @searchKey="searchKey" />
     </div>
 
     <div class="searchContain bg-wt">
       <div class="container">
         <div class="fx-sb marg-bt-20">
-          <SortBar :data="sortOptions" @sortHandle="sortHandle" />
+          <SortBar :data="sortOptions" :active="activeSortKey" @sortHandle="sortHandle" />
           <div v-if="count > 0" class="pageAction fx">
             <img
               v-if="page > 1"
@@ -47,14 +47,14 @@
             :data="item"
           />
         </div>
-        <div v-else class="content fx-ct noData">暂无符合条件的课程</div>
+        <div v-else class="content fx-ct noData">暂无符合条件的课程，换个关键词或筛选条件试试。</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute } from "vue-router";
 import { classSeach, getClassCategorys, normalizeCategoryData } from "@/api/class.js";
@@ -97,14 +97,33 @@ const searchResultData = ref([]);
 const count = ref(0);
 const page = ref(1);
 const isShow = ref(true);
-const fullPath = ref(route.fullPath);
 const activeId = ref("all");
+const activeCostId = ref("all");
+const activeSortKey = ref("all");
+
+const applyRouteCategory = () => {
+  searchParams.value.categoryIdLv1 = undefined;
+  searchParams.value.categoryIdLv2 = undefined;
+  searchParams.value.categoryIdLv3 = undefined;
+  activeId.value = "all";
+
+  if (route.query.type && route.query.id) {
+    searchParams.value[route.query.type] = String(route.query.id);
+    activeId.value = String(route.query.id);
+  }
+};
+
+const syncDisplayStateFromParams = () => {
+  activeId.value = searchParams.value.categoryIdLv1 ? String(searchParams.value.categoryIdLv1) : "all";
+  activeCostId.value =
+    typeof searchParams.value.free === "boolean" ? (searchParams.value.free ? "1" : "0") : "all";
+  activeSortKey.value = searchParams.value.sortBy || "all";
+};
 
 onMounted(() => {
   searchParams.value.keyword = dataCache.getSearchKey;
-  if (route.query.type) {
-    searchParams.value[route.query.type] = route.query.id;
-  }
+  applyRouteCategory();
+  syncDisplayStateFromParams();
   getClassCategoryData();
   search();
 });
@@ -113,20 +132,15 @@ onUnmounted(() => {
   dataCache.setSearchKey("");
 });
 
-watchEffect(() => {
-  if (dataCache.getSearchKey !== "") {
-    isShow.value = true;
-  }
-
-  if (route.fullPath !== fullPath.value) {
-    fullPath.value = route.fullPath;
-    searchParams.value.categoryIdLv1 = route.query.type === "categoryIdLv1" ? route.query.id : undefined;
-    searchParams.value.categoryIdLv2 = route.query.type === "categoryIdLv2" ? route.query.id : undefined;
-    searchParams.value.categoryIdLv3 = route.query.type === "categoryIdLv3" ? route.query.id : undefined;
-    activeId.value = route.query.id || "all";
+watch(
+  () => route.fullPath,
+  () => {
+    applyRouteCategory();
+    syncDisplayStateFromParams();
+    initPage();
     search();
-  }
-});
+  },
+);
 
 const getClassCategoryData = async () => {
   try {
@@ -169,9 +183,11 @@ async function searchKey(item) {
 
   if (item.key === "free") {
     searchParams.value[item.key] = item.value !== "all" ? Boolean(+item.value) : undefined;
+    activeCostId.value = String(item.value);
   }
   if (item.key === "categoryIdLv1") {
-    searchParams.value[item.key] = item.value !== "all" ? item.value : undefined;
+    searchParams.value[item.key] = item.value !== "all" ? String(item.value) : undefined;
+    activeId.value = String(item.value);
   }
 
   initPage();
@@ -180,6 +196,7 @@ async function searchKey(item) {
 
 const sortHandle = (item) => {
   searchParams.value.sortBy = item !== "all" ? item : undefined;
+  activeSortKey.value = item || "all";
   initPage();
   search();
 };
@@ -190,7 +207,13 @@ const initPage = () => {
 };
 
 const pagesHandle = (item) => {
-  item === "add" ? page.value++ : page.value--;
+  const totalPages = Math.max(1, Math.ceil(count.value / searchParams.value.pageSize));
+  if (item === "add" && page.value < totalPages) {
+    page.value++;
+  }
+  if (item === "reduce" && page.value > 1) {
+    page.value--;
+  }
   searchParams.value.pageNo = page.value;
   search();
 };
@@ -202,6 +225,12 @@ async function search() {
     if (res.code === 200) {
       searchResultData.value = res.data.list || [];
       count.value = Number(res.data.total || 0);
+      const totalPages = Math.max(1, Math.ceil(count.value / searchParams.value.pageSize));
+      if (page.value > totalPages) {
+        page.value = totalPages;
+        searchParams.value.pageNo = totalPages;
+        search();
+      }
       return;
     }
     ElMessage({
@@ -216,13 +245,20 @@ async function search() {
   }
 }
 
-watchEffect(() => {
-  if (searchParams.value.keyword !== dataCache.getSearchKey) {
-    searchParams.value.keyword = dataCache.getSearchKey;
+watch(
+  () => dataCache.getSearchKey,
+  (value) => {
+    if (value !== "") {
+      isShow.value = true;
+    }
+    if (searchParams.value.keyword === value) {
+      return;
+    }
+    searchParams.value.keyword = value;
     initPage();
     search();
-  }
-});
+  },
+);
 </script>
 
 <style lang="scss" src="./index.scss"></style>

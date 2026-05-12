@@ -75,7 +75,7 @@ public class LearningLessonController {
     @ApiOperation("用户手动删除当前课程")
     @DeleteMapping("/{courseId}")
     public void deleteCourseFromLesson(@PathVariable("courseId") Long couseId){
-        Long user = UserContext.getUser();
+        Long user = UserContext.requireUser();
         lessonService.deleteCourseFromLesson(user, couseId);
     }
 

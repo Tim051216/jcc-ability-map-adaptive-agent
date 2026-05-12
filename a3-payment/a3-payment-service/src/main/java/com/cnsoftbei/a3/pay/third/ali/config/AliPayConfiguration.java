@@ -2,11 +2,13 @@ package com.cnsoftbei.a3.pay.third.ali.config;
 
 import com.alipay.easysdk.factory.Factory;
 import com.alipay.easysdk.kernel.Config;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@ConditionalOnProperty(prefix = "a3.pay.stub", name = "enabled", havingValue = "false", matchIfMissing = true)
 @EnableConfigurationProperties(AliPayProperties.class)
 public class AliPayConfiguration {
 

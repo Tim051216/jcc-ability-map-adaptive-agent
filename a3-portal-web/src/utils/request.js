@@ -7,6 +7,7 @@ import {tryRefreshToken} from './refreshToken'
 
 const env = import.meta.env.MODE || 'local';
 const host = proxy[env]?.host || proxy.local.host;
+const localUserInfo = import.meta.env.VITE_LOCAL_USER_INFO || '1';
 const CODE = {
   LOGIN_TIMEOUT: 1000,
   REQUEST_SUCCESS: 200,
@@ -24,11 +25,27 @@ const instance = axios.create({
 });
 
 instance.interceptors.request.use((config) => {
+  if (typeof config.url === 'string' && typeof config.baseURL === 'string') {
+    const normalizedBase = config.baseURL.replace(/\/+$/, '');
+    const normalizedUrl = config.url.replace(/^\/+/, '/');
+    if (normalizedBase.endsWith('/api') && normalizedUrl.startsWith('/api/')) {
+      config.url = normalizedUrl.replace(/^\/api/, '');
+    }
+  }
+  if (typeof config.url === 'string' && /\/evaluation\/(answer\/submit|report\/generate)/.test(config.url)) {
+    config.timeout = Math.max(config.timeout || 0, 120000);
+  }
   const TOKEN = sessionStorage.getItem('token');
-  config.headers = {
+  const headers = {
     "Content-Type": "application/json",
-    "authorization": TOKEN
-  }  
+  };
+  if (TOKEN) {
+    headers.authorization = TOKEN;
+  }
+  if ((env === 'local' || env === 'a3local') && !headers['user-info']) {
+    headers['user-info'] = localUserInfo;
+  }
+  config.headers = headers;
   return config
 });
 

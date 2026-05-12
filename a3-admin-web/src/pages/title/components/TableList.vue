@@ -16,7 +16,7 @@
       </el-table-column>
       <el-table-column
         prop="categories"
-        label="所属分类"
+        label="内容分类"
         width="290"
         class-name="textLeft"
       >

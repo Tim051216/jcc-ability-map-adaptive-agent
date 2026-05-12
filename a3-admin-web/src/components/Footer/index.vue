@@ -25,8 +25,8 @@
     {title: '技术支持', link: '/'},
     {title: '使用文档', link: '/'},
     {title: '赛题背景', link: '/'},
-    {title: '课程管理', link: '/'},
-    {title: '运营中心', link: '/'},
+    {title: '课程内容', link: '/'},
+    {title: '运营活动', link: '/'},
     {title: '联系我们', link: '/'}
   ]
   // 转入详情页

@@ -1,12 +1,12 @@
-<!-- 课程介绍 -->
+<!-- 内容介绍 -->
 <template>
   <div class="classAbout">
     <div class="title">
-      <span class="itemtitle">课程分类</span>
+      <span class="itemtitle">内容分类</span>
       <span class="item">{{ courseData.cateNames }}</span>
     </div>
     <div class="title">
-      <span class="itemtitle">课程名称</span>
+      <span class="itemtitle">内容名称</span>
       <span class="item">{{ courseData.name }}</span>
     </div>
     <div class="title">
@@ -14,22 +14,22 @@
       <span class="item">{{ courseData.free ? "免费" : "收费" }}</span>
     </div>
     <div class="title">
-      <span class="itemtitle">课程价格</span>
+      <span class="itemtitle">内容价格</span>
       <span class="item">{{ (courseData.price / 100).toFixed(2) }}元</span>
     </div>
     <div class="title">
-      <span class="itemtitle">课程下架时间</span>
+      <span class="itemtitle">内容下架时间</span>
       <span class="item">{{ formatTimeOrdinary(courseData.purchaseEndTime) }}</span>
     </div>
     <div class="title">
-      <span class="itemtitle">课程有效期</span>
+      <span class="itemtitle">内容有效期</span>
       <span class="item"
         >{{ courseData.validDuration > 99 ? "永久" : courseData.validDuration }}
         <span v-if="courseData.validDuration <= 99">月</span>
       </span>
     </div>
     <div class="title">
-      <span class="itemtitle">课程介绍</span>
+      <span class="itemtitle">内容介绍</span>
       <span class="item">{{ courseData.introduce }}</span>
     </div>
     <div class="title">
@@ -90,7 +90,7 @@
         </swiper>
       </div>
     </div>
-    <div class="title">课程详情</div>
+    <div class="title">内容详情</div>
     <div class="item">{{ courseData.detail }}</div>
   </div>
 </template>

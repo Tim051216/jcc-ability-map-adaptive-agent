@@ -13,17 +13,28 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, watch } from "vue";
 
-defineProps({
+const props = defineProps({
   data: {
     type: Object,
     default: () => ({}),
   },
+  active: {
+    type: String,
+    default: "all",
+  },
 });
 
 const emit = defineEmits(["sortHandle"]);
-const activeKey = ref("all");
+const activeKey = ref(props.active);
+
+watch(
+  () => props.active,
+  (value) => {
+    activeKey.value = value || "all";
+  },
+);
 
 const activeHandle = (value) => {
   activeKey.value = value;

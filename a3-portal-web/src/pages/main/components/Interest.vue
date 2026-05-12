@@ -15,10 +15,10 @@
         <div class="info fx-sb">
           <div class="fx-al-ct fx-1">
             <img :src="teacherInfo.icon || '/img-tx/1.jpg'" alt="" />
-            <span>导师：{{ teacherInfo.teacher }}</span>
+            <span>导师：{{ teacherInfo.teacher || "A3 教学团队" }}</span>
           </div>
           <div @click="$router.push({ path: '/details', query: { id: teacherInfo.id } })">
-            <span class="bt">加入学习</span>
+            <span class="bt">查看课程</span>
           </div>
         </div>
       </div>
@@ -33,7 +33,7 @@
             @click="$router.push({ path: '/details', query: { id: item.id } })"
           >
             <span class="title">{{ item.name }}</span>
-            <span class="desc">共 {{ item.sections }} 节 <i>·</i> {{ item.sold }} 人在学</span>
+            <span class="desc">共 {{ item.sections }} 节<i>·</i> {{ item.sold }} 人在学</span>
           </div>
         </div>
       </div>
@@ -41,7 +41,7 @@
 
     <div v-else class="classInfo">
       <div class="nodata bg-wt fx-ct">
-        <span>当前方向下暂无课程</span>
+        <span>当前方向下暂无课程，换个兴趣方向试试。</span>
       </div>
     </div>
   </div>
@@ -63,8 +63,8 @@ const props = defineProps({
 const emit = defineEmits(["setInterest"]);
 
 const actId = ref();
-const teacherInfo = ref({});
-const classList = ref({});
+const teacherInfo = ref(null);
+const classList = ref([]);
 
 onMounted(() => {
   const iterator = props.data[Symbol.iterator]();

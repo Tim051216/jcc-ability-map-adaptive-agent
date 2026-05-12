@@ -8,6 +8,7 @@ class Citation(BaseModel):
 
 
 class ResourceCard(BaseModel):
+    resource_id: int | None = None
     resource_type: str
     title: str
     summary: str

@@ -20,13 +20,13 @@ export function validateuserPhone (rule, value, callback) {
   const reg = /^(13[0-9]|14[01456879]|15[0-35-9]|16[2567]|17[0-8]|18[0-9]|19[0-35-9])\d{8}$/
   if (value === "" || value === undefined || value === null) {
     if (rule.required) {
-      callback("后台用户手机号为空，请输入后台用户手机号")
+      callback("管理账号手机号为空，请输入管理账号手机号")
     } else {
       callback()
     }
   } else {
     if (!reg.test(value) && value !== "") {
-      callback("后台用户手机号格式错误，请重新输入")
+      callback("管理账号手机号格式错误，请重新输入")
     } else {
       callback()
     }
@@ -89,7 +89,7 @@ export const validatestudents = (rule, value, callback) => {
 export const validateuser = (rule, value, callback) => {
   const reg = /[^\a-\z\A-\Z\u4E00-\u9FA5]$/g
   if (value === "" || value === undefined || value == null) {
-    callback(new Error("后台用户名称为空，请输入后台用户名称"))
+    callback(new Error("管理账号名称为空，请输入管理账号名称"))
   } else {
     // if (reg.test(value)) {
     //   callback(new Error("后台用户名称格式错误，请输入中文、英文"))

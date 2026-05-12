@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 
 import httpx
+from fastapi import HTTPException
 
+from app.db.repositories.plan_progress_repository import PlanProgressRepository
 from app.db.repositories.plan_repository import PlanRepository
 from app.db.session import async_session_factory
 from app.integrations.java_clients.course_client import CourseClient
@@ -11,20 +13,28 @@ from app.schemas.plan import (
     LearningPlanResponse,
     LearningPlanStage,
     LearningPlanStep,
+    PlanProgressResponse,
     PlanResourcePush,
+    PlanStepProgressItem,
 )
 from app.schemas.rag import RagSearchRequest
 from app.services.rag_service import RagService
 
 
 class PlanService:
+    async def get_plan(self, plan_id: int) -> LearningPlanResponse | None:
+        async with async_session_factory() as session:
+            plan = await PlanRepository().get_by_id(session, plan_id)
+            if plan is None or not plan.plan_data:
+                return None
+            return LearningPlanResponse.model_validate({**plan.plan_data, "plan_id": plan.id})
+
     async def get_latest_plan(self, user_id: int, course_code: str) -> LearningPlanResponse | None:
         async with async_session_factory() as session:
-            repo = PlanRepository()
-            latest = await repo.latest_by_user_course(session, user_id, course_code)
-            if latest is None or not latest.plan_data:
+            plan = await PlanRepository().latest_by_user_course(session, user_id, course_code)
+            if plan is None or not plan.plan_data:
                 return None
-            return LearningPlanResponse.model_validate(latest.plan_data)
+            return LearningPlanResponse.model_validate({**plan.plan_data, "plan_id": plan.id})
 
     async def generate_plan(self, request: LearningPlanRequest) -> LearningPlanResponse:
         try:
@@ -42,7 +52,7 @@ class PlanService:
         progress_hint = (
             f"当前课程历史学习进度约 {completion_rate:.0f}%"
             if completion_rate
-            else "当前暂无稳定学习进度记录，先按首轮诊断路径推进"
+            else "当前暂无稳定学习进度记录，建议先按首轮诊断路径推进。"
         )
         weekly_frequency = getattr(learning_record, "week_freq", None)
 
@@ -76,7 +86,7 @@ class PlanService:
             course_name=course_name,
             summary=f"围绕“{request.target}”生成的阶梯式学习路径，覆盖诊断、攻坚、巩固三个阶段。",
             progress_hint=progress_hint,
-            next_action=f"先执行第 1 天节点任务，并在完成后提交一次针对“{request.target}”的阶段自评。",
+            next_action=f"先完成第 1 天节点任务，再围绕“{request.target}”补充一次阶段自评。",
             risk_alerts=self._build_risk_alerts(
                 available_days=request.available_days,
                 daily_study_minutes=request.daily_study_minutes,
@@ -90,15 +100,100 @@ class PlanService:
             stages=stages,
             steps=steps,
         )
+        return await self._persist_plan(request, response)
 
-        await self._persist_plan(request, response)
-        return response
-
-    async def _persist_plan(self, request: LearningPlanRequest, response: LearningPlanResponse) -> None:
+    async def update_step_status(
+        self,
+        *,
+        plan_id: int,
+        user_id: int,
+        step_id: str,
+        action: str,
+    ) -> PlanProgressResponse:
         now = datetime.now(timezone.utc).isoformat()
         async with async_session_factory() as session:
-            repo = PlanRepository()
-            await repo.create_plan(
+            plan_repo = PlanRepository()
+            progress_repo = PlanProgressRepository()
+            plan = await plan_repo.get_by_id(session, plan_id)
+            if plan is None or plan.user_id != user_id:
+                raise HTTPException(status_code=404, detail="plan not found")
+
+            payload = LearningPlanResponse.model_validate({**plan.plan_data, "plan_id": plan.id})
+            step_ids = {step.step_id or f"day-{step.day}" for step in payload.steps}
+            if step_id not in step_ids:
+                raise HTTPException(status_code=404, detail="plan step not found")
+
+            status_map = {
+                "complete": ("completed", "节点已完成，已计入学习路径进度。"),
+                "pause": ("paused", "节点已暂缓，后续可以恢复继续学习。"),
+                "resume": ("in_progress", "节点已恢复，建议继续当前学习任务。"),
+            }
+            status, note = status_map[action]
+            await progress_repo.upsert_step(
+                session,
+                plan_id=plan_id,
+                user_id=user_id,
+                step_id=step_id,
+                status=status,
+                last_action=action,
+                progress_note=note,
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+        return await self.get_plan_progress(plan_id=plan_id, user_id=user_id)
+
+    async def get_plan_progress(self, *, plan_id: int, user_id: int) -> PlanProgressResponse:
+        async with async_session_factory() as session:
+            plan = await PlanRepository().get_by_id(session, plan_id)
+            if plan is None or plan.user_id != user_id:
+                raise HTTPException(status_code=404, detail="plan not found")
+
+            payload = LearningPlanResponse.model_validate({**plan.plan_data, "plan_id": plan.id})
+            progress_items = await PlanProgressRepository().list_by_plan_user(
+                session,
+                plan_id=plan_id,
+                user_id=user_id,
+            )
+            progress_map = {item.step_id: item for item in progress_items}
+
+            items: list[PlanStepProgressItem] = []
+            completed_steps = 0
+            for step in payload.steps:
+                resolved_step_id = step.step_id or f"day-{step.day}"
+                progress = progress_map.get(resolved_step_id)
+                status = progress.status if progress else step.status
+                if status == "completed":
+                    completed_steps += 1
+                items.append(
+                    PlanStepProgressItem(
+                        step_id=resolved_step_id,
+                        status=status,
+                        progress_note=progress.progress_note if progress else None,
+                        last_action=progress.last_action if progress else "initialize",
+                        updated_at=progress.updated_at if progress else None,
+                    )
+                )
+
+            total_steps = len(payload.steps)
+            completion_rate = round((completed_steps / total_steps) * 100, 1) if total_steps else 0.0
+            return PlanProgressResponse(
+                plan_id=plan_id,
+                user_id=user_id,
+                completion_rate=completion_rate,
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                items=items,
+            )
+
+    async def _persist_plan(
+        self,
+        request: LearningPlanRequest,
+        response: LearningPlanResponse,
+    ) -> LearningPlanResponse:
+        now = datetime.now(timezone.utc).isoformat()
+        async with async_session_factory() as session:
+            plan = await PlanRepository().create_plan(
                 session,
                 user_id=request.user_id,
                 course_code=request.course_code,
@@ -109,6 +204,7 @@ class PlanService:
                 updated_at=now,
             )
             await session.commit()
+        return response.model_copy(update={"plan_id": plan.id})
 
     def _build_stages(
         self,
@@ -120,7 +216,7 @@ class PlanService:
         stage_names = ["基础诊断", "薄弱点攻坚", "综合巩固"]
         criteria = [
             ["完成知识点摸底", "能复述核心概念"],
-            ["完成 1 轮弱项训练", "能解释常见错误原因"],
+            ["完成 1 轮薄弱点训练", "能解释常见错误原因"],
             ["完成综合练习", "能输出自己的总结或解题过程"],
         ]
         total_days = max(available_days, 3)
@@ -133,7 +229,7 @@ class PlanService:
                     stage_no=index + 1,
                     stage_name=stage_name,
                     focus=stage_focuses[index],
-                    objective=f"围绕{stage_focuses[index]}建立阶段性掌握与输出能力",
+                    objective=f"围绕 {stage_focuses[index]} 建立阶段性掌握与输出能力",
                     estimated_days=days_per_stage[index],
                     status=stage_statuses[index],
                     recommended_resource_types=preferred_resources[:3],
@@ -170,9 +266,10 @@ class PlanService:
             resource_pushes = self._build_resource_pushes(preferred_resources[:3], focus, day)
             steps.append(
                 LearningPlanStep(
+                    step_id=f"day-{day}",
                     day=day,
                     title=title,
-                    objective=f"围绕{focus}完成当天节点任务，并沉淀可复用学习结论",
+                    objective=f"围绕 {focus} 完成当天节点任务，并沉淀可复用的学习记录。",
                     tasks=tasks,
                     checkpoint=self._build_checkpoint(focus, stage_no),
                     stage_no=stage_no,
@@ -222,8 +319,8 @@ class PlanService:
     def _build_tasks(title: str, focus: str, daily_study_minutes: int) -> list[str]:
         return [
             f"阅读并理解《{title}》中的核心概念，控制在 {max(daily_study_minutes // 3, 15)} 分钟内完成首轮吸收。",
-            f"围绕“{focus}”整理 3 条自己的学习笔记，记录定义、易错点与应用场景。",
-            f"完成 1 组分层练习并标记错误原因，作为后续评估与路径调整依据。",
+            f"围绕“{focus}”整理 3 条自己的学习笔记，记录定义、易错点和应用场景。",
+            "完成 1 组分层练习并标记错误原因，作为后续评估与路径调整依据。",
         ]
 
     @staticmethod
@@ -236,7 +333,7 @@ class PlanService:
             "lecture_note": "课程讲解文档",
             "mind_map": "知识点思维导图",
             "quiz_set": "分层练习题库",
-            "extended_reading": "扩展阅读清单",
+            "extended_reading": "拓展阅读清单",
             "coding_lab": "代码实操案例",
         }
         return [
@@ -252,16 +349,16 @@ class PlanService:
     @staticmethod
     def _build_checkpoint(focus: str, stage_no: int) -> str:
         if stage_no == 1:
-            return f"能够用自己的话解释“{focus}”的基础定义与边界。"
+            return f"能用自己的话解释“{focus}”的基础定义与边界。"
         if stage_no == 2:
-            return f"能够指出“{focus}”至少 2 个典型错因，并说明修正思路。"
-        return f"能够基于“{focus}”输出完整解题过程或总结。"
+            return f"能指出“{focus}”至少 2 个典型错因，并说明修正思路。"
+        return f"能基于“{focus}”输出完整解题过程或阶段总结。"
 
     @staticmethod
     def _build_dynamic_adjustments(weak_focus: list[str], available_days: int) -> list[str]:
         adjustments = [
-            "若阶段测评低于 70 分，自动提高薄弱知识点练习占比，并延后综合训练节点。",
-            "若连续两次练习正确率高于 85%，则提升后续节点难度并加入综合应用任务。",
+            "若阶段测评低于 70 分，则自动提高薄弱知识点练习占比，并延后综合训练节点。",
+            "若连续两次练习正确率高于 85%，则提升后续节点难度并增加综合应用任务。",
         ]
         if available_days <= 3:
             adjustments.append("当前周期较短，建议压缩扩展阅读，优先保证核心知识点与错题复盘。")

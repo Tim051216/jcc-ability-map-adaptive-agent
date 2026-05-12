@@ -1,38 +1,43 @@
-import { defineStore } from 'pinia';
+import { defineStore } from "pinia";
 
-export const dataCacheStore = defineStore('notification', {
+export const dataCacheStore = defineStore("notification", {
   state: () => ({
-    courseClassDataes: [], // 存储课程分类
-    searchKey: '', // 搜索关键词存储
-    askDetails: '22',
-    learingDataes:{ // 学习相关信息存储 
-      classDetailsData:{}, //课程详情的信息 - 打开课程详情时写入 
-      teacherData:{}, // 讲师信息 - 打开课程详情时写入
-      classSectionMap:{},// 小节信息
-      classCatalogs:{}, // 目录信息
-      planData:{} // 课程计划信息 
+    courseClassDataes: [],
+    // 首页课程区块单独缓存，返回首页时可以先秒开再后台刷新。
+    homeFreeClassDataes: [],
+    homeGoodClassDataes: [],
+    homeNewClassDataes: [],
+    searchKey: "",
+    askDetails: "22",
+    learingDataes: {
+      classDetailsData: {},
+      teacherData: {},
+      classSectionMap: {},
+      classCatalogs: {},
+      planData: {},
     },
-    currentPlayData:{}, // 视频的当前播放数据存储
-    orderClassInfo:{}, //订单的课程信息
-    currentCourseInfo:{}, // 当前浏览的课程信息
-    myLearnClassInfo:{}, // 当前学习课程的信息
+    currentPlayData: {},
+    orderClassInfo: {},
+    currentCourseInfo: {},
+    myLearnClassInfo: {},
   }),
   getters: {
-    // 获取对应的state的值
-    getAskDetails: state => state.askDetails,
-    getSearchKey: state => state.searchKey,
-    getLearingDataes: state => state.learingDataes,
-    getCurrentPlayData: state => state.currentPlayData,
-    getOrderClassInfo: state => state.orderClassInfo,
-    getCourseClassDataes: state => state.courseClassDataes,
-    getCurrentCourseInfo: state => state.currentCourseInfo,
-    getMyLearnClassInfo: state => state.myLearnClassInfo
+    getAskDetails: (state) => state.askDetails,
+    getSearchKey: (state) => state.searchKey,
+    getLearingDataes: (state) => state.learingDataes,
+    getCurrentPlayData: (state) => state.currentPlayData,
+    getOrderClassInfo: (state) => state.orderClassInfo,
+    getCourseClassDataes: (state) => state.courseClassDataes,
+    getHomeFreeClassDataes: (state) => state.homeFreeClassDataes,
+    getHomeGoodClassDataes: (state) => state.homeGoodClassDataes,
+    getHomeNewClassDataes: (state) => state.homeNewClassDataes,
+    getCurrentCourseInfo: (state) => state.currentCourseInfo,
+    getMyLearnClassInfo: (state) => state.myLearnClassInfo,
   },
   actions: {
-    setCurrentCourseInfo(data){
+    setCurrentCourseInfo(data) {
       this.currentCourseInfo = data;
     },
-    // 设置state对应的值
     setAskDetails(data) {
       this.askDetails = data;
     },
@@ -45,18 +50,27 @@ export const dataCacheStore = defineStore('notification', {
     setCurrentPlayData(data) {
       this.currentPlayData = data;
     },
-    setOrderClassInfo(data){
+    setOrderClassInfo(data) {
       this.orderClassInfo = data;
     },
-    setCourseClassDataes(data){
+    setCourseClassDataes(data) {
       this.courseClassDataes = data;
     },
-    setMyLearnClassInfo(data){
+    setHomeFreeClassDataes(data) {
+      this.homeFreeClassDataes = data;
+    },
+    setHomeGoodClassDataes(data) {
+      this.homeGoodClassDataes = data;
+    },
+    setHomeNewClassDataes(data) {
+      this.homeNewClassDataes = data;
+    },
+    setMyLearnClassInfo(data) {
       this.myLearnClassInfo = data;
     },
   },
   persist: {
     enabled: true,
-    encryptionKey: 'data-catch',
-  }
+    encryptionKey: "data-catch",
+  },
 });

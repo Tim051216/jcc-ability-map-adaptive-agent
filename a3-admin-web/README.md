@@ -16,10 +16,10 @@
 ```bash
 npm install
 
-# 默认走本地网关 http://127.0.0.1:10010
+# 默认走本地网关 http://127.0.0.1:10010（Vite mode: devlocal，避免与 .env.local 保留名冲突）
 npm run dev
 
-# 明确指定本地联调
+# 明确指定本地联调（与 npm run dev 相同）
 npm run dev:local
 
 # 走上游公开测试环境，便于单独查看前端页面

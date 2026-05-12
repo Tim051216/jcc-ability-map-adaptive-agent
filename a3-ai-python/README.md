@@ -54,8 +54,10 @@ alembic upgrade head
 4. 安装依赖后运行
 
 ```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 18080
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 18080
 ```
+
+请不要直接使用系统 `python`、`uvicorn` 或 Anaconda 环境启动，否则容易出现 Anaconda Python 抢占 18080 端口的问题。
 
 ## 当前能力
 

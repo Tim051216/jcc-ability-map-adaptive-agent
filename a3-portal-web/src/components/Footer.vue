@@ -14,7 +14,7 @@
             <span class="brandMark">A3</span>
             <span class="brandText">
               <strong>A3 学习平台</strong>
-              <em>A3 DEMO EDITION</em>
+              <em>学生演示版</em>
             </span>
           </div>
         </div>

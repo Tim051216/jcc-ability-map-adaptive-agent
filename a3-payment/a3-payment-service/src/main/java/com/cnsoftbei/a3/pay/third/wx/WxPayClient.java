@@ -18,6 +18,7 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.util.EntityUtils;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +29,7 @@ import java.util.Arrays;
 
 @Slf4j
 @Component
+@ConditionalOnExpression("'${a3.pay.wx.enabled:true}' == 'true' and '${a3.pay.stub.enabled:false}' == 'false'")
 public class WxPayClient {
     private final CloseableHttpClient wxPayClient;
     private final ObjectMapper objectMapper;

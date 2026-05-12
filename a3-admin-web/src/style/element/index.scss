@@ -20,6 +20,10 @@
 .el-menu-item.is-active {
   color: #ff734f;
 }
+.el-button {
+  border-radius: 999px;
+  font-weight: 600;
+}
 .el-form-item {
   margin-bottom: 20px;
 }
@@ -90,14 +94,14 @@
 }
 .el-input {
   .el-input__wrapper {
-    height: 40px;
+    height: 42px;
     background: var(--color-white);
     border: 1px solid var(--color-font3);
-    border-radius: 6px;
+    border-radius: 14px;
     box-shadow: none;
-    padding: 0 12px;
+    padding: 0 14px;
     .el-input__inner {
-      height: 38px;
+      height: 40px;
       &::placeholder {
         font-family: -apple-system, system-ui;
         font-size: 14px;
@@ -166,7 +170,7 @@
 // 时间input
 .el-date-editor.el-input,
 .el-date-editor.el-input__wrapper {
-  height: 40px;
+  height: 42px;
 }
 .inputRight {
   position: relative;
@@ -271,6 +275,7 @@
   .el-textarea__inner {
     box-shadow: none !important;
     border: 1px solid var(--color-font3);
+    border-radius: 18px;
     padding-bottom: 30px;
     &::-webkit-scrollbar {
       width: 5px;
@@ -292,6 +297,72 @@
       border: 1px solid var(--color-btnbackground);
     }
   }
+}
+.el-card {
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--color-card-shadow);
+}
+
+.el-table {
+  --el-table-border-color: rgba(219, 227, 239, 0.8);
+  --el-table-header-bg-color: #fbf7f3;
+  --el-table-row-hover-bg-color: #fff5ef;
+  border-radius: 18px 18px 0 0;
+  overflow: hidden;
+}
+
+.el-table th.el-table__cell {
+  color: var(--color-font2);
+  font-weight: 600;
+  padding: 16px 0;
+}
+
+.el-table .el-table__cell {
+  padding: 14px 0;
+}
+
+.el-pagination {
+  font-weight: 500;
+}
+
+.el-tabs__item {
+  height: 40px;
+  padding: 0 18px;
+  font-weight: 600;
+}
+
+.el-tabs__item.is-active {
+  color: var(--color-btnbackground);
+}
+
+.el-tabs__active-bar {
+  height: 3px;
+  border-radius: 999px;
+}
+
+.el-dialog {
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  margin-right: 0;
+  padding: 22px 24px 12px;
+}
+
+.el-dialog__body {
+  padding: 8px 24px 24px;
+}
+
+.el-breadcrumb__inner,
+.el-breadcrumb__inner a {
+  color: var(--color-font5);
+  font-weight: 500;
+}
+
+.el-breadcrumb__item:last-child .el-breadcrumb__inner {
+  color: var(--color-font7);
 }
 .el-input .el-input__icon {
   color: var(--color-font9);

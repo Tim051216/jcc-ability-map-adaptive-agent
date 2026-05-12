@@ -11,12 +11,14 @@ import com.cnsoftbei.a3.pay.third.model.PrepayResponse;
 import com.cnsoftbei.a3.pay.third.model.RefundResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
 @Slf4j
 @Service(PayConstants.WX_CHANNEL_CODE)
+@ConditionalOnExpression("'${a3.pay.wx.enabled:true}' == 'true' and '${a3.pay.stub.enabled:false}' == 'false'")
 @RequiredArgsConstructor
 public class WxPayService implements IPayService {
 

@@ -63,7 +63,7 @@ const formatDuration = (seconds = 0) => {
 
 const playHandle = (courseId, section) => {
   if (!section.trailer && !props.isSignUp) {
-    ElMessage("该章节暂不支持试看，请加入学习后继续播放");
+    ElMessage("该章节暂不支持试看，请先加入学习后继续播放。");
     return;
   }
   router.push({ path: "/learning/index", query: { id: courseId, sectionId: section.id } });

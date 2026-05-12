@@ -10,8 +10,8 @@
       <div class="itemCon">
         <div class="headTitle">
           <span style="min-width: 80px">序号</span>
-          <span style="min-width: 155px; margin-right: 20px">教师名称</span>
-          <span style="min-width: 300px">教师介绍</span>
+          <span style="min-width: 155px; margin-right: 20px">讲师名称</span>
+          <span style="min-width: 300px">讲师介绍</span>
           <span
             style="padding-left: 15px; padding-right: 30px; min-width: 170px"
             >排序</span
@@ -93,7 +93,7 @@
       </div>
     </div>
 
-    <!-- 选择老师弹出层 -->
+    <!-- 选择讲师弹出层 -->
     <SelectAdd
       ref="selectAdd"
       :dialogVisible="dialogVisible"
@@ -158,12 +158,12 @@ const props = defineProps({
 const router = useRouter(); //获取全局
 const route = useRoute(); //获取局部
 let dialogDeleteVisible = ref(false); //控制删除弹层
-let dialogVisible = ref(false); //选择老师弹层
+let dialogVisible = ref(false); //选择讲师弹层
 let pic = ref(""); //要放大的图片
 let teacherId = ref(null);
 const selectAdd = ref();
-const text = ref("选择教师");
-const deleteText = ref("此操作将该老师移除本课程，是否继续？"); //删除提示
+const text = ref("选择讲师");
+const deleteText = ref("此操作将该讲师移出当前内容，是否继续？"); //删除提示
 const loading = ref(false);
 let searchData = reactive({
   pageSize: 10,

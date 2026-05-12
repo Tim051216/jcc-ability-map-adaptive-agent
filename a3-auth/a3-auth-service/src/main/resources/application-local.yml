@@ -1,0 +1,46 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+    discovery:
+      client:
+        simple:
+          instances:
+            user-service:
+              - uri: http://127.0.0.1:8082
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:13306/tj_auth?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: a3mysql123
+  redis:
+    host: 127.0.0.1
+    port: 16379
+    database: 0
+    timeout: 10s
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+mybatis-plus:
+  configuration:
+    default-enum-type-handler: com.baomidou.mybatisplus.core.handlers.MybatisEnumTypeHandler
+  global-config:
+    field-strategy: 0
+    db-config:
+      logic-delete-field: deleted
+      id-type: assign_id
+
+a3:
+  redisson:
+    enabled: false
+
+encrypt:
+  key-store:
+    alias: tjxt
+    location: file:F:/A3-cnsoftbei/_upstream_tjxt/tianji/tj-auth/tj-auth-service/tjxt.jks
+    password: tj123321
+    secret: tj123321

@@ -1,4 +1,4 @@
-<!-- 营销中心列表 -->
+<!-- 运营活动列表 -->
 <template>
   <div class="contentBox">
     <!-- 搜索 -->
@@ -47,7 +47,7 @@ import TableList from "./components/TableList.vue"
 // ------定义变量------
 //初始化路由
 const router = useRouter()
-const text = ref("新增优惠券") //新增优惠卷标题
+const text = ref("创建活动") //新增活动标题
 const loading = ref(false) //列表加载loading
 let total = ref(null) //数据总条数
 let searchData = reactive({

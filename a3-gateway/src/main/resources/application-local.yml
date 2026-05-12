@@ -5,6 +5,12 @@ spring:
         enabled: false
       discovery:
         enabled: false
+    discovery:
+      client:
+        simple:
+          instances:
+            auth-service:
+              - uri: http://127.0.0.1:8081
   redis:
     host: 127.0.0.1
     port: 16379
@@ -22,6 +28,7 @@ management:
 
 a3:
   auth:
+    jwk-fetch-enabled: true
     # 本地联调时放行 AI 路由，避免必须依赖完整登录态。
     exclude-path:
       - GET:/ai/**

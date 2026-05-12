@@ -30,9 +30,15 @@ public class JwtSignerHolder {
     private volatile JWTSigner jwtSigner;
 
     private DiscoveryClient discoveryClient;
+    private final boolean jwkFetchEnabled;
 
     public JwtSignerHolder(DiscoveryClient discoveryClient) {
+        this(discoveryClient, true);
+    }
+
+    public JwtSignerHolder(DiscoveryClient discoveryClient, boolean jwkFetchEnabled) {
         this.discoveryClient = discoveryClient;
+        this.jwkFetchEnabled = jwkFetchEnabled;
     }
 
     private final ExecutorService ses = new ThreadPoolExecutor(
@@ -46,6 +52,10 @@ public class JwtSignerHolder {
 
     @PostConstruct
     public void init(){
+        if (!jwkFetchEnabled) {
+            log.info("Skip auth jwk fetch in current environment because a3.auth.jwk-fetch-enabled=false");
+            return;
+        }
         // 尝试获取jwk秘钥
         ses.submit(new MarkedRunnable(new JwkTask(discoveryClient)));
     }

@@ -4,7 +4,7 @@
       <div><img src="@/assets/icon_success.png" width="72" height="72" alt="" /></div>
       <div class="tit">支付成功</div>
       <div class="order">订单 ID：{{ route.query.order || "A3-DEMO-ORDER" }}</div>
-      <div class="desc">课程采购流程已走通，你现在可以继续查看订单页，或者返回首页继续验收其它前端页面。</div>
+      <div class="desc">课程采购流程已经走通，你现在可以继续查看订单页，或者返回首页继续验收其他高频页面。</div>
       <div class="actionRow">
         <span class="bt actionBtn" @click="router.push('/personal/main/myOrder')">查看订单</span>
         <span class="bt actionBtn secondary" @click="router.push('/main/index')">返回首页</span>

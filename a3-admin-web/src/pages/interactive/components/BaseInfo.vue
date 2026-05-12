@@ -31,15 +31,15 @@
       </div>
       <div class="food">
         <ul>
-          <li><span class="littletitle">课程分类：</span><span>{{ baseData.categoryName }}</span></li>
-          <li>课程名称：{{ baseData.courseName }}</li>
+          <li><span class="littletitle">内容分类：</span><span>{{ baseData.categoryName }}</span></li>
+          <li>内容名称：{{ baseData.courseName }}</li>
           <li class="end">
-            课程负责老师：{{
+            内容讲师：{{
               baseData.teacherName || ""
             }}
           </li>
           <li>
-            <p class="littletitle">所属章节：</p><p>{{ baseData.chapterName }}/{{ baseData.sectionName }}</p>
+            <p class="littletitle">内容章节：</p><p>{{ baseData.chapterName }}/{{ baseData.sectionName }}</p>
           </li>
           <li>
             回答数量：{{

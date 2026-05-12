@@ -4,30 +4,32 @@
       <div class="container heroInner">
         <div class="heroContent">
           <div class="heroBadge">A3 多智能体演示中枢</div>
-          <h1>把意图识别、Agent 路径、学习计划与生成资源放到同一张答辩画布里</h1>
+          <h1>把意图识别、协同路由、学习计划、资源生成与评估结果放到同一页展示</h1>
           <p>
-            这个页面直接串联网关 `/ai/v1/chat`，把题目更关心的
-            `intent`、`agent_trace`、`generated_plan`、`generated_resources`
-            结构化展示出来，方便你讲“检索增强 + 多智能体协作 + 教学资源生成”的完整闭环。
+            页面直接对接异步问答任务接口，完整展示 `intent`、`agent_trace`、`generated_plan`、
+            `generated_resources`、`generated_evaluation` 等关键结果，适合现场答辩与验收。
           </p>
           <div class="heroQuickNav">
+            <router-link class="pathLink secondary" to="/main/index">返回首页</router-link>
             <router-link class="pathLink" to="/main/ai-path">进入正式学习路径页</router-link>
+            <router-link class="pathLink ghost" to="/main/ai-admin">查看后台管控页</router-link>
           </div>
           <div class="heroStats">
             <div class="statCard">
               <span>网关入口</span>
-              <strong>/ai/v1/chat</strong>
+              <strong>/aigw/v1/chat/tasks</strong>
             </div>
             <div class="statCard">
               <span>默认课程</span>
-              <strong>ml_intro</strong>
+              <strong>{{ form.course_code }}</strong>
             </div>
             <div class="statCard">
-              <span>演示模式</span>
-              <strong>4 类场景</strong>
+              <span>支持场景</span>
+              <strong>4 类</strong>
             </div>
           </div>
         </div>
+
         <div class="heroPanel">
           <div class="signalGrid">
             <div class="signalCard mint">
@@ -36,15 +38,15 @@
             </div>
             <div class="signalCard blue">
               <span>Trace</span>
-              <strong>{{ responseData?.agent_trace?.length || 0 }} steps</strong>
+              <strong>{{ agentTrace.length }} steps</strong>
             </div>
             <div class="signalCard amber">
               <span>Plan</span>
-              <strong>{{ planStepCount }} steps</strong>
+              <strong>{{ generatedPlanSteps.length }} steps</strong>
             </div>
             <div class="signalCard coral">
               <span>Resources</span>
-              <strong>{{ resourceCount }} items</strong>
+              <strong>{{ generatedResources.length }} items</strong>
             </div>
           </div>
           <div class="heroFlow">
@@ -57,8 +59,10 @@
     <section class="container workbenchSection">
       <div class="controlPanel">
         <div class="panelTitle">
-          <h2>对话控制台</h2>
-          <p>切换场景、快速填充提示词，然后直接发起一次多智能体调用。</p>
+          <div>
+            <h2>对话控制台</h2>
+            <p>切换场景、快速填充问题，然后发起一次真实的多智能体异步任务。</p>
+          </div>
         </div>
 
         <div class="presetGroup">
@@ -82,15 +86,10 @@
             <span>课程编码</span>
             <el-input v-model="form.course_code" placeholder="例如 ml_intro" />
           </label>
-          <label class="fieldItem">
+          <label class="fieldItem fullRow">
             <span>场景</span>
             <el-select v-model="form.scene" placeholder="请选择场景">
-              <el-option
-                v-for="preset in presets"
-                :key="preset.scene"
-                :label="preset.label"
-                :value="preset.scene"
-              />
+              <el-option v-for="preset in presets" :key="preset.scene" :label="preset.label" :value="preset.scene" />
             </el-select>
           </label>
         </div>
@@ -125,12 +124,12 @@
           <el-button size="large" plain @click="resetForm">重置输入</el-button>
         </div>
 
-        <div v-if="fallbackNotice" class="fallbackPanel">
-          <strong>已切换为演示快照</strong>
-          <p>{{ fallbackNotice }}</p>
+        <div class="taskCard">
+          <span>任务 ID</span>
+          <strong>{{ currentTaskId ? `#${currentTaskId}` : "尚未创建" }}</strong>
         </div>
 
-        <div v-if="errorMessage && !fallbackNotice" class="errorPanel">
+        <div v-if="errorMessage" class="errorPanel">
           <strong>调用失败</strong>
           <p>{{ errorMessage }}</p>
         </div>
@@ -140,9 +139,9 @@
         <div class="resultHeader">
           <div>
             <h2>智能体协同结果</h2>
-            <p>结构化输出适合直接截图到方案文档或现场答辩页面。</p>
+            <p>结构化结果适合直接截图放进方案文档、答辩 PPT 或现场展示页面。</p>
           </div>
-          <div class="statusPill" :class="{ ready: !!responseData, demo: resultMode === 'demo' }">
+          <div class="statusPill" :class="{ ready: !!responseData, running: loading }">
             {{ resultStatusText }}
           </div>
         </div>
@@ -158,19 +157,19 @@
           </div>
           <div class="overviewCard">
             <span>Citations</span>
-            <strong>{{ citationCount }}</strong>
+            <strong>{{ citations.length }}</strong>
           </div>
           <div class="overviewCard">
             <span>Resources</span>
-            <strong>{{ resourceCount }}</strong>
+            <strong>{{ generatedResources.length }}</strong>
           </div>
         </div>
 
         <div class="resultBlock">
-          <div class="blockTitle">Learning Profile</div>
+          <div class="blockTitle">学习画像</div>
           <div v-if="profileDimensions.length" class="profilePanel">
             <div class="profileSummary">
-              <strong>{{ profileSummary || "已生成六维学习画像" }}</strong>
+              <strong>{{ generatedProfile?.summary || "已生成学习画像摘要" }}</strong>
               <p v-if="profileTags.length">标签：{{ profileTags.join(" / ") }}</p>
             </div>
             <div class="profileGrid">
@@ -183,11 +182,11 @@
                 <div v-if="item.evidence?.length" class="profileEvidence">
                   <span v-for="evidence in item.evidence" :key="evidence">{{ evidence }}</span>
                 </div>
-                <em>{{ item.study_advice || "后续会用于路径与资源调度。" }}</em>
+                <em>{{ item.study_advice || "后续用于资源和路径调度。" }}</em>
               </div>
             </div>
           </div>
-          <div v-else class="emptyState">运行后会展示知识基础、认知风格、学习进度等六维画像结果。</div>
+          <div v-else class="emptyState">运行后这里会展示学习画像。</div>
         </div>
 
         <div class="resultBlock">
@@ -201,20 +200,20 @@
               </div>
             </div>
           </div>
-          <div v-else class="emptyState">运行后会展示路由决策和各 Agent 的执行痕迹。</div>
+          <div v-else class="emptyState">运行后这里会展示各个智能体节点的执行轨迹。</div>
         </div>
 
         <div class="resultBlock">
-          <div class="blockTitle">Answer</div>
+          <div class="blockTitle">最终回答</div>
           <div v-if="responseData?.answer" class="answerCard">{{ responseData.answer }}</div>
-          <div v-else class="emptyState">这里会展示整合后的最终回答。</div>
+          <div v-else class="emptyState">这里会展示聚合后的最终回答。</div>
         </div>
 
         <div class="resultBlock dualBlock">
           <div class="subBlock">
-            <div class="blockTitle">Generated Plan</div>
-            <div v-if="planSummary || generatedPlanSteps.length" class="planCard">
-              <p v-if="planSummary" class="planSummary">{{ planSummary }}</p>
+            <div class="blockTitle">生成计划</div>
+            <div v-if="generatedPlan" class="planCard">
+              <p v-if="generatedPlan.summary" class="planSummary">{{ generatedPlan.summary }}</p>
               <div v-if="planStages.length" class="stageGrid">
                 <div v-for="stage in planStages" :key="`${stage.stage_no}-${stage.stage_name}`" class="stageCard">
                   <span>{{ stage.stage_name || `Stage ${stage.stage_no}` }}</span>
@@ -234,11 +233,11 @@
                 <span v-for="risk in planRiskAlerts" :key="risk">{{ risk }}</span>
               </div>
             </div>
-            <div v-else class="emptyState">当前场景没有生成学习计划时，这里会保持为空。</div>
+            <div v-else class="emptyState">当前场景没有生成计划时，这里保持为空。</div>
           </div>
 
           <div class="subBlock">
-            <div class="blockTitle">Citations</div>
+            <div class="blockTitle">引用片段</div>
             <div v-if="citations.length" class="citationList">
               <div v-for="citation in citations" :key="`${citation.chunk_id}-${citation.source}`" class="citationCard">
                 <strong>{{ citation.source || "未命名片段" }}</strong>
@@ -246,12 +245,12 @@
                 <em>相似度 {{ formatScore(citation.score) }}</em>
               </div>
             </div>
-            <div v-else class="emptyState">当前回答未返回引用片段时，这里会保持为空。</div>
+            <div v-else class="emptyState">当前结果未返回引用片段时，这里保持为空。</div>
           </div>
         </div>
 
         <div class="resultBlock">
-          <div class="blockTitle">Evaluation Report</div>
+          <div class="blockTitle">测评报告</div>
           <div v-if="generatedEvaluation" class="evaluationPanel">
             <div class="evaluationSummary">
               <div class="evaluationScore">
@@ -264,33 +263,25 @@
               </div>
             </div>
             <div v-if="generatedEvaluationLayers.length" class="evaluationGrid">
-              <div
-                v-for="layer in generatedEvaluationLayers"
-                :key="layer.level"
-                class="evaluationCard"
-              >
+              <div v-for="layer in generatedEvaluationLayers" :key="layer.level" class="evaluationCard">
                 <span>{{ layer.level }}</span>
                 <strong>{{ layer.score }}</strong>
                 <p>{{ layer.comment }}</p>
               </div>
             </div>
             <div v-if="generatedEvaluationMetrics.length" class="metricList">
-              <div
-                v-for="metric in generatedEvaluationMetrics"
-                :key="metric.metric_name"
-                class="metricItem"
-              >
+              <div v-for="metric in generatedEvaluationMetrics" :key="metric.metric_name" class="metricItem">
                 <strong>{{ metric.metric_name }}</strong>
                 <span>{{ metric.score }}</span>
                 <p>{{ metric.comment }}</p>
               </div>
             </div>
           </div>
-          <div v-else class="emptyState">Run a path or comprehensive scene to visualize the evaluation loop.</div>
+          <div v-else class="emptyState">运行学习路径或综合场景后，这里会展示测评闭环结果。</div>
         </div>
 
         <div class="resultBlock">
-          <div class="blockTitle">Generated Resources</div>
+          <div class="blockTitle">生成资源</div>
           <div v-if="generatedResources.length" class="resourceGrid">
             <div v-for="(resource, index) in generatedResources" :key="index" class="resourceCard">
               <div class="resourceMeta">
@@ -372,8 +363,6 @@ const form = reactive(initialForm());
 const loading = ref(false);
 const errorMessage = ref("");
 const responseData = ref(null);
-const fallbackNotice = ref("");
-const resultMode = ref("idle");
 const currentTaskId = ref(null);
 
 const agentTrace = computed(() => responseData.value?.agent_trace || []);
@@ -384,25 +373,15 @@ const generatedProfile = computed(() => responseData.value?.profile || null);
 const generatedEvaluation = computed(() => responseData.value?.generated_evaluation || null);
 const generatedPlanSteps = computed(() => generatedPlan.value?.steps || []);
 const planStages = computed(() => generatedPlan.value?.stages || []);
-const planSummary = computed(() => generatedPlan.value?.summary || "");
 const planRiskAlerts = computed(() => generatedPlan.value?.risk_alerts || []);
-const citationCount = computed(() => citations.value.length);
-const resourceCount = computed(() => generatedResources.value.length);
 const answerLength = computed(() => responseData.value?.answer?.length || 0);
-const planStepCount = computed(() => generatedPlanSteps.value.length);
-const profileSummary = computed(() => generatedProfile.value?.summary || "");
 const profileTags = computed(() => generatedProfile.value?.profile_tags || []);
 const generatedEvaluationMetrics = computed(() => generatedEvaluation.value?.metrics || []);
 const generatedEvaluationLayers = computed(() => generatedEvaluation.value?.layered_results || []);
 const profileDimensions = computed(() => {
   const dimensions = generatedProfile.value?.dimensions || {};
   const order = generatedProfile.value?.dimension_order || Object.keys(dimensions);
-  return order
-    .filter((key) => dimensions[key])
-    .map((key) => ({
-      key,
-      ...dimensions[key],
-    }));
+  return order.filter((key) => dimensions[key]).map((key) => ({ key, ...dimensions[key] }));
 });
 const heroTracePreview = computed(() => {
   if (agentTrace.value.length) {
@@ -414,11 +393,8 @@ const resultStatusText = computed(() => {
   if (loading.value && currentTaskId.value) {
     return `任务执行中 #${currentTaskId.value}`;
   }
-  if (resultMode.value === "live") {
+  if (responseData.value) {
     return "实时结果";
-  }
-  if (resultMode.value === "demo") {
-    return "演示快照";
   }
   return "等待调用";
 });
@@ -436,13 +412,13 @@ const fillPrompt = (prompt) => {
 const resetForm = () => {
   Object.assign(form, initialForm());
   errorMessage.value = "";
-  fallbackNotice.value = "";
   currentTaskId.value = null;
 };
 
-const sleep = (ms) => new Promise((resolve) => {
-  setTimeout(resolve, ms);
-});
+const sleep = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const pollChatTaskUntilDone = async (taskId, timeoutMs = 120000, intervalMs = 2000) => {
   const startedAt = Date.now();
@@ -456,7 +432,7 @@ const pollChatTaskUntilDone = async (taskId, timeoutMs = 120000, intervalMs = 20
     }
     await sleep(intervalMs);
   }
-  throw new Error(`demo_ui_timeout_${timeoutMs}`);
+  throw new Error(`任务超时，等待超过 ${timeoutMs / 1000} 秒`);
 };
 
 const submitChat = async () => {
@@ -467,8 +443,6 @@ const submitChat = async () => {
 
   loading.value = true;
   errorMessage.value = "";
-  fallbackNotice.value = "";
-  resultMode.value = "idle";
   responseData.value = null;
   currentTaskId.value = null;
 
@@ -480,251 +454,37 @@ const submitChat = async () => {
       message: form.message.trim(),
     });
     currentTaskId.value = task.task_id;
-    responseData.value = await pollChatTaskUntilDone(
-      task.task_id,
-      120000,
-      task.poll_interval_ms || 2000,
-    );
-    resultMode.value = "live";
+    responseData.value = await pollChatTaskUntilDone(task.task_id, 120000, task.poll_interval_ms || 2000);
     ElMessage.success("多智能体演示结果已生成");
   } catch (error) {
     errorMessage.value =
       error?.response?.data?.detail || error?.message || "AI 服务暂时不可用，请检查网关和 Python 服务";
-    fallbackNotice.value = "本地开发代理对长响应不稳定，页面已自动切换为同结构演示快照，便于继续展示多智能体结果。";
-    responseData.value = buildDemoResponse({
-      userId: form.user_id,
-      courseCode: form.course_code.trim(),
-      scene: form.scene,
-      message: form.message.trim(),
-    });
-    resultMode.value = "demo";
-    ElMessage.warning("实时链路未完成，已切换为演示快照");
   } finally {
     loading.value = false;
   }
 };
 
 const parseTraceTitle = (trace) => {
-  if (!trace?.includes(":")) {
-    return trace || "unknown";
-  }
-  return trace.split(":")[0];
+  const parts = String(trace).split(":");
+  return parts[0] || "agent";
 };
 
 const parseTraceDetail = (trace) => {
-  if (!trace?.includes(":")) {
-    return "已执行该智能体节点";
-  }
-  const detail = trace.split(":").slice(1).join(":");
-  return `输出标记：${detail}`;
+  const parts = String(trace).split(":");
+  return parts.slice(1).join(":").trim() || "执行完成";
 };
 
-const getPlanStepTitle = (step, index) => step?.title || step?.name || `阶段 ${index + 1}`;
+const getPlanStepTitle = (step, index) =>
+  step?.title || step?.step_name || step?.focus || `计划步骤 ${index + 1}`;
 
 const getPlanStepDescription = (step) =>
-  step?.description || step?.objective || step?.content || step?.goal || "该阶段用于推进当前主题学习。";
+  step?.description || step?.task || step?.objective || step?.content || "该阶段已生成默认执行说明。";
 
 const formatScore = (score) => {
-  if (typeof score !== "number") {
+  if (score === undefined || score === null || Number.isNaN(Number(score))) {
     return "--";
   }
-  return score.toFixed(3);
-};
-
-const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
-  const intentMap = {
-    study_assistant: "qa",
-    study_plan: "study_plan",
-    resource_generation: "resource_generation",
-    comprehensive: "comprehensive",
-  };
-  const normalizedIntent = intentMap[scene] || "comprehensive";
-  const baseTrace = ["profile", `router:${normalizedIntent}`];
-  const traceByIntent = {
-    qa: [...baseTrace, "retriever:4", "evaluator", "safety"],
-    study_plan: [...baseTrace, "planner:3", "assessment:79", "evaluator", "safety"],
-    resource_generation: [...baseTrace, "resource:2", "evaluator", "safety"],
-    comprehensive: [...baseTrace, "retriever:4", "planner:3", "resource:2", "assessment:79", "evaluator", "safety"],
-  };
-
-  const citationsData = [
-    { source: "监督学习基础", chunk_id: 22, score: 0.218 },
-    { source: "特征工程与实践建议", chunk_id: 24, score: 0.205 },
-    { source: "模型评估与过拟合", chunk_id: 23, score: 0.179 },
-    { source: "机器学习导论-课程概览", chunk_id: 21, score: 0.153 },
-  ];
-
-  const planData = {
-    user_id: userId,
-    course_code: courseCode,
-    course_name: "机器学习导论",
-    summary: `围绕“${message}”生成的 3 天学习路径，适合答辩中展示“检索增强 + 计划生成”的组合能力。`,
-    progress_hint: "当前进度按首次学习估计，可在后续接入真实用户画像后细化。",
-    next_action: "优先完成第 1 天的概念理解与笔记整理，再进入练习和资源吸收阶段。",
-    risk_alerts: ["当前为演示快照，后续可进一步接入真实学情与历史行为。"],
-    stages: [
-      {
-        stage_no: 1,
-        stage_name: "Foundation",
-        focus: "Concept diagnosis",
-        objective: "Confirm key concepts and baseline understanding.",
-        status: "in_progress",
-      },
-      {
-        stage_no: 2,
-        stage_name: "Weak-point Fix",
-        focus: "Overfitting and generalization",
-        objective: "Target common mistakes and model evaluation gaps.",
-        status: "pending",
-      },
-      {
-        stage_no: 3,
-        stage_name: "Consolidation",
-        focus: "Comprehensive application",
-        objective: "Output a complete explanation and practice result.",
-        status: "pending",
-      },
-    ],
-    steps: [
-      {
-        day: 1,
-        title: "监督学习基础",
-        objective: "理解过拟合、泛化误差与训练/验证/测试集的关系。",
-        tasks: ["阅读概念讲义", "整理 3 条核心定义", "完成 1 组基础判断题"],
-        checkpoint: "能够用自己的话解释“训练好不等于泛化好”。",
-      },
-      {
-        day: 2,
-        title: "特征工程与实践建议",
-        objective: "掌握特征处理对模型效果与过拟合风险的影响。",
-        tasks: ["复习特征处理流程", "比较基线模型与优化模型", "完成 1 个案例分析"],
-        checkpoint: "能指出至少 2 种降低噪声和过拟合风险的做法。",
-      },
-      {
-        day: 3,
-        title: "模型评估与过拟合",
-        objective: "结合指标和学习曲线判断模型是否过拟合。",
-        tasks: ["复习准确率、召回率、F1", "观察学习曲线示例", "完成 1 组综合题"],
-        checkpoint: "能够根据训练/验证表现提出合理改进建议。",
-      },
-    ],
-  };
-
-  const resourcesData = [
-    {
-      resource_type: "lecture_note",
-      title: "课程讲义",
-      summary: "围绕过拟合主题整理的讲义摘要，可用于课堂展示和课后复习。",
-      content_markdown:
-        "# 过拟合讲义提纲\n\n## 核心概念\n- 训练误差与泛化误差\n- 欠拟合 / 过拟合\n- 验证集与交叉验证\n\n## 典型现象\n- 训练集表现很好，测试集表现下降\n- 模型复杂度过高\n\n## 常见缓解方式\n- 增加数据\n- 正则化\n- 降低模型复杂度\n- 更合理的特征工程",
-      source_titles: ["监督学习基础", "模型评估与过拟合"],
-      study_suggestion: "先通读讲义，再把关键术语整理成自己的思维导图。",
-    },
-    {
-      resource_type: "quiz_set",
-      title: "分层练习题",
-      summary: "包含基础题、案例题和综合题，适合答辩演示“资源生成”能力。",
-      content_markdown:
-        "# 练习建议\n\n- 基础题：区分训练误差与测试误差\n- 提升题：分析一个过拟合案例\n- 综合题：设计一个降低过拟合风险的实验方案",
-      source_titles: ["特征工程与实践建议", "模型评估与过拟合"],
-      study_suggestion: "先做基础题，再做综合题，最后回看错误原因。",
-    },
-  ];
-
-  const answerByIntent = {
-    qa: "过拟合是指模型在训练集上学得过于细致，连噪声也记住了，所以训练表现很好，但到了新数据上泛化能力下降。",
-    study_plan: "我已经为你生成了一个 3 天学习计划，先补概念基础，再进入特征工程与模型评估，最后做综合练习。",
-    resource_generation: "我已经为你准备了讲义提纲和分层练习题，方便你直接展示课程资源自动生成效果。",
-    comprehensive:
-      "过拟合是模型对训练样本记忆过强、对新样本泛化不足的现象。我已经同时整理了学习计划和推荐资源，方便从概念理解一路推进到练习与复盘。",
-  };
-
-  const evaluationData = {
-    overall_score: 78.6,
-    mastery_level: "stable",
-    report_summary: "The system has formed a first-round learning evaluation and can feed it back into profile and path planning.",
-    layered_results: [
-      { level: "Basic", score: 84, comment: "Core definitions are understandable and can support standard tasks." },
-      { level: "Advanced", score: 78, comment: "Need more practice on evaluation indicators and weak-point diagnosis." },
-      { level: "Challenge", score: 72, comment: "Comprehensive migration still needs staged reinforcement." },
-    ],
-    metrics: [
-      { metric_name: "Knowledge Mastery", score: 81, comment: "Good baseline understanding of the current topic." },
-      { metric_name: "Learning Engagement", score: 79, comment: "Task rhythm and path completion are relatively stable." },
-      { metric_name: "Resource Efficiency", score: 76, comment: "Generated materials are being used in the right stage." },
-      { metric_name: "Weak-point Repair", score: 74, comment: "Weak-point closure has started but is not complete yet." },
-    ],
-  };
-
-  return {
-    session_id: null,
-    answer: answerByIntent[normalizedIntent] || answerByIntent.comprehensive,
-    citations: normalizedIntent === "resource_generation" ? citationsData.slice(0, 2) : citationsData,
-    intent: normalizedIntent,
-    agent_trace: traceByIntent[normalizedIntent] || traceByIntent.comprehensive,
-    profile: {
-      summary: "已基于六维学习画像完成结构化分析，可直接驱动资源生成、路径规划与效果评估闭环。",
-      profile_tags: ["机器学习导论", "过拟合", "复习冲刺", "任务驱动"],
-      dimension_order: [
-        "knowledge_foundation",
-        "cognitive_style",
-        "learning_progress",
-        "weak_point_preference",
-        "interest_orientation",
-        "learning_habit",
-      ],
-      dimensions: {
-        knowledge_foundation: {
-          label: "知识基础",
-          current_level: "中等基础",
-          analysis: "当前对话表明用户已具备基础课程认知，但仍需围绕过拟合等重点知识点做系统巩固。",
-          evidence: ["ml_intro", "过拟合", "学习计划"],
-          study_advice: "先巩固核心定义，再通过题目和案例强化泛化误差理解。",
-        },
-        cognitive_style: {
-          label: "认知风格",
-          current_level: "结构规划型",
-          analysis: "用户同时需要解释、计划和资源，更适合分阶段、带结构的学习组织方式。",
-          evidence: ["解释问题", "学习计划", "推荐资源"],
-          study_advice: "后续资源优先按步骤化讲解和任务卡组织。",
-        },
-        learning_progress: {
-          label: "学习进度",
-          current_level: "复习巩固",
-          analysis: "当前需求带有明显复习和查漏补缺特征，适合先短期收敛核心知识点。",
-          evidence: ["3天计划", "复习", "资源推荐"],
-          study_advice: "建议按 3 天路径推进，并在每天结束后做一次小测回顾。",
-        },
-        weak_point_preference: {
-          label: "易错点偏好",
-          current_level: "待重点关注",
-          analysis: "过拟合、泛化误差与模型评估是当前最需要优先补强的主题。",
-          evidence: ["模型评估与过拟合", "监督学习基础"],
-          study_advice: "先补弱点，再扩展到特征工程和实验案例。",
-        },
-        interest_orientation: {
-          label: "兴趣取向",
-          current_level: "课程目标导向",
-          analysis: "用户当前以课程学习目标和比赛演示为中心，更关注直接可用的高价值内容。",
-          evidence: ["课程讲义", "分层练习题"],
-          study_advice: "后续资源优先围绕课程任务和答辩场景组织。",
-        },
-        learning_habit: {
-          label: "学习习惯",
-          current_level: "任务驱动",
-          analysis: "用户倾向于通过明确任务、资源和结果输出来推动学习。",
-          evidence: ["计划", "资源", "练习"],
-          study_advice: "建议保留任务清单、错题复盘和资源收藏闭环。",
-        },
-      },
-    },
-    generated_plan: normalizedIntent === "qa" ? null : planData,
-    generated_resources: normalizedIntent === "study_plan" ? [] : resourcesData,
-    generated_evaluation:
-      normalizedIntent === "study_plan" || normalizedIntent === "comprehensive"
-        ? evaluationData
-        : null,
-  };
+  return Number(score).toFixed(3);
 };
 </script>
 
@@ -756,7 +516,7 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
 .resultPanel {
   border: 1px solid rgba(133, 158, 187, 0.22);
   background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 24px 60px rgba(31, 58, 94, 0.10);
+  box-shadow: 0 24px 60px rgba(31, 58, 94, 0.1);
   backdrop-filter: blur(18px);
 }
 
@@ -798,6 +558,9 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
 }
 
 .heroQuickNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 20px;
 }
 
@@ -812,11 +575,17 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   background: #132c4d;
   color: #fff;
   font-weight: 700;
+}
 
-  &:hover {
-    color: #fff;
-    background: #0f2440;
-  }
+.pathLink.secondary {
+  background: #e0f2fe;
+  color: #123b74;
+}
+
+.pathLink.ghost {
+  background: rgba(255, 255, 255, 0.86);
+  color: #123b74;
+  border: 1px solid rgba(18, 59, 116, 0.12);
 }
 
 .statCard {
@@ -897,7 +666,6 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
 }
 
 .flowNode {
-  position: relative;
   padding: 10px 14px;
   border-radius: 999px;
   background: #eff5fa;
@@ -920,11 +688,6 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
 
 .panelTitle,
 .resultHeader {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-
   h2 {
     font-size: 24px;
     color: #172033;
@@ -960,14 +723,11 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: 0.2s ease;
 
   &:hover,
   &.active {
-    transform: translateY(-2px);
     background: linear-gradient(135deg, #0d67dc 0%, #1f9b83 100%);
     color: #fff;
-    box-shadow: 0 16px 28px rgba(15, 89, 166, 0.22);
   }
 }
 
@@ -989,7 +749,7 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   }
 }
 
-.fieldItem:last-child {
+.fullRow {
   grid-column: 1 / -1;
 }
 
@@ -1006,12 +766,6 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   border-radius: 20px;
   background: linear-gradient(180deg, #f7fbff 0%, #eef5fb 100%);
   cursor: pointer;
-  transition: 0.2s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 16px 30px rgba(22, 72, 132, 0.12);
-  }
 
   strong {
     color: #15304f;
@@ -1030,25 +784,32 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   margin-top: 24px;
 }
 
+.taskCard {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: #f4f8fb;
+
+  span {
+    display: block;
+    color: #6c7e95;
+    font-size: 12px;
+  }
+
+  strong {
+    display: block;
+    margin-top: 10px;
+    color: #132238;
+    font-size: 20px;
+  }
+}
+
 .errorPanel {
   margin-top: 18px;
   padding: 16px 18px;
   border-radius: 18px;
   background: #fff1f0;
   color: #8f2d28;
-
-  p {
-    margin-top: 8px;
-    line-height: 1.7;
-  }
-}
-
-.fallbackPanel {
-  margin-top: 18px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: #fff8e8;
-  color: #8a5a08;
 
   p {
     margin-top: 8px;
@@ -1069,9 +830,9 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   color: #19724f;
 }
 
-.statusPill.demo {
-  background: rgba(243, 162, 34, 0.16);
-  color: #9a6105;
+.statusPill.running {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .overviewGrid {
@@ -1542,10 +1303,7 @@ const buildDemoResponse = ({ userId, courseCode, scene, message }) => {
   .dualBlock,
   .resourceGrid,
   .heroStats,
-  .overviewGrid {
-    grid-template-columns: 1fr;
-  }
-
+  .overviewGrid,
   .fieldGrid,
   .presetGroup,
   .profileGrid,

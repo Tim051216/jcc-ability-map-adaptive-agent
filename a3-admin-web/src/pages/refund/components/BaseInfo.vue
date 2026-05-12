@@ -101,22 +101,22 @@
     </div>
     <div >
       <!-- 标题 -->
-      <div class="tit"><span>课程信息</span></div>
+      <div class="tit"><span>内容信息</span></div>
       <!-- end -->
-      <!-- 课程信息 -->
+      <!-- 内容信息 -->
       <div class="coureseInfo">
         <div class="infoList">
           <div class="headInfo">
-            <p>课程名称</p>
-            <p>课程价格(元)</p>
-            <p>课程有效期</p>
+            <p>内容名称</p>
+            <p>内容价格(元)</p>
+            <p>内容有效期</p>
           </div>
           <div class="con">
             <div>{{ fromData.name }}</div>
             <div>{{ decimalsReplenish(Number(fromData.price / 100 )) }}</div>
             <div>
               <p>{{ fromData.studyValidDuration || "--"}}</p>
-              <p class="warnTip" >退款课程无法学习</p>
+              <p class="warnTip" >退款内容无法学习</p>
             </div>
           </div>
         </div>
@@ -125,10 +125,10 @@
             子订单总价<label>{{ decimalsReplenish(Number(fromData.price / 100 ))}}元</label>
           </p>
           <p>
-            优惠券<label>{{
+            活动权益<label>{{
               fromData.couponRule
                 ? fromData.couponRule
-                : "未使用优惠券"
+                : "未使用活动权益"
             }}</label>
           </p>
           <p>

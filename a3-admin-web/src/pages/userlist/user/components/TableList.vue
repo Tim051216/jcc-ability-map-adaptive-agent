@@ -3,7 +3,7 @@
     <!-- 表格 -->
     <el-table :data="userData" border stripe v-loading="loading" class="userTableList">
       <el-table-column type="index" align="center" width="100" label="序号" />
-      <el-table-column label="后台用户名称" min-width="240" class-name="textLeft">
+      <el-table-column label="管理账号名称" min-width="240" class-name="textLeft">
         <template #default="scope">
           <div class="head">
             <span @click="handleMagnify(scope.row.icon)">
@@ -17,7 +17,7 @@
       </el-table-column>
       <el-table-column
         prop="cellPhone"
-        label="后台用户手机号"
+        label="管理账号手机号"
         min-width="160"
       />
       <el-table-column prop="roleName" label="角色" min-width="150">

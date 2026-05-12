@@ -7,7 +7,6 @@ import com.cnsoftbei.a3.api.dto.leanring.LearningRecordDTO;
 import com.cnsoftbei.a3.common.exceptions.BizIllegalException;
 import com.cnsoftbei.a3.common.exceptions.DbException;
 import com.cnsoftbei.a3.common.utils.BeanUtils;
-import com.cnsoftbei.a3.common.utils.CollUtils;
 import com.cnsoftbei.a3.common.utils.UserContext;
 import com.cnsoftbei.a3.learning.domain.dto.LearningRecordFormDTO;
 import com.cnsoftbei.a3.learning.domain.po.LearningLesson;
@@ -15,6 +14,7 @@ import com.cnsoftbei.a3.learning.domain.po.LearningRecord;
 import com.cnsoftbei.a3.learning.enums.LessonStatus;
 import com.cnsoftbei.a3.learning.enums.SectionType;
 import com.cnsoftbei.a3.learning.mapper.LearningRecordMapper;
+import com.cnsoftbei.a3.learning.service.ILearningBehaviorCollectionService;
 import com.cnsoftbei.a3.learning.service.ILearningLessonService;
 import com.cnsoftbei.a3.learning.service.ILearningRecordService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -23,10 +23,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.validation.constraints.NotNull;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
-
-import static org.checkerframework.checker.units.qual.Prefix.one;
+import java.util.Map;
 
 /**
  * <p>
@@ -43,11 +43,12 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
     private final ILearningLessonService lessonService;
     private final CourseClient courseClient;
     private final LearningRecordDelayTaskHandler taskHandler;
+    private final ILearningBehaviorCollectionService learningBehaviorCollectionService;
 
     @Override
     public LearningLessonDTO queryLearningRecordByCourse(Long courseId) {
         //1.获取当前用户
-        Long user = UserContext.getUser();
+        Long user = UserContext.requireUser();
         //2.查询lesson信息
         LearningLesson learningLesson = lessonService.queryByUserAndCourseId(user, courseId);
         if(learningLesson == null){
@@ -56,6 +57,7 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
         //3.查询record表的小节学习进度
         List<LearningRecord> records = lambdaQuery()
                 .eq(LearningRecord::getLessonId, learningLesson.getId())
+                .eq(LearningRecord::getUserId, user)
                 .list();
         // 没有得到学习记录不能抛异常，别问我怎么知道的
         // if(CollUtils.isEmpty(records)){
@@ -78,7 +80,7 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
     @Override
     @Transactional
     public void addLearningRecord(LearningRecordFormDTO recordDTO) {
-        Long user = UserContext.getUser();
+        Long user = UserContext.requireUser();
         SectionType type = recordDTO.getSectionType();
         //判断是否已经考完试或者小节已经全部学完
         boolean finished = false;
@@ -236,8 +238,8 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
      * @return
      */
     private boolean handleVideoRecordWithRedis(Long userId, LearningRecordFormDTO recordDTO) {
-        //查询旧的学习记录
-        LearningRecord oldRecord = queryOldRecord(recordDTO.getLessonId(), recordDTO.getSectionId());
+        //查询旧的学习记录（DB 侧按 userId 限定，避免异常数据下串读）
+        LearningRecord oldRecord = queryOldRecord(userId, recordDTO.getLessonId(), recordDTO.getSectionId());
         //1.没有旧的学习记录
         if(oldRecord == null){
             LearningRecord learningRecord = BeanUtils.copyBean(recordDTO, LearningRecord.class);
@@ -281,11 +283,29 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
         }
         //3.如果是第一次学完，则清除redis中的学习记录
         taskHandler.cleanRecordCache(recordDTO.getLessonId(), recordDTO.getSectionId());
+        if (finished) {
+            Map<String, Object> payload = new HashMap<>(8);
+            payload.put("source", "course_video");
+            payload.put("lesson_id", recordDTO.getLessonId());
+            payload.put("section_id", recordDTO.getSectionId());
+            payload.put("watched_seconds", recordDTO.getMoment());
+            payload.put("video_duration_seconds", recordDTO.getDuration());
+            payload.put("resource_type_hint", "video");
+            learningBehaviorCollectionService.collect(
+                    userId,
+                    2,
+                    payload,
+                    "section",
+                    recordDTO.getSectionId(),
+                    "completed",
+                    recordDTO.getMoment()
+            );
+        }
         return finished;
     }
 
-    //查询是否存在记录
-    private LearningRecord queryOldRecord(Long lessonId, Long sectionId) {
+    //查询是否存在记录（Redis 按 lessonId 分区，与课表一一对应；库表再按 userId 收敛）
+    private LearningRecord queryOldRecord(Long userId, Long lessonId, Long sectionId) {
         //1.查询redis
         LearningRecord record = taskHandler.readRecordCache(lessonId, sectionId);
         //2.redis存在直接返回该记录
@@ -294,6 +314,7 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
         }
         //3.redis不存在，查询数据库
         LearningRecord one = lambdaQuery()
+                .eq(LearningRecord::getUserId, userId)
                 .eq(LearningRecord::getLessonId, lessonId)
                 .eq(LearningRecord::getSectionId, sectionId)
                 .one();
@@ -306,17 +327,58 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
         }
     }
 
+    /**
+     * 课程小节考试：与视频一致，同一用户+课表+小节仅一条记录；首次完成才推进课表已学小节数。
+     */
     private boolean handleExamRecord(Long userId, LearningRecordFormDTO recordDTO) {
-        LearningRecord learningRecord = new LearningRecord();
-        learningRecord.setFinished(true);
-        learningRecord.setFinishTime(recordDTO.getCommitTime());
-        learningRecord.setSectionId(recordDTO.getSectionId());
-        learningRecord.setLessonId(recordDTO.getLessonId());
-        learningRecord.setUserId(userId);
-        boolean save = save(learningRecord);
-        if(!save){
-            throw new DbException("新增考试记录失败");
+        LearningRecord existing = lambdaQuery()
+                .eq(LearningRecord::getUserId, userId)
+                .eq(LearningRecord::getLessonId, recordDTO.getLessonId())
+                .eq(LearningRecord::getSectionId, recordDTO.getSectionId())
+                .one();
+        LocalDateTime now = LocalDateTime.now();
+        boolean firstCompletion;
+        if (existing == null) {
+            LearningRecord learningRecord = new LearningRecord();
+            learningRecord.setFinished(true);
+            learningRecord.setFinishTime(recordDTO.getCommitTime());
+            learningRecord.setSectionId(recordDTO.getSectionId());
+            learningRecord.setLessonId(recordDTO.getLessonId());
+            learningRecord.setUserId(userId);
+            learningRecord.setCreateTime(now);
+            learningRecord.setUpdateTime(now);
+            if (!save(learningRecord)) {
+                throw new DbException("新增考试记录失败");
+            }
+            firstCompletion = true;
+        } else {
+            boolean wasFinished = Boolean.TRUE.equals(existing.getFinished());
+            firstCompletion = !wasFinished;
+            boolean ok = lambdaUpdate()
+                    .set(LearningRecord::getFinished, true)
+                    .set(LearningRecord::getFinishTime, recordDTO.getCommitTime())
+                    .set(LearningRecord::getUpdateTime, now)
+                    .eq(LearningRecord::getId, existing.getId())
+                    .update();
+            if (!ok) {
+                throw new DbException("更新考试记录失败");
+            }
         }
-        return true;
+        if (firstCompletion) {
+            Map<String, Object> payload = new HashMap<>(8);
+            payload.put("source", "course_section_exam");
+            payload.put("lesson_id", recordDTO.getLessonId());
+            payload.put("section_id", recordDTO.getSectionId());
+            learningBehaviorCollectionService.collect(
+                    userId,
+                    1,
+                    payload,
+                    "section",
+                    recordDTO.getSectionId(),
+                    "completed",
+                    null
+            );
+        }
+        return firstCompletion;
     }
 }

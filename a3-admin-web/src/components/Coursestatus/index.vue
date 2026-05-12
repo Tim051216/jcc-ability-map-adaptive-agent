@@ -7,14 +7,14 @@
     >
       <div v-if="title==='确认上架'">
         <p>请确认是否立即上架？</p>
-        <p>上架后课程将在用户端进行展示，上架后若修改课程信息，需将课程先进行下架</p>
+        <p>上架后内容将在用户端进行展示，上架后若修改内容信息，需先将内容下架</p>
       </div>
       <p v-else>{{statusText}}</p>
 
       <div class="statusList" v-if="title==='确认下架'">
          <ul>
-           <li><label>课程名称：</label>{{courseData.name}}</li>
-           <li><label>报名人数：</label>{{courseData.sold}}</li>
+           <li><label>内容名称：</label>{{courseData.name}}</li>
+           <li><label>学习报名人数：</label>{{courseData.sold}}</li>
            <li><label>下架时间：</label>{{courseData.purchaseEndTime}}</li>
          </ul>
       </div>

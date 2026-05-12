@@ -1,4 +1,4 @@
-// 项目配置页面
+// Vite 开发配置
 import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
 import svgLoader from "vite-svg-loader";
@@ -6,18 +6,24 @@ import vueJsx from "@vitejs/plugin-vue-jsx";
 import path from "path";
 
 const CWD = process.cwd();
-const API_PROXY_TARGET = {
-  local: "http://127.0.0.1:10010",
-  development: "https://tjxt-admin-t.itheima.net",
-  mock: "https://tjxt-admin-t.itheima.net",
-};
 
-// 配置参考 https://vitejs.dev/config/
+// 配置参考：https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  loadEnv(mode, CWD);
-  const apiTarget = API_PROXY_TARGET[mode] || API_PROXY_TARGET.local;
+  const env = loadEnv(mode, CWD, "");
+  const apiProxyTarget = {
+    // 避免直接使用 local 作为 mode，防止与 Vite 的 .env.local 规则冲突
+    devlocal: env.VITE_LOCAL_GATEWAY_URL || "http://127.0.0.1:10010",
+    development:
+      env.VITE_DEVELOPMENT_PROXY_TARGET || "https://tjxt-admin-t.itheima.net",
+    mock: env.VITE_MOCK_PROXY_TARGET || "https://tjxt-admin-t.itheima.net",
+  };
+  const aiResourceProxyTarget =
+    env.VITE_LOCAL_AI_RESOURCE_URL || "http://127.0.0.1:18080";
+  const imageAssetProxyTarget =
+    env.VITE_IMAGE_ASSET_PROXY_TARGET || "https://tjxt-dev.itheima.net";
+  const apiTarget = apiProxyTarget[mode] || apiProxyTarget.devlocal;
   const rewriteApiPath =
-    mode === "local"
+    mode === "devlocal"
       ? (proxyPath) => proxyPath.replace(/^\/api/, "")
       : (proxyPath) => proxyPath;
   return {
@@ -43,14 +49,24 @@ export default defineConfig(({ mode }) => {
       //   },
       // },
       proxy: {
+        "/api/resource": {
+          target: mode === "devlocal" ? aiResourceProxyTarget : apiTarget,
+          changeOrigin: true,
+          ws: true,
+          rewrite:
+            mode === "devlocal"
+              ? (proxyPath) => proxyPath.replace(/^\/api\/resource/, "/api/v1/resource")
+              : (proxyPath) => proxyPath,
+        },
         "/api": {
           target: apiTarget,
           changeOrigin: true,
+          ws: true,
           rewrite: rewriteApiPath,
         },
         "/img-tx": {
-          // 图片资源仍走上游公开静态地址，避免本地缺失素材导致页面空白
-          target: "https://tjxt-dev.itheima.net",
+          // 图片静态资源继续走历史联调地址，避免本地缺少素材时页面空白
+          target: imageAssetProxyTarget,
           changeOrigin: true,
           // rewrite: (path) => {
           //   return path.replace(/^\/img-tx/, '')

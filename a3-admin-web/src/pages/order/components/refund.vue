@@ -134,10 +134,10 @@ const handleSubmit = async () => {
 }
 // 定义radio框的值,退款说明
 const radioValue = [
-  { label: "由于技术故障引发课程无法学习", value: 1 },
-  { label: "未使用优惠券", value: 2 },
+  { label: "由于技术故障引发内容无法学习", value: 1 },
+  { label: "未使用活动权益", value: 2 },
   { label: "个人原因（个人网络原因、计划有变、账号异常等）", value: 3 },
-  { label: "课程内容不感兴趣", value: 4 },
+  { label: "对内容安排不感兴趣", value: 4 },
   { label: "其他", value: 5 },
 ]
 const getlist = inject("getList") //刷新父组件

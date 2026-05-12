@@ -2,7 +2,7 @@
   <div class="dialogMain selectBox">
     <el-dialog
       v-model="dialogVisible"
-      title="选择老师"
+      title="选择讲师"
       :before-close="handleClose"
     >
       <div class="searchForm">
@@ -11,7 +11,7 @@
             <el-col :span="12">
               <el-form-item label="" prop="name">
                 <el-input
-                  placeholder="请输入教师名称"
+                  placeholder="请输入讲师名称"
                   v-model="searchData.name"
                   clearable
                   class="el-input"
@@ -48,7 +48,7 @@
             align="center"
             width="90"
           />
-          <el-table-column label="教师名称" align="center" min-width="240">
+          <el-table-column label="讲师名称" align="center" min-width="240">
             <template #default="scope">
               <div class="head">
                 {{ scope.row.name }}
@@ -58,13 +58,13 @@
           <el-table-column
             prop="cellPhone"
             align="center"
-            label="教师手机号"
+            label="讲师手机号"
             min-width="160"
           />
           <el-table-column
             prop="courseAmount"
             align="center"
-            label="负责课程数量"
+            label="负责内容数量"
             min-width="160"
           />
           <!-- 空页面 -->

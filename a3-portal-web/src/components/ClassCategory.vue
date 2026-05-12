@@ -1,18 +1,15 @@
 <template>
   <div class="classCategory ft-14" :class="{ classCategoryHeader: type === 'float' }">
-    <div @mouseleave="mouseoutHandle">
+    <div class="categoryShell" @mouseleave="mouseoutHandle">
       <div class="items">
         <div
-          v-for="item in data"
+          v-for="item in safeData"
           :key="item.id"
           class="item"
-          @mouseover="mouseoverHandle(item.children)"
+          @mouseenter="mouseoverHandle(item)"
         >
           <div class="topRow fx-sb">
-            <div
-              class="primaryName"
-              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv1', id: item.id } })"
-            >
+            <div class="primaryName" @click="goSearch('categoryIdLv1', item.id)">
               {{ item.name }}
             </div>
             <img src="@/assets/icon_more.png" alt="" />
@@ -21,7 +18,7 @@
             <span
               v-if="item.children?.length > 0"
               class="secondaryName"
-              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv2', id: item.children[0].id } })"
+              @click="goSearch('categoryIdLv2', item.children[0].id)"
             >
               {{ item.children[0].name }}
             </span>
@@ -29,7 +26,7 @@
             <span
               v-if="item.children?.length > 1"
               class="secondaryName"
-              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv2', id: item.children[1].id } })"
+              @click="goSearch('categoryIdLv2', item.children[1].id)"
             >
               {{ item.children[1].name }}
             </span>
@@ -37,26 +34,27 @@
         </div>
       </div>
 
-      <div v-show="isDetails" class="allCategory" @mouseover="mouseoverHandle()">
-        <div class="detailTitle">专题方向总览</div>
+      <div v-show="isDetails && activeCategory" class="allCategory">
+        <div class="detailTitle">分类导航</div>
+        <div class="detailLead">{{ activeCategory?.name }}</div>
         <div class="cont">
-          <div v-for="item in categorys" :key="item.id" class="detailRow">
-            <span
-              class="tit"
-              @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv2', id: item.id } })"
-            >
-              {{ item.name }}
+          <div class="detailRow">
+            <span class="tit" @click="goSearch('categoryIdLv1', activeCategory?.id)">
+              {{ activeCategory?.name }}
             </span>
             <div class="name fx-1">
               <span
-                v-for="it in item.children"
+                v-for="it in activeCategory?.children || []"
                 :key="it.id"
                 class="tag"
-                @click="() => $router.push({ path: '/search', query: { type: 'categoryIdLv3', id: it.id } })"
+                @click="goSearch('categoryIdLv2', it.id)"
               >
                 {{ it.name }}
               </span>
             </div>
+          </div>
+          <div v-if="(activeCategory?.children || []).length === 0" class="emptyTip">
+            暂无更细分类，点击分类标题可查看该方向下的全部课程。
           </div>
         </div>
       </div>
@@ -65,9 +63,12 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
+const router = useRouter();
 const isDetails = ref(false);
+const activeCategory = ref(null);
 
 const props = defineProps({
   data: {
@@ -80,12 +81,18 @@ const props = defineProps({
   },
 });
 
-const categorys = ref([]);
+// 过滤掉空数据，避免悬浮层在接口返回异常数据时出现空白。
+const safeData = computed(() => (props.data || []).filter((item) => item && item.id != null));
+
+const goSearch = (type, id) => {
+  router.push({ path: "/search", query: { type, id } });
+};
 
 const mouseoverHandle = (item) => {
-  if (item) {
-    categorys.value = item;
+  if (!item) {
+    return;
   }
+  activeCategory.value = item;
   isDetails.value = true;
 };
 
@@ -98,6 +105,11 @@ const mouseoutHandle = () => {
 .classCategory,
 .classCategoryHeader {
   position: relative;
+  z-index: 12;
+
+  .categoryShell {
+    position: relative;
+  }
 
   .items {
     height: 388px;
@@ -137,6 +149,7 @@ const mouseoutHandle = () => {
     font-size: 20px;
     font-weight: 700;
     color: #0f172a;
+    cursor: pointer;
   }
 
   .desc {
@@ -157,9 +170,11 @@ const mouseoutHandle = () => {
   .allCategory {
     position: absolute;
     top: 0;
-    left: 252px;
-    width: 560px;
-    height: 388px;
+    left: calc(100% + 16px);
+    z-index: 20;
+    width: min(420px, calc(100vw - 320px));
+    min-height: 220px;
+    max-height: 388px;
     padding: 22px 24px;
     border-radius: 24px;
     background: rgba(255, 255, 255, 0.97);
@@ -173,9 +188,16 @@ const mouseoutHandle = () => {
     color: #0f172a;
   }
 
+  .detailLead {
+    margin-top: 8px;
+    font-size: 24px;
+    font-weight: 800;
+    color: #111827;
+  }
+
   .cont {
     margin-top: 18px;
-    height: 320px;
+    max-height: 280px;
     overflow: auto;
   }
 
@@ -214,6 +236,14 @@ const mouseoutHandle = () => {
       background: #ecfeff;
     }
   }
+
+  .emptyTip {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: #f8fafc;
+    color: #64748b;
+    line-height: 1.7;
+  }
 }
 
 .classCategoryHeader {
@@ -221,6 +251,17 @@ const mouseoutHandle = () => {
     min-height: 388px;
     width: 236px;
     overflow: inherit;
+  }
+}
+
+@media (max-width: 1100px) {
+  .classCategory,
+  .classCategoryHeader {
+    .allCategory {
+      left: 0;
+      top: calc(100% + 14px);
+      width: min(100%, 520px);
+    }
   }
 }
 </style>

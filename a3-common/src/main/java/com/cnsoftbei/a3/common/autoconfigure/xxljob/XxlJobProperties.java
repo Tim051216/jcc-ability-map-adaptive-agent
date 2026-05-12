@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "a3.xxl-job")
 public class XxlJobProperties {
 
+    private Boolean enabled = true;
     private String accessToken;
     private Admin admin;
     private Executor executor;

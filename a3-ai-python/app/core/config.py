@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=18080, alias="APP_PORT")
     app_debug: bool = Field(default=False, alias="APP_DEBUG")
+    auth_bearer_tokens: str = Field(default="student-demo:1001,admin-demo:9001", alias="AUTH_BEARER_TOKENS")
 
     postgres_dsn: str = Field(alias="POSTGRES_DSN")
     redis_dsn: str = Field(alias="REDIS_DSN")
@@ -26,6 +27,9 @@ class Settings(BaseSettings):
     minio_secret_key: str = Field(alias="MINIO_SECRET_KEY")
     minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
     minio_bucket: str = Field(alias="MINIO_BUCKET")
+    # 可选：对外访问对象的前缀（含 bucket 路径），如 http://127.0.0.1:19000/learning-assets
+    # 未配置时使用 presigned GET（默认 7 天），便于私有桶内网访问
+    minio_public_base_url: str | None = Field(default=None, alias="MINIO_PUBLIC_BASE_URL")
 
     java_gateway_base_url: str = Field(alias="JAVA_GATEWAY_BASE_URL")
     java_internal_token: str = Field(alias="JAVA_INTERNAL_TOKEN")
@@ -41,6 +45,10 @@ class Settings(BaseSettings):
     embedding_api_key: str = Field(default="", alias="EMBEDDING_API_KEY")
     embedding_base_url: str = Field(default="", alias="EMBEDDING_BASE_URL")
     embedding_timeout_seconds: int = Field(default=30, alias="EMBEDDING_TIMEOUT_SECONDS")
+
+    # 智能辅导：敏感词过滤（逗号分隔，空则不拦截）
+    tutoring_sensitive_filter_enabled: bool = Field(default=True, alias="TUTORING_SENSITIVE_FILTER_ENABLED")
+    tutoring_sensitive_words: str = Field(default="", alias="TUTORING_SENSITIVE_WORDS")
 
 
 settings = Settings()  # type: ignore[call-arg]

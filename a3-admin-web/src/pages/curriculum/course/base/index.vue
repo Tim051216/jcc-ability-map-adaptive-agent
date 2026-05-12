@@ -7,7 +7,7 @@
     label-width="130px"
     class="demo-ruleForm"
   >
-    <el-form-item label="课程分类：" prop="thirdCateId">
+    <el-form-item label="内容分类：" prop="thirdCateId">
       <div class="el-input inputRight">
         <el-cascader
           v-model="fromData.thirdCateId"
@@ -37,7 +37,7 @@
         />
       </div>
     </el-form-item>
-    <el-form-item label="课程名称：" prop="name">
+    <el-form-item label="内容名称：" prop="name">
       <div class="el-input">
         <el-input
           v-model="fromData.name"
@@ -53,7 +53,7 @@
         >
       </div>
     </el-form-item>
-    <el-form-item label="课程封面：" prop="coverUrl">
+    <el-form-item label="内容封面：" prop="coverUrl">
       <UploadImage
         @getFlag="getFlag"
         @getCoverUrl="getCoverUrl"
@@ -74,7 +74,7 @@
         >
       </el-radio-group>
     </el-form-item>
-    <el-form-item label="课程价格：" prop="price" v-if="fromData.free === 1">
+    <el-form-item label="内容价格：" prop="price" v-if="fromData.free === 1">
       <div class="el-input inputRight inputMarginR">
         <el-input
           type="number"
@@ -130,7 +130,7 @@
         <span class="text">月</span>
       </span>
     </el-form-item>
-    <el-form-item label="课程介绍：" prop="introduce" class="textInput">
+    <el-form-item label="内容介绍：" prop="introduce" class="textInput">
       <div class="inputText">
         <el-input
           v-model="fromData.introduce"
@@ -159,7 +159,7 @@
       </div>
     </el-form-item>
     <el-form-item
-      label="教师介绍：&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp"
+      label="讲师介绍：&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp"
       class="textInput"
     >
       <div class="tearch">
@@ -174,11 +174,11 @@
           多年互联网产品运营策划经验，掌握产品各环节运营方法。曾参加两家初创公司，擅长产品的冷启动，从0到1做用户精细化运营。曾以用户为中心，满足对产品的需求，使产品在三个月内用户增长23万。
         </div>
         <span class="tooltipIcon">
-          <span class="hover">用户端将自动展示教师信息，无需手动设置</span>
+          <span class="hover">用户端将自动展示讲师信息，无需手动设置</span>
         </span>
       </div>
     </el-form-item>
-    <el-form-item label="课程详情：" prop="detail" class="textInput">
+    <el-form-item label="内容详情：" prop="detail" class="textInput">
       <div class="inputText">
         <el-input
           v-model="fromData.detail"
@@ -253,13 +253,13 @@ const validateUpload = (rule, value, callback) => {
   if (flag.value) {
     callback();
   } else {
-    callback(new Error("课程封面为空，请上传课程封面"));
+    callback(new Error("内容封面为空，请上传内容封面"));
   }
 };
 // 课程名称校验
 const validateName = async (rule, value, callback) => {
   if (value === "" || value === undefined) {
-    callback(new Error("课程名称为空，请填写课程名称"));
+    callback(new Error("内容名称为空，请填写内容名称"));
   }
   let parent = {
     name: value,
@@ -269,7 +269,7 @@ const validateName = async (rule, value, callback) => {
     if (res.code === 200) {
       const isexisted = res.data.existed;
       if (isexisted) {
-        callback(new Error("课程名称重复，请重新输入"));
+        callback(new Error("内容名称重复，请重新输入"));
       } else {
         callback();
       }
@@ -281,7 +281,7 @@ const rules = reactive({
   thirdCateId: [
     {
       required: true,
-      message: "课程分类为空，请选择课程分类",
+      message: "内容分类为空，请选择内容分类",
       trigger: "change",
     },
   ],
@@ -345,7 +345,7 @@ const rules = reactive({
   introduce: [
     {
       required: true,
-      message: "课程介绍为空，请输入课程介绍",
+      message: "内容介绍为空，请输入内容介绍",
       trigger: "blur",
     },
   ],
@@ -359,7 +359,7 @@ const rules = reactive({
   detail: [
     {
       required: true,
-      message: "课程详情为空，请输入课程详情",
+      message: "内容详情为空，请输入内容详情",
       trigger: "blur",
     },
   ],

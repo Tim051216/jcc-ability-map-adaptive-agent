@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -6,5 +8,12 @@ class Base(DeclarativeBase):
 
 
 class TimestampMixin:
-    created_at: Mapped[str | None] = mapped_column(nullable=True)
-    updated_at: Mapped[str | None] = mapped_column(nullable=True)
+    created_at: Mapped[str | None] = mapped_column(
+        default=lambda: datetime.now().isoformat(timespec="seconds"),
+        nullable=True,
+    )
+    updated_at: Mapped[str | None] = mapped_column(
+        default=lambda: datetime.now().isoformat(timespec="seconds"),
+        onupdate=lambda: datetime.now().isoformat(timespec="seconds"),
+        nullable=True,
+    )

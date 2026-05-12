@@ -1,16 +1,16 @@
-<!-- 优惠券详情 -->
+<!-- 活动详情 -->
 <template>
   <div class="contentBox">
     <div class="bg-wt radius marg-tp-20">
       <div class="detailBox" :key="keyTime">
         <!-- 标题 -->
-        <div class="tit"><span>优惠券基本信息</span></div>
+        <div class="tit"><span>活动基本信息</span></div>
         <div style="border-top: 1px solid #e5e5e5; margin-bottom: 20px"></div>
         <!-- 基本信息 -->
         <div class="information">
           <div class="informations">
             <div class="title">
-              <div class="itemtitle">优惠券名称</div>
+              <div class="itemtitle">活动名称</div>
               <div class="item">{{ detailData.data.name }}</div>
             </div>
             <div class="title">
@@ -28,11 +28,11 @@
               </div>
             </div>
             <div class="title">
-              <div class="itemtitle">优惠券类型</div>
+              <div class="itemtitle">活动类型</div>
               <span class="item">{{ detailData.data.rule }}</span>
             </div>
             <div class="title">
-              <div class="itemtitle">领用期限</div>
+              <div class="itemtitle">领取期限</div>
               <span class="item"
                 >{{ formatTimeOrdinary(detailData.data.issueBeginTime) }}--{{
                   formatTimeOrdinary(detailData.data.issueEndTime)
@@ -40,7 +40,7 @@
               >
             </div>
             <div class="title">
-              <div class="itemtitle">使用期限</div>
+              <div class="itemtitle">有效期限</div>
               <span
                 class="item"
                 v-if="
@@ -58,7 +58,7 @@
         </div>
 
         <div class="tit" style="margin-top: 10px">
-          <span>优惠券推广方式</span>
+          <span>活动投放方式</span>
         </div>
         <div style="border-top: 1px solid #e5e5e5; margin-bottom: 20px"></div>
         <!-- 推广方式 -->
@@ -71,12 +71,12 @@
                 >手动领取</span
               >
               <span class="item" v-if="detailData.data.obtainWay === 2"
-                >指定发放</span
+                >指定发布</span
               >
             </div>
             </div>
             <div class="title">
-              <span class="itemtitle">发放数量</span>
+              <span class="itemtitle">发布数量</span>
               <span class="item">{{ detailData.data.totalNum }}张</span>
             </div>
             <div class="title">

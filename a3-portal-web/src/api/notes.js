@@ -1,5 +1,13 @@
 import request from "@/utils/request.js";
 import {
+  createAiLearningNote,
+  deleteAiLearningNote,
+  gatherAiLearningNote,
+  listAiLearningNotes,
+  ungatherAiLearningNote,
+  updateAiLearningNote,
+} from "@/api/ai.js";
+import {
   addDemoNote,
   deleteDemoNote,
   gatherDemoNote,
@@ -9,6 +17,9 @@ import {
 } from "@/config/demo-learning";
 
 const LEARNING_API_PREFIX = "/ls";
+const isA3LocalMode = import.meta.env.MODE === "a3local";
+const shouldUseAiLearningApi = () => isA3LocalMode && !isPortalDemoMode();
+const wrapAiData = (data) => ({ code: 200, data });
 
 export const addNotes = (params) =>
   isPortalDemoMode()
@@ -16,6 +27,8 @@ export const addNotes = (params) =>
         code: addDemoNote(params) ? 200 : 500,
         data: true,
       })
+    : shouldUseAiLearningApi()
+      ? createAiLearningNote(params).then((data) => wrapAiData(data))
     : request({
         url: `${LEARNING_API_PREFIX}/notes`,
         method: "post",
@@ -28,6 +41,8 @@ export const getAllNotes = (params) =>
         code: 200,
         data: getDemoNotesPage(params),
       })
+    : shouldUseAiLearningApi()
+      ? listAiLearningNotes(params).then((data) => wrapAiData(data))
     : request({
         url: `${LEARNING_API_PREFIX}/notes/page`,
         method: "get",
@@ -46,6 +61,8 @@ export const updateNotes = (data) =>
         code: updateDemoNote(data) ? 200 : 500,
         data: true,
       })
+    : shouldUseAiLearningApi()
+      ? updateAiLearningNote(data.id, data).then((result) => wrapAiData(result))
     : request({
         url: `${LEARNING_API_PREFIX}/notes/${data.id}`,
         method: "put",
@@ -58,6 +75,8 @@ export const delNote = (id) =>
         code: deleteDemoNote(id) ? 200 : 500,
         data: true,
       })
+    : shouldUseAiLearningApi()
+      ? deleteAiLearningNote(id).then((data) => wrapAiData(data))
     : request({
         url: `${LEARNING_API_PREFIX}/notes/${id}`,
         method: "delete",
@@ -69,6 +88,8 @@ export const notesGathers = (id) =>
         code: gatherDemoNote(id, true) ? 200 : 500,
         data: true,
       })
+    : shouldUseAiLearningApi()
+      ? gatherAiLearningNote(id).then((data) => wrapAiData(data))
     : request({
         url: `${LEARNING_API_PREFIX}/notes/gathers/${id}`,
         method: "post",
@@ -80,6 +101,8 @@ export const unNotesGathers = (id) =>
         code: gatherDemoNote(id, false) ? 200 : 500,
         data: true,
       })
+    : shouldUseAiLearningApi()
+      ? ungatherAiLearningNote(id).then((data) => wrapAiData(data))
     : request({
         url: `${LEARNING_API_PREFIX}/notes/gathers/${id}`,
         method: "delete",
