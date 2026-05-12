@@ -53,6 +53,12 @@ class AdminService:
         "credential",
     )
 
+    async def get_overview(self) -> dict:
+        from app.services.admin_dashboard_service import AdminDashboardService
+
+        summary = await AdminDashboardService().get_summary()
+        return summary.model_dump()
+
     async def list_system_configs(self, *, sensitive_only: bool = False) -> SystemConfigListResponse:
         from app.db.session import async_session_factory
 

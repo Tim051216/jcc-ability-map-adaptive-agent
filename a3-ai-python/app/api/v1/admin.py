@@ -55,6 +55,11 @@ async def get_admin_dashboard_summary() -> AdminDashboardSummaryResponse:
     return await service.get_summary()
 
 
+@router.get("/overview")
+async def get_admin_overview() -> dict:
+    return await AdminService().get_overview()
+
+
 @router.post("/knowledge/{course_code}/ingest")
 async def ingest_knowledge(course_code: str) -> dict:
     pipeline = KnowledgeIngestPipeline()

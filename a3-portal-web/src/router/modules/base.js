@@ -134,6 +134,12 @@ export default [
         component: () => import("@/pages/adminConfigs/index.vue"),
         meta: { title: "系统配置" },
       },
+      {
+        path: "ai-ops",
+        name: "aiOps",
+        component: () => import("@/pages/aiOps/index.vue"),
+        meta: { title: "AI 运维总览页" },
+      },
     ],
   },
   {

@@ -137,6 +137,7 @@ export const listAiAgentRuntimeLogs = (params) =>
   aiClient.get("/v1/admin/agents/logs", { params }).then((res) => res.data);
 export const exportAiAgentRuntimeLogs = (params) =>
   aiClient.get("/v1/admin/agents/logs/export", { params, responseType: "blob" });
+export const getAiAdminOverview = () => aiClient.get("/v1/admin/overview").then((res) => res.data);
 export const listAiAdminUsers = () => aiClient.get("/v1/admin/users").then((res) => res.data);
 export const getAiAdminUserDetail = (userId) => aiClient.get(`/v1/admin/users/${userId}`).then((res) => res.data);
 export const updateAiAdminUserStatus = (userId, payload) =>
