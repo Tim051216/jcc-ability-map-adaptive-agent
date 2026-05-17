@@ -44,6 +44,7 @@ class ChatTicketRepository:
         session: AsyncSession,
         *,
         user_id: int | None = None,
+        course_code: str | None = None,
         status: str | None = None,
     ) -> tuple[list[ChatTicket], int]:
         stmt: Select[tuple[ChatTicket]] = select(ChatTicket)
@@ -51,6 +52,9 @@ class ChatTicketRepository:
         if user_id is not None:
             stmt = stmt.where(ChatTicket.user_id == user_id)
             count_stmt = count_stmt.where(ChatTicket.user_id == user_id)
+        if course_code:
+            stmt = stmt.where(ChatTicket.course_code == course_code)
+            count_stmt = count_stmt.where(ChatTicket.course_code == course_code)
         if status:
             stmt = stmt.where(ChatTicket.status == status)
             count_stmt = count_stmt.where(ChatTicket.status == status)

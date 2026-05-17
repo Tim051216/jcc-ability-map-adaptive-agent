@@ -3,6 +3,13 @@ from fastapi.responses import StreamingResponse
 
 from app.rag.ingest.pipelines import KnowledgeIngestPipeline
 from app.schemas.admin import (
+    AIOpsOverviewResponse,
+    AdminNotificationActionRequest,
+    AdminNotificationListResponse,
+    AdminNotificationResponse,
+    AdminSessionLoginRequest,
+    AdminSessionStateResponse,
+    AdminSessionSwitchEnvironmentRequest,
     AdminDashboardSummaryResponse,
     AdminUserOverviewListResponse,
     AdminUserDetailResponse,
@@ -14,6 +21,10 @@ from app.schemas.admin import (
     AgentStatusListResponse,
     AuditLogListResponse,
     AuditLogSummaryResponse,
+    DeploymentListResponse,
+    DeploymentRollbackRequest,
+    DeploymentRecordResponse,
+    DeploymentTriggerRequest,
     ReviewTaskBatchDecisionRequest,
     ReviewTaskBatchDecisionResponse,
     ReviewTaskCreateRequest,
@@ -29,7 +40,10 @@ from app.schemas.admin import (
     SystemConfigResponse,
     SystemConfigUpdateRequest,
 )
+from app.services.admin_demo_data import AdminDemoStore
 from app.services.admin_dashboard_service import AdminDashboardService
+from app.services.admin_notification_service import AdminNotificationService
+from app.services.admin_session_service import AdminSessionService
 from app.services.agent_runtime_summary_service import AgentRuntimeSummaryService
 from app.services.admin_export_service import AdminExportService
 from app.services.admin_service import AdminService
@@ -55,6 +69,63 @@ async def get_admin_dashboard_summary() -> AdminDashboardSummaryResponse:
     return await service.get_summary()
 
 
+@router.get("/session", response_model=AdminSessionStateResponse)
+async def get_admin_session_state() -> AdminSessionStateResponse:
+    service = AdminSessionService()
+    return service.get_state()
+
+
+@router.post("/session/login", response_model=AdminSessionStateResponse)
+async def login_admin_session(request: AdminSessionLoginRequest) -> AdminSessionStateResponse:
+    service = AdminSessionService()
+    return service.login(request)
+
+
+@router.post("/session/logout", response_model=AdminSessionStateResponse)
+async def logout_admin_session() -> AdminSessionStateResponse:
+    service = AdminSessionService()
+    return service.logout()
+
+
+@router.post("/session/environment", response_model=AdminSessionStateResponse)
+async def switch_admin_environment(request: AdminSessionSwitchEnvironmentRequest) -> AdminSessionStateResponse:
+    service = AdminSessionService()
+    return service.switch_environment(request)
+
+
+@router.get("/notifications", response_model=AdminNotificationListResponse)
+async def list_admin_notifications() -> AdminNotificationListResponse:
+    service = AdminNotificationService()
+    return await service.list_notifications()
+
+
+@router.post("/notifications/{notification_id}/read", response_model=AdminNotificationResponse)
+async def mark_admin_notification_as_read(
+    notification_id: str,
+    request: AdminNotificationActionRequest,
+) -> AdminNotificationResponse:
+    service = AdminNotificationService()
+    return await service.mark_as_read(notification_id, request)
+
+
+@router.post("/notifications/{notification_id}/resolve", response_model=AdminNotificationResponse)
+async def resolve_admin_notification(
+    notification_id: str,
+    request: AdminNotificationActionRequest,
+) -> AdminNotificationResponse:
+    service = AdminNotificationService()
+    return await service.resolve_notification(notification_id, request)
+
+
+@router.post("/notifications/{notification_id}/reopen", response_model=AdminNotificationResponse)
+async def reopen_admin_notification(
+    notification_id: str,
+    request: AdminNotificationActionRequest,
+) -> AdminNotificationResponse:
+    service = AdminNotificationService()
+    return await service.reopen_notification(notification_id, request)
+
+
 @router.get("/overview")
 async def get_admin_overview() -> dict:
     return await AdminService().get_overview()
@@ -74,6 +145,35 @@ async def ping_llm() -> dict:
 @router.get("/embedding/ping")
 async def ping_embedding() -> dict:
     return await EmbeddingService().ping()
+
+
+@router.get("/aiops/overview", response_model=AIOpsOverviewResponse)
+async def get_aiops_overview() -> AIOpsOverviewResponse:
+    return AdminDemoStore.get_aiops_overview()
+
+
+@router.get("/deployments", response_model=DeploymentListResponse)
+async def list_deployments() -> DeploymentListResponse:
+    return AdminDemoStore.list_deployments()
+
+
+@router.post("/deployments", response_model=DeploymentRecordResponse)
+async def trigger_deployment(request: DeploymentTriggerRequest) -> DeploymentRecordResponse:
+    return AdminDemoStore.trigger_deployment(
+        target=request.target,
+        version=request.version,
+        operator=request.operator,
+        note=request.note,
+    )
+
+
+@router.post("/deployments/{deployment_id}/rollback", response_model=DeploymentRecordResponse)
+async def rollback_deployment(deployment_id: str, request: DeploymentRollbackRequest) -> DeploymentRecordResponse:
+    return AdminDemoStore.rollback_deployment(
+        deployment_id,
+        operator=request.operator,
+        note=request.note,
+    )
 
 
 @router.get("/configs", response_model=SystemConfigListResponse)

@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class GenerationTask(Base, TimestampMixin):
-    __tablename__ = "ai_generation_task"
+    __tablename__ = "generation_task"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)

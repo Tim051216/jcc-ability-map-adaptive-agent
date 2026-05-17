@@ -64,7 +64,7 @@ class MilvusVectorStore:
             collection_name=collection_name,
             data=[vector],
             limit=top_k,
-            output_fields=["document_id", "chunk_id", "content", "title"],
+            output_fields=["document_id", "chunk_id", "content", "title", "priority", "chunk_kind", "tags"],
         )
         hits = results[0] if results else []
         normalized_hits: list[dict] = []
@@ -77,6 +77,9 @@ class MilvusVectorStore:
                     "content": entity.get("content", ""),
                     "title": entity.get("title", ""),
                     "score": float(hit.get("distance", hit.get("score", 0.0))),
+                    "priority": int(entity.get("priority", 0) or 0),
+                    "chunk_kind": entity.get("chunk_kind", ""),
+                    "tags": list(entity.get("tags", []) or []),
                 }
             )
         return normalized_hits

@@ -16,6 +16,7 @@ import com.cnsoftbei.a3.user.domain.vo.StudentPageVo;
 import com.cnsoftbei.a3.user.service.IStudentService;
 import com.cnsoftbei.a3.user.service.IUserDetailService;
 import com.cnsoftbei.a3.user.service.IUserService;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ import java.util.stream.Collectors;
  * @since 2022-07-12
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class StudentServiceImpl implements IStudentService {
 
@@ -77,14 +79,19 @@ public class StudentServiceImpl implements IStudentService {
 
         // 2.查询购买的课程数量
         List<Long> stuIds = records.stream().map(UserDetail::getId).collect(Collectors.toList());
-        Map<Long, Integer> numMap = tradeClient.countEnrollCourseOfStudent(stuIds);
+        Map<Long, Integer> numMap = new java.util.HashMap<>();
+        try {
+            numMap = tradeClient.countEnrollCourseOfStudent(stuIds);
+        } catch (Exception e) {
+            log.warn("查询学生报名课程数量失败，降级返回基础学生信息, studentIds={}", stuIds, e);
+        }
 
         // 3.处理vo
         List<StudentPageVo> list = new ArrayList<>(records.size());
         for (UserDetail r : records) {
             StudentPageVo v = BeanUtils.toBean(r, StudentPageVo.class);
             list.add(v);
-            v.setCourseAmount(numMap.get(r.getId()));
+            v.setCourseAmount(numMap.getOrDefault(r.getId(), 0));
         }
         return new PageDTO<>(page.getTotal(), page.getPages(), list);
     }

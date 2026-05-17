@@ -10,3 +10,6 @@ class LLMMessage:
 class BaseLLMProvider:
     async def generate(self, messages: list[LLMMessage]) -> str:
         raise NotImplementedError
+
+    async def ping(self) -> str:
+        raise NotImplementedError

@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class GeneratedResource(Base, TimestampMixin):
-    __tablename__ = "ai_generated_resource"
+    __tablename__ = "generated_resource"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)
@@ -26,22 +26,22 @@ class GeneratedResource(Base, TimestampMixin):
 
 
 class ResourceFavorite(Base, TimestampMixin):
-    __tablename__ = "ai_resource_favorite"
+    __tablename__ = "resource_favorite"
     __table_args__ = (
         UniqueConstraint("user_id", "resource_id", name="uq_ai_resource_favorite_user_resource"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)
-    resource_id: Mapped[int] = mapped_column(ForeignKey("ai_generated_resource.id"), index=True)
+    resource_id: Mapped[int] = mapped_column(ForeignKey("generated_resource.id"), index=True)
     category: Mapped[str] = mapped_column(String(64), default="默认分类")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ResourceFavoriteHistory(Base, TimestampMixin):
-    __tablename__ = "ai_resource_favorite_history"
+    __tablename__ = "resource_favorite_history"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)
-    resource_id: Mapped[int] = mapped_column(ForeignKey("ai_generated_resource.id"), index=True)
+    resource_id: Mapped[int] = mapped_column(ForeignKey("generated_resource.id"), index=True)
     action: Mapped[str] = mapped_column(String(32), index=True)

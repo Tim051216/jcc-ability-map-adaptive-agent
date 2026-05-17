@@ -5,6 +5,9 @@ from app.schemas.course import (
     CourseCategoryItem,
     CourseChapterResponse,
     CourseDetailResponse,
+    CourseSectionPlayResponse,
+    LearningProgressUpdateRequest,
+    LearningProgressUpdateResponse,
     CourseSearchResponse,
     CourseTeacherResponse,
     LearningCourseDetailResponse,
@@ -71,3 +74,13 @@ async def list_course_chapters(course_id: int) -> list[dict]:
 @router.get("/courses/{course_id}/learning", response_model=LearningCourseDetailResponse)
 async def get_learning_course_detail(course_id: int) -> LearningCourseDetailResponse:
     return await CourseService().get_learning_course_detail(course_id)
+
+
+@router.get("/courses/{course_id}/sections/{section_id}/play", response_model=CourseSectionPlayResponse)
+async def get_course_section_play_info(course_id: int, section_id: int) -> CourseSectionPlayResponse:
+    return await CourseService().get_section_play_info(course_id, section_id)
+
+
+@router.post("/courses/{course_id}/learning-progress", response_model=LearningProgressUpdateResponse)
+async def update_learning_progress(course_id: int, payload: LearningProgressUpdateRequest) -> LearningProgressUpdateResponse:
+    return await CourseService().update_learning_progress(course_id, payload)

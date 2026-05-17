@@ -7,7 +7,7 @@
 - 多智能体协同编排
 - 个性化学习路径规划
 - 多类型学习资源生成
-- 学习效果评估与治理
+- 学习效果评估与智能辅导
 
 ## 技术栈
 
@@ -45,19 +45,25 @@
 
 1. 复制 `.env.example` 为 `.env`
 2. 在仓库根目录启动 `docker-compose.local.yml`
-3. 初始化数据库迁移
+3. 初始化数据库迁移：
 
 ```powershell
-alembic upgrade head
+.\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-4. 安装依赖后运行
+4. 推荐从仓库根目录统一启动：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1
+```
+
+5. 或者在当前目录手动启动：
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 18080
 ```
 
-请不要直接使用系统 `python`、`uvicorn` 或 Anaconda 环境启动，否则容易出现 Anaconda Python 抢占 18080 端口的问题。
+请不要直接使用系统 `python`、`uvicorn` 或 Anaconda 环境启动，否则容易出现 Anaconda Python 抢占 `18080` 端口的问题。
 
 ## 当前能力
 

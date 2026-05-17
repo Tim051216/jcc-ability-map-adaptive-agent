@@ -3,6 +3,7 @@ package com.cnsoftbei.a3.learning.controller;
 
 import com.cnsoftbei.a3.api.dto.leanring.LearningLessonDTO;
 import com.cnsoftbei.a3.learning.domain.dto.LearningRecordFormDTO;
+import com.cnsoftbei.a3.learning.domain.dto.LearningSectionPositionFormDTO;
 import com.cnsoftbei.a3.learning.service.ILearningRecordService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -38,5 +39,11 @@ public class LearningRecordController {
     @PostMapping()
     public void addLearningRecord(@RequestBody @Validated LearningRecordFormDTO formDTO){
         recordService.addLearningRecord(formDTO);
+    }
+
+    @ApiOperation("写回最近学习章节定位")
+    @PostMapping("/position")
+    public void updateLearningPosition(@RequestBody @Validated LearningSectionPositionFormDTO formDTO){
+        recordService.updateLearningPosition(formDTO);
     }
 }

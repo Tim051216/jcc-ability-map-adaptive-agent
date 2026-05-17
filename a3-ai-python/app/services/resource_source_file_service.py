@@ -1,0 +1,642 @@
+from __future__ import annotations
+
+import html
+import json
+import mimetypes
+import re
+import shutil
+import subprocess
+import zipfile
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
+from xml.etree import ElementTree as ET
+
+from fastapi import HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
+from sqlalchemy import select
+
+from app.db.models.resource_source_file import ResourceSourceFile
+from app.db.session import async_session_factory, engine
+from app.schemas.common import ResourceSourceFileRef
+from app.services.resource_source_file_storage_service import ResourceSourceFileStorageService
+
+
+class ResourceSourceFileService:
+    SUPPORTED_EXTENSIONS = {
+        ".doc",
+        ".docx",
+        ".jpg",
+        ".jpeg",
+        ".m3u8",
+        ".md",
+        ".mov",
+        ".mp4",
+        ".pdf",
+        ".png",
+        ".ppt",
+        ".pptx",
+        ".txt",
+        ".webm",
+        ".xls",
+        ".xlsx",
+    }
+    INLINE_EXTENSIONS = {".jpg", ".jpeg", ".md", ".pdf", ".png", ".txt"}
+    OFFICE_EXTENSIONS = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"}
+    OPENXML_HTML_FALLBACK_EXTENSIONS = {".docx", ".pptx", ".xlsx"}
+    VIDEO_EXTENSIONS = {".m3u8", ".mov", ".mp4", ".webm"}
+    EXCLUDED_PATH_PARTS = {"bin", "build", "crunch", "drawable", "gen", "libs", "res"}
+    EXCLUDED_NAMES = {"~$资源文件.doc"}
+    MAX_FILES_PER_RESOURCE = 48
+    OPEN_URL_TEMPLATE = "/api/v1/resource/source-files/{file_id}/open"
+    PREVIEW_URL_TEMPLATE = "/api/v1/resource/source-files/{file_id}/preview"
+    PREVIEW_ASSET_URL_TEMPLATE = "/api/v1/resource/source-files/{file_id}/preview-assets/{asset_path}"
+    MATERIAL_CATEGORY_RULES: dict[int, list[str]] = {}
+
+    def __init__(self) -> None:
+        root = Path(__file__).resolve().parents[3]
+        self._repo_root = root
+        self._materials_root = root / "docs" / "course-materials" / "software-engineering-4th"
+        self._preview_root = root / "output" / "resource-source-previews"
+        self._soffice_path = self._detect_soffice_path()
+        self._ffmpeg_path = shutil.which("ffmpeg")
+        self._storage = ResourceSourceFileStorageService()
+
+    async def list_for_resource(self, *, resource_id: int, course_code: str) -> list[ResourceSourceFileRef]:
+        if course_code != "software_engineering_4th":
+            return []
+        await self._ensure_table()
+        await self._sync_resource_files(resource_id=resource_id, course_code=course_code)
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ResourceSourceFile)
+                .where(ResourceSourceFile.resource_id == resource_id)
+                .order_by(ResourceSourceFile.sort_order.asc(), ResourceSourceFile.display_name.asc())
+            )
+            rows = result.scalars().all()
+        return [self._to_ref(row) for row in rows]
+
+    async def open_source_file(self, file_id: int) -> FileResponse:
+        source_file = await self._load_source_file(file_id)
+        file_path = self._require_source_path(source_file)
+
+        disposition = "inline" if source_file.is_inline_previewable else "attachment"
+        headers = {
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(file_path.name)}",
+        }
+        media_type = source_file.mime_type or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        return FileResponse(path=file_path, media_type=media_type, headers=headers)
+
+    async def preview_source_file(self, file_id: int) -> FileResponse:
+        source_file = await self._load_source_file(file_id)
+        file_path = self._require_source_path(source_file)
+        preview_mode = self._get_preview_mode(source_file)
+
+        if preview_mode in {"image", "pdf", "text"}:
+            media_type = source_file.mime_type or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+            headers = {
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(file_path.name)}",
+            }
+            return FileResponse(path=file_path, media_type=media_type, headers=headers)
+
+        if preview_mode == "html":
+            preview_path = self._ensure_office_preview_artifact(source_file, file_path)
+            if self._storage.is_enabled():
+                return RedirectResponse(
+                    url=self._build_preview_storage_url(source_file=source_file, preview_path=preview_path, content_type="text/html")
+                )
+            return FileResponse(path=preview_path, media_type="text/html")
+
+        if preview_mode == "office-pdf":
+            preview_path = self._ensure_office_preview_artifact(source_file, file_path)
+            if self._storage.is_enabled():
+                return RedirectResponse(
+                    url=self._build_preview_storage_url(
+                        source_file=source_file,
+                        preview_path=preview_path,
+                        content_type="application/pdf",
+                    )
+                )
+            return FileResponse(path=preview_path, media_type="application/pdf")
+
+        if preview_mode == "video":
+            if file_path.suffix.lower() == ".m3u8":
+                return FileResponse(path=file_path, media_type="application/vnd.apple.mpegurl")
+            preview_path = self._ensure_video_preview_artifact(source_file, file_path)
+            media_type = "application/vnd.apple.mpegurl" if preview_path.suffix.lower() == ".m3u8" else (
+                source_file.mime_type or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+            )
+            if self._storage.is_enabled() and preview_path.suffix.lower() != ".m3u8":
+                return RedirectResponse(
+                    url=self._build_preview_storage_url(source_file=source_file, preview_path=preview_path, content_type=media_type)
+                )
+            headers = {
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(preview_path.name)}",
+            }
+            return FileResponse(path=preview_path, media_type=media_type, headers=headers)
+
+        raise HTTPException(status_code=415, detail="resource source file preview unsupported")
+
+    async def preview_source_file_asset(self, file_id: int, asset_path: str) -> FileResponse:
+        source_file = await self._load_source_file(file_id)
+        file_path = self._require_source_path(source_file)
+        if self._get_preview_mode(source_file) != "video":
+            raise HTTPException(status_code=415, detail="resource source file preview assets unsupported")
+
+        asset_root = self._ensure_video_preview_directory(source_file, file_path)
+        requested = (asset_root / asset_path).resolve()
+        if asset_root.resolve() not in requested.parents and requested != asset_root.resolve():
+            raise HTTPException(status_code=400, detail="invalid preview asset path")
+        if not requested.exists() or not requested.is_file():
+            raise HTTPException(status_code=404, detail="resource source file preview asset not found")
+
+        media_type = mimetypes.guess_type(requested.name)[0] or "application/octet-stream"
+        return FileResponse(path=requested, media_type=media_type)
+
+    async def _load_source_file(self, file_id: int) -> ResourceSourceFile:
+        await self._ensure_table()
+        async with async_session_factory() as session:
+            source_file = await session.get(ResourceSourceFile, file_id)
+        if source_file is None:
+            raise HTTPException(status_code=404, detail="resource source file not found")
+        return source_file
+
+    def _require_source_path(self, source_file: ResourceSourceFile) -> Path:
+        file_path = Path(source_file.absolute_path)
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="resource source file missing on disk")
+        return file_path
+
+    async def _ensure_table(self) -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(lambda sync_conn: ResourceSourceFile.__table__.create(sync_conn, checkfirst=True))
+
+    async def _sync_resource_files(self, *, resource_id: int, course_code: str) -> None:
+        async with async_session_factory() as session:
+            existing = await session.execute(
+                select(ResourceSourceFile.id).where(ResourceSourceFile.resource_id == resource_id).limit(1)
+            )
+            if existing.scalar_one_or_none() is not None:
+                return
+
+        selected_files = self._collect_selected_files(resource_id=resource_id)
+        if not selected_files:
+            return
+
+        async with async_session_factory() as session:
+            preview_map = self._load_preview_map()
+            created_at = datetime.now().isoformat(timespec="seconds")
+            session.add_all(
+                [
+                    ResourceSourceFile(
+                        resource_id=resource_id,
+                        course_code=course_code,
+                        display_name=item["display_name"],
+                        relative_path=item["relative_path"],
+                        absolute_path=item["absolute_path"],
+                        top_level_category=item["top_level_category"],
+                        file_extension=item["file_extension"],
+                        mime_type=item["mime_type"],
+                        file_size=item["file_size"],
+                        preview_text=preview_map.get(item["relative_path"]),
+                        is_inline_previewable=item["is_inline_previewable"],
+                        sort_order=item["sort_order"],
+                        created_at=created_at,
+                        updated_at=created_at,
+                    )
+                    for item in selected_files
+                ]
+            )
+            await session.commit()
+
+    def _collect_selected_files(self, *, resource_id: int) -> list[dict[str, object]]:
+        course_dir = self._find_course_directory()
+        if course_dir is None:
+            return []
+
+        allowed_prefixes = self.MATERIAL_CATEGORY_RULES.get(resource_id)
+        rows: list[dict[str, object]] = []
+        for file_path in sorted(course_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            if file_path.name in self.EXCLUDED_NAMES:
+                continue
+            suffix = file_path.suffix.lower()
+            if suffix not in self.SUPPORTED_EXTENSIONS:
+                continue
+
+            rel_path = file_path.relative_to(course_dir)
+            rel_parts = rel_path.parts
+            if any(part.lower() in self.EXCLUDED_PATH_PARTS for part in rel_parts[:-1]):
+                continue
+
+            top_level = rel_parts[0] if rel_parts else file_path.name
+            if allowed_prefixes and not any(
+                top_level.startswith(prefix) or file_path.name == prefix for prefix in allowed_prefixes
+            ):
+                continue
+
+            mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+            relative_path = rel_path.as_posix()
+            rows.append(
+                {
+                    "display_name": file_path.name,
+                    "relative_path": relative_path,
+                    "absolute_path": str(file_path.resolve()),
+                    "top_level_category": top_level,
+                    "file_extension": suffix,
+                    "mime_type": mime_type,
+                    "file_size": file_path.stat().st_size,
+                    "is_inline_previewable": suffix in self.INLINE_EXTENSIONS,
+                    "sort_order": self._sort_order(top_level, relative_path),
+                }
+            )
+
+        rows.sort(key=lambda item: (int(item["sort_order"]), str(item["relative_path"])))
+        return rows[: self.MAX_FILES_PER_RESOURCE]
+
+    def _load_preview_map(self) -> dict[str, str]:
+        index_path = self._materials_root / "material_index.json"
+        if not index_path.exists():
+            return {}
+        try:
+            data = json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+        preview_map: dict[str, str] = {}
+        for item in data:
+            relative_path = str(item.get("relative_path") or "").strip()
+            preview_text = str(item.get("preview") or "").strip()
+            if relative_path and preview_text:
+                preview_map[relative_path.replace("\\", "/")] = preview_text[:1000]
+        return preview_map
+
+    def _find_course_directory(self) -> Path | None:
+        if not self._materials_root.exists():
+            return None
+        for child in sorted(self._materials_root.iterdir()):
+            if child.is_dir() and child.name.startswith("9787302610724"):
+                return child
+        return None
+
+    def _sort_order(self, top_level: str, relative_path: str) -> int:
+        prefixes = self.MATERIAL_CATEGORY_RULES.get(106, [])
+        for index, prefix in enumerate(prefixes):
+            if top_level.startswith(prefix) or Path(relative_path).name == prefix:
+                return index
+        return len(prefixes) + 1
+
+    def _to_ref(self, source_file: ResourceSourceFile) -> ResourceSourceFileRef:
+        preview_mode = self._get_preview_mode(source_file)
+        preview_url = None
+        open_url = self.OPEN_URL_TEMPLATE.format(file_id=source_file.id)
+
+        if self._storage.is_enabled():
+            try:
+                open_url = self._build_source_storage_url(source_file)
+            except Exception:
+                open_url = self.OPEN_URL_TEMPLATE.format(file_id=source_file.id)
+
+        if preview_mode != "unsupported":
+            if self._storage.is_enabled() and preview_mode in {"image", "pdf", "text"}:
+                try:
+                    preview_url = self._build_source_storage_url(source_file)
+                except Exception:
+                    preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
+            else:
+                preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
+        return ResourceSourceFileRef(
+            file_id=source_file.id,
+            display_name=source_file.display_name,
+            relative_path=source_file.relative_path,
+            top_level_category=source_file.top_level_category,
+            file_extension=source_file.file_extension,
+            mime_type=source_file.mime_type,
+            file_size=source_file.file_size,
+            preview_text=source_file.preview_text,
+            is_inline_previewable=source_file.is_inline_previewable,
+            preview_mode=preview_mode,
+            preview_url=preview_url,
+            open_url=open_url,
+        )
+
+    def _build_source_storage_url(self, source_file: ResourceSourceFile) -> str:
+        file_path = self._require_source_path(source_file)
+        object_key = self._build_source_object_key(source_file)
+        content_type = source_file.mime_type or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        return self._storage.upload_file(object_key=object_key, file_path=file_path, content_type=content_type)
+
+    def _build_source_object_key(self, source_file: ResourceSourceFile) -> str:
+        safe_relative_path = source_file.relative_path.replace("\\", "/").lstrip("/")
+        return f"course-source-files/{source_file.course_code}/{source_file.resource_id}/{safe_relative_path}"
+
+    def _build_preview_storage_url(self, *, source_file: ResourceSourceFile, preview_path: Path, content_type: str) -> str:
+        object_key = self._build_preview_object_key(source_file=source_file, preview_path=preview_path)
+        return self._storage.upload_file(object_key=object_key, file_path=preview_path, content_type=content_type)
+
+    def _build_preview_object_key(self, *, source_file: ResourceSourceFile, preview_path: Path) -> str:
+        safe_name = preview_path.name
+        return f"course-source-previews/{source_file.course_code}/{source_file.resource_id}/{source_file.id}/{safe_name}"
+
+    def _get_preview_mode(self, source_file: ResourceSourceFile) -> str:
+        suffix = (source_file.file_extension or "").lower()
+        mime_type = (source_file.mime_type or "").lower()
+        if mime_type.startswith("image/"):
+            return "image"
+        if suffix == ".pdf" or mime_type == "application/pdf":
+            return "pdf"
+        if suffix in {".md", ".txt"} or mime_type.startswith("text/"):
+            return "text"
+        if suffix in self.VIDEO_EXTENSIONS or mime_type.startswith("video/"):
+            return "video"
+        if suffix in self.OFFICE_EXTENSIONS:
+            if self._soffice_path:
+                return "office-pdf"
+            if suffix in self.OPENXML_HTML_FALLBACK_EXTENSIONS:
+                return "html"
+        return "unsupported"
+
+    def _ensure_office_preview_artifact(self, source_file: ResourceSourceFile, file_path: Path) -> Path:
+        self._preview_root.mkdir(parents=True, exist_ok=True)
+        suffix = file_path.suffix.lower()
+
+        if self._soffice_path:
+            preview_path = self._preview_root / f"{source_file.id}-{self._sanitize_name(file_path.stem)}.pdf"
+            if preview_path.exists() and preview_path.stat().st_mtime >= file_path.stat().st_mtime:
+                return preview_path
+            self._convert_office_to_pdf(file_path, preview_path)
+            return preview_path
+
+        preview_path = self._preview_root / f"{source_file.id}-{self._sanitize_name(file_path.stem)}.html"
+        if preview_path.exists() and preview_path.stat().st_mtime >= file_path.stat().st_mtime:
+            return preview_path
+
+        if suffix == ".docx":
+            html_body = self._render_docx_html(file_path)
+        elif suffix == ".xlsx":
+            html_body = self._render_xlsx_html(file_path)
+        elif suffix == ".pptx":
+            html_body = self._render_pptx_html(file_path)
+        else:
+            raise HTTPException(status_code=415, detail="resource source file preview unsupported")
+
+        html_page = self._wrap_preview_html(source_file.display_name, html_body)
+        preview_path.write_text(html_page, encoding="utf-8")
+        return preview_path
+
+    def _convert_office_to_pdf(self, file_path: Path, preview_path: Path) -> None:
+        if not self._soffice_path:
+            raise HTTPException(status_code=500, detail="libreoffice runtime unavailable")
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            self._soffice_path,
+            "--headless",
+            "--convert-to",
+            "pdf:writer_pdf_Export",
+            "--outdir",
+            str(preview_path.parent),
+            str(file_path),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or exc.stdout or "").strip()
+            raise HTTPException(status_code=500, detail=f"office preview generation failed: {stderr or exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=500, detail="office preview generation timed out") from exc
+
+        generated_path = preview_path.parent / f"{file_path.stem}.pdf"
+        if not generated_path.exists():
+            raise HTTPException(status_code=500, detail="office preview generation missing output")
+        if generated_path.resolve() != preview_path.resolve():
+            generated_path.replace(preview_path)
+
+    def _ensure_video_preview_artifact(self, source_file: ResourceSourceFile, file_path: Path) -> Path:
+        if file_path.suffix.lower() == ".m3u8":
+            return file_path
+        if not self._ffmpeg_path:
+            return file_path
+
+        asset_root = self._ensure_video_preview_directory(source_file, file_path)
+        playlist_path = asset_root / "index.m3u8"
+        if playlist_path.exists() and playlist_path.stat().st_mtime >= file_path.stat().st_mtime:
+            return playlist_path
+
+        segment_pattern = asset_root / "segment_%03d.ts"
+        command = [
+            self._ffmpeg_path,
+            "-y",
+            "-i",
+            str(file_path),
+            "-codec:v",
+            "libx264",
+            "-codec:a",
+            "aac",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "23",
+            "-g",
+            "48",
+            "-keyint_min",
+            "48",
+            "-hls_time",
+            "6",
+            "-hls_playlist_type",
+            "vod",
+            "-hls_segment_filename",
+            str(segment_pattern),
+            str(playlist_path),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=600)
+        except subprocess.CalledProcessError as exc:
+            return file_path
+        except subprocess.TimeoutExpired:
+            return file_path
+
+        if not playlist_path.exists():
+            return file_path
+
+        self._rewrite_playlist_urls(source_file.id, playlist_path)
+        return playlist_path
+
+    def _ensure_video_preview_directory(self, source_file: ResourceSourceFile, file_path: Path) -> Path:
+        asset_root = self._preview_root / f"{source_file.id}-{self._sanitize_name(file_path.stem)}-video"
+        asset_root.mkdir(parents=True, exist_ok=True)
+        return asset_root
+
+    def _rewrite_playlist_urls(self, file_id: int, playlist_path: Path) -> None:
+        lines = playlist_path.read_text(encoding="utf-8").splitlines()
+        rewritten: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                rewritten.append(
+                    self.PREVIEW_ASSET_URL_TEMPLATE.format(file_id=file_id, asset_path=quote(stripped))
+                )
+            else:
+                rewritten.append(line)
+        playlist_path.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+
+    def _wrap_preview_html(self, title: str, body: str) -> str:
+        safe_title = html.escape(title)
+        return (
+            "<!doctype html>"
+            "<html lang='zh-CN'>"
+            "<head>"
+            "<meta charset='utf-8' />"
+            "<meta name='viewport' content='width=device-width, initial-scale=1' />"
+            f"<title>{safe_title}</title>"
+            "<style>"
+            "body{margin:0;padding:24px;background:#f8fafc;color:#0f172a;font:16px/1.7 'Segoe UI',sans-serif;}"
+            ".page{max-width:980px;margin:0 auto;background:#fff;border:1px solid #dbe4ee;border-radius:24px;padding:28px 32px;box-shadow:0 12px 40px rgba(15,23,42,.06);}"
+            "h1{margin:0 0 12px;font-size:28px;line-height:1.3;}"
+            "h2{margin:28px 0 12px;font-size:20px;line-height:1.4;}"
+            "p,li{white-space:pre-wrap;word-break:break-word;}"
+            "table{width:100%;border-collapse:collapse;margin:12px 0 24px;font-size:14px;}"
+            "th,td{border:1px solid #dbe4ee;padding:8px 10px;text-align:left;vertical-align:top;}"
+            ".muted{color:#64748b;font-size:14px;margin-bottom:24px;}"
+            ".slide,.sheet{margin-top:28px;padding-top:20px;border-top:1px solid #e2e8f0;}"
+            "</style>"
+            "</head>"
+            "<body><main class='page'>"
+            f"<h1>{safe_title}</h1>"
+            "<div class='muted'>当前内容为服务端预处理生成的站内预览版本。</div>"
+            f"{body}"
+            "</main></body></html>"
+        )
+
+    def _render_docx_html(self, file_path: Path) -> str:
+        namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        try:
+            with zipfile.ZipFile(file_path) as archive:
+                xml_bytes = archive.read("word/document.xml")
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"docx preview generation failed: {exc}") from exc
+
+        root = ET.fromstring(xml_bytes)
+        blocks: list[str] = []
+        for paragraph in root.findall(".//w:body/w:p", namespace):
+            texts = [node.text or "" for node in paragraph.findall(".//w:t", namespace)]
+            line = "".join(texts).strip()
+            if line:
+                blocks.append(f"<p>{html.escape(line)}</p>")
+
+        if not blocks:
+            blocks.append("<p>未提取到可显示的文本内容。</p>")
+        return "".join(blocks)
+
+    def _render_xlsx_html(self, file_path: Path) -> str:
+        ns_main = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        try:
+            with zipfile.ZipFile(file_path) as archive:
+                shared_strings = self._load_xlsx_shared_strings(archive)
+                sheet_names = self._load_xlsx_sheet_names(archive)
+                parts = []
+                sheet_files = sorted(
+                    name for name in archive.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name)
+                )
+                for index, sheet_file in enumerate(sheet_files, start=1):
+                    sheet_xml = ET.fromstring(archive.read(sheet_file))
+                    rows_html: list[str] = []
+                    for row in sheet_xml.findall(".//a:sheetData/a:row", ns_main):
+                        cells_html: list[str] = []
+                        for cell in row.findall("a:c", ns_main):
+                            value = self._read_xlsx_cell_value(cell, ns_main, shared_strings)
+                            cells_html.append(f"<td>{html.escape(value)}</td>")
+                        if cells_html:
+                            rows_html.append(f"<tr>{''.join(cells_html)}</tr>")
+                    sheet_title = html.escape(
+                        sheet_names[index - 1] if index - 1 < len(sheet_names) else f"Sheet {index}"
+                    )
+                    if rows_html:
+                        parts.append(
+                            f"<section class='sheet'><h2>{sheet_title}</h2><table>{''.join(rows_html)}</table></section>"
+                        )
+                if parts:
+                    return "".join(parts)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"xlsx preview generation failed: {exc}") from exc
+
+        return "<p>未提取到可显示的表格内容。</p>"
+
+    def _load_xlsx_shared_strings(self, archive: zipfile.ZipFile) -> list[str]:
+        ns_main = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        if "xl/sharedStrings.xml" not in archive.namelist():
+            return []
+        root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+        values: list[str] = []
+        for item in root.findall("a:si", ns_main):
+            texts = [node.text or "" for node in item.findall(".//a:t", ns_main)]
+            values.append("".join(texts))
+        return values
+
+    def _load_xlsx_sheet_names(self, archive: zipfile.ZipFile) -> list[str]:
+        ns_main = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        if "xl/workbook.xml" not in archive.namelist():
+            return []
+        root = ET.fromstring(archive.read("xl/workbook.xml"))
+        return [sheet.attrib.get("name", "") for sheet in root.findall(".//a:sheets/a:sheet", ns_main)]
+
+    def _read_xlsx_cell_value(self, cell: ET.Element, namespace: dict[str, str], shared_strings: list[str]) -> str:
+        cell_type = cell.attrib.get("t")
+        value_node = cell.find("a:v", namespace)
+        if cell_type == "inlineStr":
+            texts = [node.text or "" for node in cell.findall(".//a:t", namespace)]
+            return "".join(texts).strip()
+        if value_node is None or value_node.text is None:
+            return ""
+        raw_value = value_node.text.strip()
+        if cell_type == "s":
+            try:
+                return shared_strings[int(raw_value)]
+            except Exception:
+                return raw_value
+        return raw_value
+
+    def _render_pptx_html(self, file_path: Path) -> str:
+        ns_drawing = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+        try:
+            with zipfile.ZipFile(file_path) as archive:
+                slide_files = sorted(
+                    name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)
+                )
+                slides: list[str] = []
+                for index, slide_file in enumerate(slide_files, start=1):
+                    root = ET.fromstring(archive.read(slide_file))
+                    texts = [
+                        node.text.strip()
+                        for node in root.findall(".//a:t", ns_drawing)
+                        if node.text and node.text.strip()
+                    ]
+                    if texts:
+                        slide_html = "".join(f"<p>{html.escape(text)}</p>" for text in texts)
+                    else:
+                        slide_html = "<p>本页未提取到文本内容。</p>"
+                    slides.append(f"<section class='slide'><h2>幻灯片 {index}</h2>{slide_html}</section>")
+                if slides:
+                    return "".join(slides)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"pptx preview generation failed: {exc}") from exc
+
+        return "<p>未提取到可显示的幻灯片内容。</p>"
+
+    def _sanitize_name(self, value: str) -> str:
+        lowered = value.strip().lower() or "preview"
+        return re.sub(r"[^a-z0-9_-]+", "-", lowered).strip("-") or "preview"
+
+    def _detect_soffice_path(self) -> str | None:
+        detected = shutil.which("soffice") or shutil.which("soffice.exe")
+        if detected:
+            return detected
+
+        candidates = [
+            Path("C:/Program Files/LibreOffice/program/soffice.exe"),
+            Path("C:/Program Files (x86)/LibreOffice/program/soffice.exe"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return None

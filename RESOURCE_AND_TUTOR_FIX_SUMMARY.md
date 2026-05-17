@@ -17,3 +17,6 @@
 - `cd F:\A3-cnsoftbei\a3-learning-agent-system\a3-portal-web && npm run build`
 - `cd F:\A3-cnsoftbei\a3-learning-agent-system\a3-ai-python && python -m compileall app`
 - 本机接口探测：`http://127.0.0.1:18080/ai/v1/resource/generate` 当前未连通，说明还需启动 AI 服务链路后再做端到端验收。
+> LEGACY NOTE
+> 本文记录的是旧版 `a3-portal-web` 学生端页面历史。
+> 当前默认学生端前端为 `a3-student-react-web`（`3002`），当前默认管理端前端为 `a3-admin-web`（`3004`）。

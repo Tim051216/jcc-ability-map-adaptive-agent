@@ -1,50 +1,84 @@
-# 多智能体协同资源生成 - 实施进度（节选）
+# 多智能体协同资源生成 - 实施进度（更新）
 
-## 任务 1：数据库设计与创建
+## 当前结论
 
-**交付物**
+- `任务 1、2`：已完成
+- `任务 3-8`：主干代码已实现，仍缺更明确的质量验收与真实效果验收
+- `任务 9-14`：核心链路已实现并补齐多项关键缺口
+- `任务 15`：自动化测试覆盖已明显增强，但真实网关、真实 LLM、性能与全链路联调仍未完成
 
-- `sql/tj_learning_resource.sql`：`learning_resource`、`resource_generation_task`、`resource_content`、`resource_favorite`，以及按类型的扩展表（文档 / 导图 / 题库 / 视频 / 代码案例）、索引与注释。
-- Java 侧实体字段与该脚本对齐（`a3-learning` 模块）。
+## 已完成的关键补齐
 
-## 任务 2：资源数据模型
+### 资源生成实时进度
 
-**Java（MyBatis-Plus）**
+- 后端新增资源生成任务事件总线：`a3-ai-python/app/services/resource_generation_event_service.py`
+- 资源生成服务在任务创建、状态更新时发布实时事件：`a3-ai-python/app/services/resource_generation_service.py`
+- 新增 WebSocket 进度接口：`/api/v1/resource/generation/tasks/{task_id}/stream`
+- 前端生成页已接入 WebSocket，保留轮询兜底：`a3-admin-web/src/pages/resource/generation/index.vue`
 
-- 主表与任务：`LearningResource`、`ResourceGenerationTask`、`ResourceContent`、`ResourceFavorite`
-- 分类型 PO：`ResourceDocument`、`ResourceMindmap`、`ResourceQuestion`/`ResourceQuestionBank`、`ResourceVideo`、`ResourceCodeExample`
-- 推送：`ResourcePush`
-- 枚举：`ResourceType`、`ResourceStatus`
-- 对应 `mapper/*.java`
+### 生成结果对象存储交付
 
-**Python（AI 服务）**
+- 新增 MinIO 资源文件存储服务：`a3-ai-python/app/services/resource_file_storage_service.py`
+- 资源生成完成后会尝试上传原始内容到对象存储
+- 上传成功后会把 `file_url`、`object_key` 写入资源上下文与缓存记录
+- 下载同格式资源时优先返回对象存储链接，失败再回退 `data:` 下载
 
-- `app/schemas/resource.py`：请求/响应与任务、收藏等 Pydantic 模型
-- `app/db/models/generated_resource.py`：PostgreSQL 侧 `ai_generated_resource` / 收藏相关（与门户 AI 生成链路一致；Java MySQL 主 schema 为另一数据源时可按需对齐同步）
+### 批量下载能力
 
-## 任务 8–12（后端概要）
+- 批量下载已从 JSON 兜底升级为真实 ZIP 压缩包
+- ZIP 内包含资源文件与 `manifest.json`
+- 实现位置：`a3-ai-python/app/services/resource_management_service.py`
 
-- **协调器**：`app/agents/nodes/resource_generation/coordinator_agent.py`
-- **服务**：`app/services/resource_generation_service.py`、`resource_management_service.py`、`resource_service.py`
-- **路由**：`app/api/v1/resource.py`（挂载于 `app/api/router.py` 前缀 `/v1/resource`）
-  - 生成、任务 CRUD、资源列表/详情、收藏等（以当前代码为准）
+## 当前后端范围
 
-## 任务 13–14：管理端前端（已实现骨架）
+- 协调器：`a3-ai-python/app/agents/nodes/resource_generation/coordinator_agent.py`
+- 智能体：
+  - `document_agent.py`
+  - `mindmap_agent.py`
+  - `question_bank_agent.py`
+  - `video_agent.py`
+  - `code_example_agent.py`
+- 服务：
+  - `resource_generation_service.py`
+  - `resource_management_service.py`
+  - `resource_service.py`
+  - `resource_file_storage_service.py`
+  - `resource_generation_event_service.py`
+- 路由：
+  - `a3-ai-python/app/api/v1/resource.py`
 
-- `a3-admin-web/src/pages/resource/generation/index.vue` — 生成
-- `management/index.vue`、`detail/index.vue`、`favorites/index.vue`
-- `a3-admin-web/src/pages/resource/README.md`
+## 当前前端范围
 
-## 任务 15：集成测试（部分自动化）
+- 资源生成：`a3-admin-web/src/pages/resource/generation/index.vue`
+- 资源管理：`management/index.vue`
+- 资源详情：`detail/index.vue`
+- 收藏夹：`favorites/index.vue`
+- API 封装：`a3-admin-web/src/api/resource-generation.js`
 
-- `a3-ai-python/app/tests/test_multi_agent_resource_generation_integration.py`（Mock 环境下协调器、任务创建/查询/取消、列表过滤等）
-- **运行**（`a3-ai-python` 目录）：`python -m pytest app/tests/test_multi_agent_resource_generation_integration.py -q`
+## 测试进展
 
-**仍建议手工 / 后续**
+- 资源模块集成测试：`a3-ai-python/app/tests/test_multi_agent_resource_generation_integration.py`
+- 当前已覆盖：
+  - 任务创建、查询、取消、列表
+  - 资源查询、详情、搜索、收藏、删除、统计
+  - 资源生成 WebSocket 实时进度
+  - 对象存储下载优先与失败回退
+  - 批量 ZIP 下载
+- 最近一次验证命令：
+  - `python -m pytest app/tests/test_multi_agent_resource_generation_integration.py -q`
+- 最近一次结果：
+  - `23 passed`
 
-- 网关转发与登录态全链路、WebSocket 进度（若产品要求）、真实 LLM 与对象存储、并发与性能。
+## 仍待完成
 
-## 下一步建议
+- 真实网关转发与登录态全链路验证
+- 真实 LLM / 对象存储环境联调验收
+- 更明确的五类资源质量验收
+- 并发、稳定性、性能测试
+- 如产品要求，还需补更细粒度的实时预览内容流
 
-- 明确 Java MySQL 资源表与 Python `ai_generated_resource` 是否要做单向同步或统一写入路径。
-- 任务 15 扩展：对 `app/api/v1/resource.py` 的 HTTP 契约测试（Starlette `TestClient`，类似辅导模块）。
+## 建议任务口径
+
+- `任务 1、2`：可视为完成
+- `任务 9、10、11、13、15`：近几轮已有实质推进，可从“仅骨架”提升为“核心能力已落地，待完整验收”
+- `任务 12、14`：基础功能较完整，但仍建议保留“待验收”口径

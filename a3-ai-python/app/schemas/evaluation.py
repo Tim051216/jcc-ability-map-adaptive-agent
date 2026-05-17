@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 
 class EvaluationRequest(BaseModel):
     user_id: int
-    course_code: str
+    course_code: str | None = None
+    course_id: int | None = None
     answers: list[dict] = Field(default_factory=list)
     scene: str | None = None
     profile: dict | None = None
@@ -28,7 +29,8 @@ class EvaluationQuestion(BaseModel):
 
 class EvaluationPaperGenerateRequest(BaseModel):
     user_id: int
-    course_code: str
+    course_code: str | None = None
+    course_id: int | None = None
     target: str | None = None
     knowledge_points: list[str] = Field(default_factory=list)
     paper_type: str = "diagnostic"

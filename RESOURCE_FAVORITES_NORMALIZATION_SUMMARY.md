@@ -15,3 +15,6 @@
 ## 验证
 - 在 `F:\A3-cnsoftbei\a3-learning-agent-system\a3-portal-web` 执行 `npm run build` 成功通过。
 - 浏览器实测 `#/main/ai-favorites`，旧的英文资源类型已归一为中文展示。
+> LEGACY NOTE
+> 本文记录的是旧版 `a3-portal-web` 学生端页面历史。
+> 当前默认学生端前端为 `a3-student-react-web`（`3002`），当前默认管理端前端为 `a3-admin-web`（`3004`）。

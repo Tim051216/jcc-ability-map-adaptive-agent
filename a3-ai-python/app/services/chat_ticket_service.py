@@ -12,17 +12,24 @@ from app.schemas.chat import (
     ChatTicketResponse,
     ChatTicketStatusRequest,
 )
+from app.services.course_context_service import CourseContextService
 
 
 class ChatTicketService:
     async def create_ticket(self, request: ChatTicketCreateRequest) -> ChatTicketResponse:
+        course_context = None
+        if request.course_id is not None or request.course_code:
+            course_context = await CourseContextService().resolve(
+                course_id=request.course_id,
+                course_code=request.course_code,
+            )
         now = datetime.now(timezone.utc).isoformat()
         async with async_session_factory() as session:
             ticket = await ChatTicketRepository().create_ticket(
                 session,
                 user_id=request.user_id,
                 session_id=request.session_id,
-                course_code=request.course_code,
+                course_code=course_context.course_code if course_context else request.course_code,
                 title=request.title,
                 question_summary=request.question_summary,
                 latest_answer=request.latest_answer,
@@ -38,10 +45,22 @@ class ChatTicketService:
         self,
         *,
         user_id: int | None = None,
+        course_id: int | None = None,
+        course_code: str | None = None,
         status: str | None = None,
     ) -> ChatTicketListResponse:
+        resolved_course_code = course_code
+        if course_id is not None:
+            resolved_course_code = (
+                await CourseContextService().resolve(course_id=course_id, course_code=course_code)
+            ).course_code
         async with async_session_factory() as session:
-            items, total = await ChatTicketRepository().list_tickets(session, user_id=user_id, status=status)
+            items, total = await ChatTicketRepository().list_tickets(
+                session,
+                user_id=user_id,
+                course_code=resolved_course_code,
+                status=status,
+            )
         return ChatTicketListResponse(items=[self._to_ticket_response(item) for item in items], total=total)
 
     async def get_ticket(self, ticket_id: int) -> ChatTicketResponse:

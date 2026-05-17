@@ -19,11 +19,22 @@ from app.schemas.evaluation import (
     WrongQuestionItem,
     WrongQuestionListResponse,
 )
+from app.services.course_context_service import CourseContextService
 from app.services.evaluation_agent_service import EvaluationAgentService
 
 
 class EvaluationService:
     async def generate_paper(self, request: EvaluationPaperGenerateRequest) -> EvaluationPaperResponse:
+        course_context = await CourseContextService().resolve(
+            course_id=request.course_id,
+            course_code=request.course_code,
+        )
+        request = request.model_copy(
+            update={
+                "course_id": course_context.course_id,
+                "course_code": course_context.course_code,
+            }
+        )
         questions = await self._build_paper_questions(request)
         now = datetime.now(timezone.utc).isoformat()
         async with async_session_factory() as session:
@@ -38,12 +49,13 @@ class EvaluationService:
                 updated_at=now,
             )
             await session.commit()
+        paper_id = paper.id
         return EvaluationPaperResponse(
-            paper_id=paper.id,
+            paper_id=paper_id,
             user_id=request.user_id,
             course_code=request.course_code,
             paper_type=request.paper_type,
-            status=paper.status,
+            status="generated",
             questions=questions,
         )
 
@@ -68,71 +80,53 @@ class EvaluationService:
         request: EvaluationPaperSubmitRequest,
     ) -> EvaluationResponse:
         now = datetime.now(timezone.utc).isoformat()
-        async with async_session_factory() as session:
-            paper_repo = EvaluationPaperRepository()
-            paper = await paper_repo.get_paper(session, paper_id)
-            if paper is None or paper.user_id != request.user_id:
-                raise HTTPException(status_code=404, detail="evaluation paper not found")
-            questions = [EvaluationQuestion.model_validate(item) for item in paper.questions_data or []]
-            question_map = {item.question_id: item for item in questions}
-
-            normalized_answers: list[dict] = []
-            for answer in request.answers:
-                question = question_map.get(answer.question_id)
-                if question is None:
-                    continue
-                is_correct = self._is_correct_answer(question.correct_answer, answer.answer)
-                await paper_repo.create_answer(
-                    session,
+        try:
+            async with async_session_factory() as session:
+                paper_repo = EvaluationPaperRepository()
+                paper = await paper_repo.get_paper(session, paper_id)
+                if paper is None or paper.user_id != request.user_id:
+                    raise HTTPException(status_code=404, detail="evaluation paper not found")
+                response = self._build_submission_response(
                     paper_id=paper.id,
+                    course_code=paper.course_code,
+                    questions=[EvaluationQuestion.model_validate(item) for item in paper.questions_data or []],
+                    request=request,
+                )
+                for answer in request.answers:
+                    question = next((item for item in response["questions"] if item.question_id == answer.question_id), None)
+                    if question is None:
+                        continue
+                    await paper_repo.create_answer(
+                        session,
+                        paper_id=paper.id,
+                        user_id=request.user_id,
+                        question_id=question.question_id,
+                        question_type=question.question_type,
+                        prompt=question.prompt,
+                        knowledge_point=question.knowledge_point,
+                        user_answer=answer.answer,
+                        correct_answer=question.correct_answer,
+                        is_correct=self._is_correct_answer(question.correct_answer, answer.answer),
+                        explanation=question.explanation,
+                        created_at=now,
+                        updated_at=now,
+                    )
+
+                paper.status = "submitted"
+                paper.updated_at = now
+                record = await EvaluationRepository().create_record(
+                    session,
                     user_id=request.user_id,
-                    question_id=question.question_id,
-                    question_type=question.question_type,
-                    prompt=question.prompt,
-                    knowledge_point=question.knowledge_point,
-                    user_answer=answer.answer,
-                    correct_answer=question.correct_answer,
-                    is_correct=is_correct,
-                    explanation=question.explanation,
+                    course_code=paper.course_code,
+                    evaluation_type=response["result"].evaluation_type,
+                    result_data=response["result"].model_dump(mode="json"),
                     created_at=now,
                     updated_at=now,
                 )
-                normalized_answers.append(
-                    {
-                        "question_id": question.question_id,
-                        "knowledge_point": question.knowledge_point,
-                        "is_correct": is_correct,
-                        "user_answer": answer.answer,
-                        "correct_answer": question.correct_answer,
-                    }
-                )
-
-            paper.status = "submitted"
-            paper.updated_at = now
-
-            evaluation_request = EvaluationRequest(
-                user_id=request.user_id,
-                course_code=paper.course_code,
-                answers=normalized_answers,
-                scene=request.scene,
-                profile=request.profile,
-                plan=request.plan,
-                resources=request.resources,
-                learning_duration_minutes=request.learning_duration_minutes,
-                resource_usage_count=request.resource_usage_count,
-            )
-            response = self._build_evaluation_response(evaluation_request, paper_id=paper.id)
-            record = await EvaluationRepository().create_record(
-                session,
-                user_id=evaluation_request.user_id,
-                course_code=evaluation_request.course_code,
-                evaluation_type=response.evaluation_type,
-                result_data=response.model_dump(mode="json"),
-                created_at=now,
-                updated_at=now,
-            )
-            await session.commit()
-        return response.model_copy(update={"record_id": record.id})
+                await session.commit()
+            return response["result"].model_copy(update={"record_id": record.id})
+        except HTTPException:
+            raise
 
     async def get_result(self, record_id: int) -> EvaluationResponse | None:
         async with async_session_factory() as session:
@@ -149,6 +143,16 @@ class EvaluationService:
             return EvaluationResponse.model_validate({**latest.result_data, "record_id": latest.id})
 
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResponse:
+        course_context = await CourseContextService().resolve(
+            course_id=request.course_id,
+            course_code=request.course_code,
+        )
+        request = request.model_copy(
+            update={
+                "course_id": course_context.course_id,
+                "course_code": course_context.course_code,
+            }
+        )
         response = self._build_evaluation_response(request)
         await self._persist_record(request, response)
         return response
@@ -255,20 +259,56 @@ class EvaluationService:
 
     async def _persist_record(self, request: EvaluationRequest, response: EvaluationResponse) -> None:
         now = datetime.now(timezone.utc).isoformat()
-        try:
-            async with async_session_factory() as session:
-                record = await EvaluationRepository().create_record(
-                    session,
-                    user_id=request.user_id,
-                    course_code=request.course_code,
-                    evaluation_type=response.evaluation_type,
-                    result_data=response.model_dump(mode="json"),
-                    created_at=now,
-                    updated_at=now,
-                )
-                await session.commit()
-        except Exception:
-            return
+        async with async_session_factory() as session:
+            await EvaluationRepository().create_record(
+                session,
+                user_id=request.user_id,
+                course_code=request.course_code,
+                evaluation_type=response.evaluation_type,
+                result_data=response.model_dump(mode="json"),
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+
+    def _build_submission_response(
+        self,
+        *,
+        paper_id: int,
+        course_code: str,
+        questions: list[EvaluationQuestion],
+        request: EvaluationPaperSubmitRequest,
+    ) -> dict[str, object]:
+        question_map = {item.question_id: item for item in questions}
+        normalized_answers: list[dict] = []
+        for answer in request.answers:
+            question = question_map.get(answer.question_id)
+            if question is None:
+                continue
+            normalized_answers.append(
+                {
+                    "question_id": question.question_id,
+                    "knowledge_point": question.knowledge_point,
+                    "is_correct": self._is_correct_answer(question.correct_answer, answer.answer),
+                    "user_answer": answer.answer,
+                    "correct_answer": question.correct_answer,
+                }
+            )
+        evaluation_request = EvaluationRequest(
+            user_id=request.user_id,
+            course_code=course_code,
+            answers=normalized_answers,
+            scene=request.scene,
+            profile=request.profile,
+            plan=request.plan,
+            resources=request.resources,
+            learning_duration_minutes=request.learning_duration_minutes,
+            resource_usage_count=request.resource_usage_count,
+        )
+        return {
+            "questions": questions,
+            "result": self._build_evaluation_response(evaluation_request, paper_id=paper_id),
+        }
 
     async def _build_paper_questions(
         self,

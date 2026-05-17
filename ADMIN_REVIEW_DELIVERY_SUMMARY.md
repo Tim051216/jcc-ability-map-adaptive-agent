@@ -22,3 +22,6 @@
 - `F:\A3-cnsoftbei\a3-learning-agent-system\a3-ai-python\.venv\Scripts\python.exe -m pytest app\tests\test_admin_api.py`
 - `GET http://127.0.0.1:18080/api/v1/admin/reviews`
 - 浏览器验收 `http://localhost:18082/#/main/ai-admin-review`
+> LEGACY NOTE
+> 本文记录的是旧版 `a3-portal-web` 管理页联调历史。
+> 当前默认学生端前端为 `a3-student-react-web`（`3002`），当前默认管理端前端为 `a3-admin-web`（`3004`）。

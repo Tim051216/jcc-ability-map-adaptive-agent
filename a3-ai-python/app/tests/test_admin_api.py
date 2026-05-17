@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 
 from app.api.v1 import admin
 from app.services.admin_dashboard_service import AdminDashboardService
+from app.services.admin_notification_service import AdminNotificationService
+from app.services.admin_session_service import AdminSessionService
 from app.services.agent_runtime_summary_service import AgentRuntimeSummaryService
 from app.services.admin_service import AdminService
 from app.services.admin_user_status_history_service import AdminUserStatusHistoryService
@@ -77,6 +79,224 @@ def test_get_admin_dashboard_summary_returns_payload(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["high_risk_users"] == 3
+
+
+def test_get_admin_session_state_returns_payload(monkeypatch) -> None:
+    def fake_get_state(self):
+        return {
+            "session": {
+                "username": "codex-admin",
+                "display_name": "Codex Admin",
+                "role": "super_admin",
+                "active_environment_id": "local-live",
+                "active_environment_label": "本地真实链路",
+                "login_state": "active",
+                "logged_in_at": "2026-05-17T02:00:00+00:00",
+                "last_seen_at": "2026-05-17T02:01:00+00:00",
+            },
+            "environments": [],
+            "history": [],
+        }
+
+    monkeypatch.setattr(AdminSessionService, "get_state", fake_get_state)
+
+    response = client.get("/api/v1/admin/session")
+
+    assert response.status_code == 200
+    assert response.json()["session"]["username"] == "codex-admin"
+
+
+def test_login_admin_session_returns_payload(monkeypatch) -> None:
+    def fake_login(self, request):
+        assert request.username == "ops-admin"
+        assert request.password == "ops-local"
+        assert request.environment_id == "local-safe"
+        return {
+            "session": {
+                "username": "ops-admin",
+                "display_name": "Operations Admin",
+                "role": "operations_admin",
+                "active_environment_id": "local-safe",
+                "active_environment_label": "本地安全模式",
+                "login_state": "active",
+                "logged_in_at": "2026-05-17T02:00:00+00:00",
+                "last_seen_at": "2026-05-17T02:00:00+00:00",
+            },
+            "environments": [],
+            "history": [],
+        }
+
+    monkeypatch.setattr(AdminSessionService, "login", fake_login)
+
+    response = client.post(
+        "/api/v1/admin/session/login",
+        json={"username": "ops-admin", "password": "ops-local", "environment_id": "local-safe"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["session"]["active_environment_id"] == "local-safe"
+
+
+def test_logout_admin_session_returns_empty_state(monkeypatch) -> None:
+    def fake_logout(self):
+        return {"session": None, "environments": [], "history": []}
+
+    monkeypatch.setattr(AdminSessionService, "logout", fake_logout)
+
+    response = client.post("/api/v1/admin/session/logout")
+
+    assert response.status_code == 200
+    assert response.json()["session"] is None
+
+
+def test_switch_admin_environment_returns_payload(monkeypatch) -> None:
+    def fake_switch_environment(self, request):
+        assert request.environment_id == "staging-like"
+        return {
+            "session": {
+                "username": "codex-admin",
+                "display_name": "Codex Admin",
+                "role": "super_admin",
+                "active_environment_id": "staging-like",
+                "active_environment_label": "预发映射视图",
+                "login_state": "active",
+                "logged_in_at": "2026-05-17T02:00:00+00:00",
+                "last_seen_at": "2026-05-17T02:02:00+00:00",
+            },
+            "environments": [],
+            "history": [],
+        }
+
+    monkeypatch.setattr(AdminSessionService, "switch_environment", fake_switch_environment)
+
+    response = client.post("/api/v1/admin/session/environment", json={"environment_id": "staging-like"})
+
+    assert response.status_code == 200
+    assert response.json()["session"]["active_environment_label"] == "预发映射视图"
+
+
+def test_list_admin_notifications_returns_payload(monkeypatch) -> None:
+    async def fake_list_notifications(self):
+        return {
+            "items": [
+                {
+                    "notification_id": "pending-reviews",
+                    "category": "content_review",
+                    "title": "待审核内容需要处理",
+                    "detail": "当前共有 3 条待处理审核任务。",
+                    "tone": "warning",
+                    "target_view": "compliance",
+                    "target_label": "打开内容审核",
+                    "status": "new",
+                    "unread": True,
+                    "count": 3,
+                    "fingerprint": "pending:3:2026-05-17T01:00:00+00:00",
+                    "generated_at": "2026-05-17T01:00:00+00:00",
+                    "updated_at": None,
+                    "updated_by": None,
+                }
+            ],
+            "total": 1,
+            "unread_count": 1,
+            "open_count": 1,
+            "resolved_count": 0,
+        }
+
+    monkeypatch.setattr(AdminNotificationService, "list_notifications", fake_list_notifications)
+
+    response = client.get("/api/v1/admin/notifications")
+
+    assert response.status_code == 200
+    assert response.json()["unread_count"] == 1
+    assert response.json()["items"][0]["notification_id"] == "pending-reviews"
+
+
+def test_mark_admin_notification_as_read(monkeypatch) -> None:
+    async def fake_mark_as_read(self, notification_id: str, request):
+        assert notification_id == "pending-reviews"
+        assert request.updated_by == "adminA"
+        return {
+            "notification_id": "pending-reviews",
+            "category": "content_review",
+            "title": "待审核内容需要处理",
+            "detail": "当前共有 3 条待处理审核任务。",
+            "tone": "warning",
+            "target_view": "compliance",
+            "target_label": "打开内容审核",
+            "status": "read",
+            "unread": False,
+            "count": 3,
+            "fingerprint": "pending:3:2026-05-17T01:00:00+00:00",
+            "generated_at": "2026-05-17T01:00:00+00:00",
+            "updated_at": "2026-05-17T01:05:00+00:00",
+            "updated_by": "adminA",
+        }
+
+    monkeypatch.setattr(AdminNotificationService, "mark_as_read", fake_mark_as_read)
+
+    response = client.post("/api/v1/admin/notifications/pending-reviews/read", json={"updated_by": "adminA"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "read"
+    assert response.json()["unread"] is False
+
+
+def test_resolve_admin_notification(monkeypatch) -> None:
+    async def fake_resolve_notification(self, notification_id: str, request):
+        assert notification_id == "agent-runtime-issues"
+        assert request.updated_by == "adminB"
+        return {
+            "notification_id": "agent-runtime-issues",
+            "category": "agent_runtime",
+            "title": "Agent 运行存在异常",
+            "detail": "当前共有 1 条错误日志。",
+            "tone": "danger",
+            "target_view": "monitoring",
+            "target_label": "打开 AI 监控",
+            "status": "resolved",
+            "unread": False,
+            "count": 1,
+            "fingerprint": "agent:1:0:2026-05-17T01:00:00+00:00",
+            "generated_at": "2026-05-17T01:00:00+00:00",
+            "updated_at": "2026-05-17T01:06:00+00:00",
+            "updated_by": "adminB",
+        }
+
+    monkeypatch.setattr(AdminNotificationService, "resolve_notification", fake_resolve_notification)
+
+    response = client.post("/api/v1/admin/notifications/agent-runtime-issues/resolve", json={"updated_by": "adminB"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "resolved"
+
+
+def test_reopen_admin_notification(monkeypatch) -> None:
+    async def fake_reopen_notification(self, notification_id: str, request):
+        assert notification_id == "agent-runtime-issues"
+        assert request.updated_by == "adminB"
+        return {
+            "notification_id": "agent-runtime-issues",
+            "category": "agent_runtime",
+            "title": "Agent 运行存在异常",
+            "detail": "当前共有 1 条错误日志。",
+            "tone": "danger",
+            "target_view": "monitoring",
+            "target_label": "打开 AI 监控",
+            "status": "new",
+            "unread": True,
+            "count": 1,
+            "fingerprint": "agent:1:0:2026-05-17T01:00:00+00:00",
+            "generated_at": "2026-05-17T01:00:00+00:00",
+            "updated_at": "2026-05-17T01:07:00+00:00",
+            "updated_by": "adminB",
+        }
+
+    monkeypatch.setattr(AdminNotificationService, "reopen_notification", fake_reopen_notification)
+
+    response = client.post("/api/v1/admin/notifications/agent-runtime-issues/reopen", json={"updated_by": "adminB"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "new"
 
 
 def test_ping_llm_endpoint_returns_health_payload(monkeypatch) -> None:

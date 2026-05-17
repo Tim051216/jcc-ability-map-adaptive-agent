@@ -33,6 +33,18 @@ PROFILE_UPDATE_PROMPT = """你是学习画像更新助手。
 """
 
 
+def _build_profile_update_prompt(
+    current_profile: dict[str, Any],
+    behavior_data: list[dict[str, Any]],
+) -> str:
+    profile_text = json.dumps(current_profile, ensure_ascii=False, indent=2)
+    behavior_text = json.dumps(behavior_data, ensure_ascii=False, indent=2)
+    return (
+        PROFILE_UPDATE_PROMPT.replace("{current_profile}", profile_text)
+        .replace("{behavior_data}", behavior_text)
+    )
+
+
 async def profile_updater_node(state: LearningAgentState) -> LearningAgentState:
     current_profile = state.get("profile", {})
     behavior_data = state.get("behavior_data", [])
@@ -61,14 +73,9 @@ async def profile_updater_node(state: LearningAgentState) -> LearningAgentState:
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
     )
-    profile_text = json.dumps(current_profile, ensure_ascii=False, indent=2)
-    behavior_text = json.dumps(behavior_data, ensure_ascii=False, indent=2)
     prompt_messages = [
         SystemMessage(
-            content=PROFILE_UPDATE_PROMPT.format(
-                current_profile=profile_text,
-                behavior_data=behavior_text,
-            )
+            content=_build_profile_update_prompt(current_profile, behavior_data)
         ),
         HumanMessage(content="请分析并更新学习画像"),
     ]

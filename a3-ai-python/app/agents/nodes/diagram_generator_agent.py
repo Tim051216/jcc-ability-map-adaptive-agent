@@ -55,9 +55,20 @@ class DiagramGeneratorAgent:
 
         # 4. 优化图解
         optimized_code = await self._optimize_diagram(mermaid_code, diagram_type)
+        if not optimized_code:
+            optimized_code = self._build_fallback_diagram(question_analysis, diagram_type)
 
         result = {
-            "diagrams": [optimized_code] if optimized_code else [],
+            "diagrams": [
+                {
+                    "diagram_type": diagram_type,
+                    "title": self._build_diagram_title(question_analysis, diagram_type),
+                    "render_engine": "mermaid",
+                    "mermaid_code": optimized_code,
+                }
+            ]
+            if optimized_code
+            else [],
             "diagram_types": [diagram_type] if optimized_code else [],
         }
 
@@ -253,7 +264,63 @@ class DiagramGeneratorAgent:
         # - 优化节点布局
         # - 添加样式定义
 
-        return mermaid_code
+        lines = [line.rstrip() for line in mermaid_code.splitlines() if line.strip()]
+        if not lines:
+            return ""
+
+        sanitized_lines = [self._sanitize_mermaid_line(line) for line in lines[:24]]
+        optimized = "\n".join(sanitized_lines)
+        if diagram_type == "flowchart" and "classDef" not in optimized:
+            optimized += (
+                "\nclassDef key fill:#e0f2fe,stroke:#0284c7,color:#0f172a;"
+                "\nclassDef focus fill:#fef3c7,stroke:#d97706,color:#7c2d12;"
+            )
+        return optimized
+
+    @staticmethod
+    def _sanitize_mermaid_line(line: str) -> str:
+        sanitized = line.replace("（", "(").replace("）", ")").replace("：", ":").strip()
+        sanitized = sanitized.replace("“", '"').replace("”", '"').replace("`", "")
+        if "[" in sanitized and "]" in sanitized:
+            head, tail = sanitized.split("[", 1)
+            label, rest = tail.split("]", 1)
+            label = label[:28].replace('"', "").strip()
+            sanitized = f"{head}[{label}]{rest}"
+        return sanitized
+
+    @staticmethod
+    def _build_diagram_title(question_analysis: dict[str, Any], diagram_type: str) -> str:
+        concept = str(question_analysis.get("core_concept") or "").strip() or "知识图解"
+        suffix = {
+            "flowchart": "流程图",
+            "mindmap": "思维导图",
+            "graph": "关系图",
+        }.get(diagram_type, "图解")
+        return f"{concept} {suffix}"
+
+    @staticmethod
+    def _build_fallback_diagram(question_analysis: dict[str, Any], diagram_type: str) -> str:
+        points = [str(x).strip() for x in question_analysis.get("knowledge_points", []) if str(x).strip()][:4]
+        core_concept = str(question_analysis.get("core_concept") or "核心问题").strip()
+        if diagram_type == "mindmap":
+            branches = "\n".join(f"    {point}" for point in points) or "    关键步骤"
+            return f"mindmap\n  root(({core_concept[:20]}))\n{branches}"
+        if diagram_type == "graph":
+            if not points:
+                points = ["问题识别", "关键概念", "解题方法"]
+            edges = "\n".join(
+                f"    A[{core_concept[:20]}] --> N{idx}[{point[:18]}]" for idx, point in enumerate(points, start=1)
+            )
+            return f"graph LR\n{edges}"
+        steps = points or ["理解题意", "定位知识点", "分步作答"]
+        flow_lines = ["flowchart TD", "    A[开始] --> B[理解题意]"]
+        previous = "B"
+        for idx, step in enumerate(steps, start=1):
+            node = f"N{idx}"
+            flow_lines.append(f"    {previous} --> {node}[{step[:18]}]")
+            previous = node
+        flow_lines.append(f"    {previous} --> Z[完成总结]")
+        return "\n".join(flow_lines)
 
 
 # 导出函数供 LangGraph 使用

@@ -9,8 +9,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
+import zipfile
 from datetime import datetime
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
 from fastapi import FastAPI
@@ -64,7 +68,6 @@ def _task_response(task_id: int = 1) -> ResourceGenerationTaskResponse:
         create_time=now,
         update_time=now,
     )
-
 
 def _sample_resource(rid: int = 1) -> LearningResourceResponse:
     now = datetime.now()
@@ -174,6 +177,77 @@ def test_cancel_generation_task(monkeypatch) -> None:
     response = client.delete("/api/v1/resource/generation/tasks/3")
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+def test_generation_task_stream_completed_sends_initial_snapshot(monkeypatch) -> None:
+    expected = _task_response(task_id=88).model_copy(update={"student_id": 1001, "task_status": 3, "progress": 100})
+
+    async def fake_get(self, task_id: int):
+        assert task_id == 88
+        return expected
+
+    monkeypatch.setattr(ResourceGenerationService, "get_task_status", fake_get)
+
+    with client.websocket_connect("/api/v1/resource/generation/tasks/88/stream?user_id=1001") as ws:
+        msg = ws.receive_json()
+
+    assert msg["chunk_type"] == "task_status"
+    assert msg["content"]["id"] == 88
+    assert msg["content"]["task_status"] == 3
+
+
+def test_generation_task_stream_pending_receives_followup_event(monkeypatch) -> None:
+    initial = _task_response(task_id=66).model_copy(update={"student_id": 1001, "task_status": 2, "progress": 10})
+
+    async def fake_get(self, task_id: int):
+        assert task_id == 66
+        return initial
+
+    monkeypatch.setattr(ResourceGenerationService, "get_task_status", fake_get)
+
+    queue = asyncio.Queue()
+    queue.put_nowait(
+        {
+            "chunk_type": "complete",
+            "content": _task_response(task_id=66)
+            .model_copy(update={"student_id": 1001, "task_status": 3, "progress": 100, "completed_resources": 2})
+            .model_dump(mode="json"),
+        }
+    )
+
+    monkeypatch.setattr(
+        "app.api.v1.resource.ResourceGenerationEventService.subscribe",
+        lambda task_id: queue,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.resource.ResourceGenerationEventService.unsubscribe",
+        lambda task_id, queue_obj: None,
+    )
+
+    with client.websocket_connect("/api/v1/resource/generation/tasks/66/stream?user_id=1001") as ws:
+        first = ws.receive_json()
+        second = ws.receive_json()
+
+    assert first["chunk_type"] == "task_status"
+    assert first["content"]["task_status"] == 2
+    assert second["chunk_type"] == "complete"
+    assert second["content"]["progress"] == 100
+    assert second["content"]["completed_resources"] == 2
+
+
+def test_generation_task_stream_rejects_wrong_user(monkeypatch) -> None:
+    expected = _task_response(task_id=18).model_copy(update={"student_id": 2002})
+
+    async def fake_get(self, task_id: int):
+        return expected
+
+    monkeypatch.setattr(ResourceGenerationService, "get_task_status", fake_get)
+
+    with client.websocket_connect("/api/v1/resource/generation/tasks/18/stream?user_id=1001") as ws:
+        msg = ws.receive_json()
+
+    assert msg["chunk_type"] == "error"
+    assert "无权" in msg["content"]
 
 
 def test_generation_task_state_survives_new_service_instances(monkeypatch) -> None:
@@ -298,6 +372,13 @@ async def test_generation_results_become_searchable_and_stat_visible(monkeypatch
         "coordinate_generation",
         fake_coordinate_generation,
     )
+    monkeypatch.setattr(
+        "app.services.resource_generation_service.ResourceFileStorageService.upload_generated_resource",
+        lambda self, **kwargs: {
+            "object_key": f"generated/{kwargs['resource_id']}.markdown",
+            "file_url": f"https://cdn.example/generated/{kwargs['resource_id']}.md",
+        },
+    )
 
     service = ResourceGenerationService()
     created = await service.create_generation_task(
@@ -323,6 +404,9 @@ async def test_generation_results_become_searchable_and_stat_visible(monkeypatch
     assert search_result.total == 1
     assert search_result.items[0].resource_name == "递归讲义"
     assert search_result.items[0].difficulty_level == 2
+    detail = await management.get_resource_detail(search_result.items[0].id)
+    assert detail["file_url"] == f"https://cdn.example/generated/{search_result.items[0].id}.md"
+    assert detail["object_key"] == f"generated/{search_result.items[0].id}.markdown"
 
     stats = await management.get_resource_statistics(1001)
     assert stats["total_resources"] == 1
@@ -513,6 +597,173 @@ def test_v2_download_and_batch_and_delete_and_stats(monkeypatch) -> None:
     r = client.get("/api/v1/resource/v2/statistics?student_id=99")
     assert r.status_code == 200
     assert r.json()["total_resources"] == 3
+
+
+@pytest.mark.asyncio
+async def test_download_uses_object_storage_url_when_original_format_matches(monkeypatch) -> None:
+    now = datetime.now()
+    ResourceManagementService.register_resource(
+        {
+            "id": 77,
+            "resource_name": "对象存储讲义",
+            "resource_type": 1,
+            "knowledge_point_id": 101,
+            "course_id": 1,
+            "student_id": 1001,
+            "difficulty_level": 1,
+            "status": 2,
+            "version": 1,
+            "file_url": "https://cdn.example/object.md",
+            "file_size": None,
+            "file_format": "markdown",
+            "object_key": "generated/document/77/object.md",
+            "generation_task_id": None,
+            "quality_score": None,
+            "view_count": 0,
+            "download_count": 0,
+            "favorite_count": 0,
+            "create_time": now,
+            "update_time": now,
+            "title": "对象存储讲义",
+            "summary": "summary",
+            "content": "# content",
+        }
+    )
+    monkeypatch.setattr(
+        "app.services.resource_management_service.ResourceFileStorageService.build_download_url",
+        lambda self, object_key: f"https://signed.example/{object_key}",
+    )
+
+    result = await ResourceManagementService().generate_download_url(
+        resource_id=77,
+        user_id=1001,
+        format="markdown",
+    )
+
+    assert result["download_url"] == "https://signed.example/generated/document/77/object.md"
+    assert result["file_name"] == "对象存储讲义.md"
+
+
+@pytest.mark.asyncio
+async def test_download_falls_back_to_data_url_when_storage_link_generation_fails(monkeypatch) -> None:
+    now = datetime.now()
+    ResourceManagementService.register_resource(
+        {
+            "id": 78,
+            "resource_name": "回退讲义",
+            "resource_type": 1,
+            "knowledge_point_id": 101,
+            "course_id": 1,
+            "student_id": 1001,
+            "difficulty_level": 1,
+            "status": 2,
+            "version": 1,
+            "file_url": None,
+            "file_size": None,
+            "file_format": "markdown",
+            "object_key": "generated/document/78/fallback.md",
+            "generation_task_id": None,
+            "quality_score": None,
+            "view_count": 0,
+            "download_count": 0,
+            "favorite_count": 0,
+            "create_time": now,
+            "update_time": now,
+            "title": "回退讲义",
+            "summary": "summary",
+            "content": "# fallback",
+        }
+    )
+
+    def fail_build(self, object_key: str):
+        raise RuntimeError("storage unavailable")
+
+    monkeypatch.setattr(
+        "app.services.resource_management_service.ResourceFileStorageService.build_download_url",
+        fail_build,
+    )
+
+    result = await ResourceManagementService().generate_download_url(
+        resource_id=78,
+        user_id=1001,
+        format="markdown",
+    )
+
+    assert result["download_url"].startswith("data:text/markdown;base64,")
+
+
+@pytest.mark.asyncio
+async def test_batch_download_returns_real_zip_archive() -> None:
+    now = datetime.now()
+    ResourceManagementService.register_resource(
+        {
+            "id": 81,
+            "resource_name": "递归讲义",
+            "resource_type": 1,
+            "knowledge_point_id": 101,
+            "course_id": 1,
+            "student_id": 1001,
+            "difficulty_level": 1,
+            "status": 2,
+            "version": 1,
+            "file_url": None,
+            "file_size": None,
+            "file_format": "markdown",
+            "generation_task_id": None,
+            "quality_score": None,
+            "view_count": 0,
+            "download_count": 0,
+            "favorite_count": 0,
+            "create_time": now,
+            "update_time": now,
+            "title": "递归讲义",
+            "summary": "summary",
+            "content": "# recursion",
+        }
+    )
+    ResourceManagementService.register_resource(
+        {
+            "id": 82,
+            "resource_name": "知识导图",
+            "resource_type": 2,
+            "knowledge_point_id": 101,
+            "course_id": 1,
+            "student_id": 1001,
+            "difficulty_level": 1,
+            "status": 2,
+            "version": 1,
+            "file_url": None,
+            "file_size": None,
+            "file_format": "mermaid",
+            "generation_task_id": None,
+            "quality_score": None,
+            "view_count": 0,
+            "download_count": 0,
+            "favorite_count": 0,
+            "create_time": now,
+            "update_time": now,
+            "title": "知识导图",
+            "summary": "summary",
+            "content": "mindmap\n  root((recursion))",
+        }
+    )
+
+    result = await ResourceManagementService().batch_download(
+        resource_ids=[81, 82],
+        user_id=1001,
+        format="zip",
+    )
+
+    assert result["download_url"].startswith("data:application/zip;base64,")
+    assert result["file_name"].endswith(".zip")
+    payload = base64.b64decode(result["download_url"].split(",", 1)[1])
+    with zipfile.ZipFile(BytesIO(payload), "r") as zf:
+        names = sorted(zf.namelist())
+        assert "manifest.json" in names
+        assert any(name.endswith(".md") for name in names)
+        assert any(name.endswith(".mmd") for name in names)
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        assert len(manifest) == 2
 
 
 # --- 协调器（无 LLM） ---

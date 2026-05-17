@@ -122,7 +122,7 @@ class ReferenceSource(BaseModel):
 class TutoringAnswerBase(BaseModel):
     """解答基础模型"""
     answer_text: str = Field(..., description="解答文字内容（Markdown格式）")
-    answer_diagrams: Optional[list[str]] = Field(None, description="图解内容（Mermaid代码）")
+    answer_diagrams: Optional[list[Any]] = Field(None, description="图解内容（Mermaid代码或结构化对象）")
     answer_videos: Optional[list[dict[str, Any]]] = Field(None, description="推荐视频列表")
     reference_sources: Optional[list[dict[str, Any]]] = Field(None, description="参考资料来源")
 
@@ -193,11 +193,45 @@ class EscalationRecordResponse(EscalationRecordBase):
     update_time: datetime
 
 
+class EscalationDetailResponse(EscalationRecordResponse):
+    """升级记录详情响应"""
+
+    question_text: Optional[str] = None
+    question_images: Optional[list[str]] = None
+    question_type: Optional[str] = None
+    knowledge_points: Optional[list[str]] = None
+    latest_answer_id: Optional[int] = None
+    latest_answer_text: Optional[str] = None
+    latest_answer_source: Optional[int] = None
+
+
+class EscalationListResponse(BaseModel):
+    """升级记录列表响应"""
+
+    total: int
+    page: int
+    page_size: int
+    items: list[EscalationRecordResponse]
+
+
 class ExpertAssignmentRequest(BaseModel):
     """专家分配请求"""
     escalation_id: int
     expert_id: int
     notes: Optional[str] = Field(None, max_length=500)
+
+
+class ExpertAnswerSubmitRequest(BaseModel):
+    """提交人工解答请求"""
+
+    escalation_id: int
+    expert_id: int
+    answer_text: str = Field(..., min_length=1, description="人工解答正文")
+    answer_diagrams: Optional[list[Any]] = Field(None, description="人工图解")
+    answer_videos: Optional[list[dict[str, Any]]] = Field(None, description="人工补充视频")
+    reference_sources: Optional[list[dict[str, Any]]] = Field(None, description="人工参考来源")
+    expert_notes: Optional[str] = Field(None, max_length=500, description="专家备注")
+    feedback_to_ai: bool = Field(True, description="是否反馈给 AI 服务")
 
 
 # ==================== 收藏相关 ====================
@@ -263,6 +297,66 @@ class TutoringGenerationStatus(BaseModel):
     current_step: Optional[str] = Field(None, description="当前步骤描述")
     answer_id: Optional[int] = None
     error_message: Optional[str] = None
+
+
+class TutoringTaskResult(BaseModel):
+    """异步答疑任务结果"""
+
+    question_id: int
+    session_id: Optional[int] = None
+    answer_id: Optional[int] = None
+    answer_text: str = ""
+    diagrams: list[Any] = Field(default_factory=list)
+    videos: list[dict[str, Any]] = Field(default_factory=list)
+    reference_sources: list[dict[str, Any]] = Field(default_factory=list)
+    confidence_score: Optional[float] = None
+    generation_time: Optional[int] = None
+    should_escalate: bool = False
+    question_type: Optional[str] = None
+    knowledge_points: list[str] = Field(default_factory=list)
+
+
+class TutoringTaskSubmitResponse(BaseModel):
+    """异步答疑任务提交响应"""
+
+    task_id: int
+    status: str
+    question_id: int
+    session_id: Optional[int] = None
+    poll_interval_ms: int = Field(default=2000)
+
+
+class TutoringTaskStatusResponse(BaseModel):
+    """异步答疑任务状态响应"""
+
+    task_id: int
+    status: str
+    question_id: Optional[int] = None
+    session_id: Optional[int] = None
+    result: Optional[TutoringTaskResult] = None
+    error_message: Optional[str] = None
+
+
+class TutoringTaskHistoryItem(BaseModel):
+    """异步答疑任务历史"""
+
+    task_id: int
+    user_id: int
+    question_id: Optional[int] = None
+    session_id: Optional[int] = None
+    course_id: Optional[int] = None
+    question_text: Optional[str] = None
+    status: str
+    answer_text: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TutoringTaskHistoryResponse(BaseModel):
+    """异步答疑任务历史响应"""
+
+    items: list[TutoringTaskHistoryItem] = Field(default_factory=list)
+    total: int = 0
 
 
 class TutoringStreamChunk(BaseModel):

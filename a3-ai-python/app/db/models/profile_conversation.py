@@ -13,7 +13,7 @@ from app.db.base import Base, TimestampMixin
 class ConversationSessionModel(Base, TimestampMixin):
     """对话会话模型"""
 
-    __tablename__ = "ai_conversation_session"
+    __tablename__ = "conversation_session"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True, comment="学生用户ID")
@@ -46,7 +46,7 @@ class ConversationSessionModel(Base, TimestampMixin):
 class ConversationMessageModel(Base, TimestampMixin):
     """对话消息模型"""
 
-    __tablename__ = "ai_conversation_message"
+    __tablename__ = "conversation_message"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[int] = mapped_column(BigInteger, index=True, comment="会话ID")
@@ -71,7 +71,7 @@ class ConversationMessageModel(Base, TimestampMixin):
 class ExtractedInfoModel(Base, TimestampMixin):
     """提取信息模型"""
 
-    __tablename__ = "ai_extracted_info"
+    __tablename__ = "extracted_info"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     session_id: Mapped[int] = mapped_column(BigInteger, index=True, comment="会话ID")
@@ -94,7 +94,7 @@ class ExtractedInfoModel(Base, TimestampMixin):
 class StudentProfileModel(Base, TimestampMixin):
     """学生画像模型（AI服务侧的缓存）"""
 
-    __tablename__ = "ai_student_profile"
+    __tablename__ = "student_profile"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, comment="学生用户ID")
@@ -143,7 +143,7 @@ class StudentProfileModel(Base, TimestampMixin):
 class ProfileHistoryModel(Base, TimestampMixin):
     """画像历史版本模型"""
 
-    __tablename__ = "ai_profile_history"
+    __tablename__ = "profile_history"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     profile_id: Mapped[int] = mapped_column(BigInteger, index=True, comment="画像ID")

@@ -14,7 +14,16 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $mvnw = Join-Path $repoRoot "mvnw.cmd"
 $learningPom = Join-Path $repoRoot "a3-learning\pom.xml"
-$demoSql = Join-Path $repoRoot "sql\tj_learning_evaluation_demo_ascii.sql"
+$evaluationInitSqlCandidates = @(
+    (Join-Path $repoRoot "sql\evaluation_init.sql"),
+    (Join-Path $repoRoot "sql\evaluation.sql")
+)
+$evaluationInitSql = $evaluationInitSqlCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+$demoSqlCandidates = @(
+    (Join-Path $repoRoot "sql\evaluation_demo_ascii.sql"),
+    (Join-Path $repoRoot "sql\tj_learning_evaluation_demo_ascii.sql")
+)
+$demoSql = $demoSqlCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 $serviceLog = Join-Path $repoRoot "a3-learning\learning-local.log"
 $serviceErrLog = Join-Path $repoRoot "a3-learning\learning-local.err.log"
 
@@ -50,6 +59,14 @@ function Invoke-Probe {
     }
 }
 
+function Normalize-LearningSql {
+    param([string]$SqlText)
+
+    $normalized = $SqlText -replace 'CREATE DATABASE IF NOT EXISTS\s+`learning`', 'CREATE DATABASE IF NOT EXISTS `tj_learning`'
+    $normalized = $normalized -replace 'USE\s+`learning`;', 'USE `tj_learning`;'
+    return $normalized
+}
+
 if (-not (Test-Path $MysqlExe)) {
     throw "mysql executable not found: $MysqlExe"
 }
@@ -63,12 +80,25 @@ if (-not (Test-Path $learningPom)) {
 }
 
 if (-not $SkipDemoImport) {
-    if (-not (Test-Path $demoSql)) {
-        throw "Demo SQL not found: $demoSql"
+    if (-not $evaluationInitSql) {
+        throw "Evaluation init SQL not found. Checked: $($evaluationInitSqlCandidates -join ', ')"
+    }
+    if (-not $demoSql) {
+        throw "Demo SQL not found. Checked: $($demoSqlCandidates -join ', ')"
     }
 
+    Write-Step "Initialize evaluation tables"
+    $evaluationInitText = Normalize-LearningSql -SqlText (Get-Content -Path $evaluationInitSql -Raw)
+    Invoke-MysqlText -InputText $evaluationInitText -Arguments @(
+        "-h", $DbHost,
+        "-P", "$DbPort",
+        "-u", $DbUser,
+        "--default-character-set=utf8mb4",
+        "tj_learning"
+    )
+
     Write-Step "Import learning evaluation demo data"
-    $sqlText = Get-Content -Path $demoSql -Raw
+    $sqlText = Normalize-LearningSql -SqlText (Get-Content -Path $demoSql -Raw)
     Invoke-MysqlText -InputText $sqlText -Arguments @(
         "-h", $DbHost,
         "-P", "$DbPort",
@@ -128,11 +158,12 @@ if ($WaitForService) {
 
 Write-Step "Local endpoints"
 Write-Host "Learning service : http://127.0.0.1:8090"
-Write-Host "Portal dev       : http://127.0.0.1:18082"
-Write-Host "Evaluation list  : http://127.0.0.1:18082/#/main/ai-evaluation?courseId=1"
-Write-Host "Evaluation exam  : http://127.0.0.1:18082/#/main/ai-evaluation/exam/910001?courseId=1"
-Write-Host "Evaluation report: http://127.0.0.1:18082/#/main/ai-evaluation/report/920001?courseId=1"
-Write-Host "Wrong questions  : http://127.0.0.1:18082/#/main/ai-mistakes?testId=910001&courseId=1&reportId=920001"
+Write-Host "Student dev      : http://127.0.0.1:3002"
+Write-Host "Overview         : http://127.0.0.1:3002/"
+Write-Host "Learning path    : http://127.0.0.1:3002/path?courseId=101"
+Write-Host "Evaluation       : http://127.0.0.1:3002/evaluation?courseId=101"
+Write-Host "Study report     : http://127.0.0.1:3002/report?courseId=101"
+Write-Host "AI tutor         : http://127.0.0.1:3002/tutor?courseId=101"
 
 $summary = Invoke-Probe -Url "http://127.0.0.1:8090/evaluation/test/course/1"
 if ($summary -and $summary.code -eq 200) {

@@ -35,19 +35,19 @@ def test_table_creation():
         
         # 创建测试数据库
         print("\n2. 创建测试数据库...")
-        cursor.execute("DROP DATABASE IF EXISTS `tj_learning_test`")
-        cursor.execute("CREATE DATABASE `tj_learning_test` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-        cursor.execute("USE `tj_learning_test`")
+        cursor.execute("DROP DATABASE IF EXISTS `learning_test`")
+        cursor.execute("CREATE DATABASE `learning_test` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+        cursor.execute("USE `learning_test`")
         print("✓ 测试数据库创建成功")
         
         # 读取SQL脚本
         print("\n3. 读取SQL脚本...")
-        sql_file = Path(__file__).parent / 'tj_learning_path.sql'
+        sql_file = Path(__file__).parent / 'learning_path.sql'
         with open(sql_file, 'r', encoding='utf-8') as f:
             sql_content = f.read()
         
         # 移除USE语句,因为我们已经选择了数据库
-        sql_content = sql_content.replace('USE `tj_learning`;', '')
+        sql_content = sql_content.replace('USE `learning`;', '')
         
         print(f"✓ SQL脚本读取成功 ({len(sql_content)} 字符)")
         
@@ -162,7 +162,7 @@ def test_table_creation():
         
         # 清理测试数据库
         print("\n9. 清理测试环境...")
-        cursor.execute("DROP DATABASE `tj_learning_test`")
+        cursor.execute("DROP DATABASE `learning_test`")
         print("  ✓ 测试数据库已删除")
         
         print("\n" + "=" * 80)

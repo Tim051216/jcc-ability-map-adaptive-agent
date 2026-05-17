@@ -1,5 +1,5 @@
 -- 测试数据插入验证
-USE tj_learning;
+USE learning;
 
 -- 设置字符集
 SET NAMES utf8mb4;

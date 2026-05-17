@@ -21,3 +21,6 @@
 - `GET http://127.0.0.1:18080/api/v1/admin/agents/status`
 - `GET http://127.0.0.1:18080/api/v1/admin/agents/logs`
 - 浏览器访问 `http://localhost:18082/#/main/ai-admin-agents`
+> LEGACY NOTE
+> 本文记录的是旧版 `a3-portal-web` 管理页联调历史。
+> 当前默认学生端前端为 `a3-student-react-web`（`3002`），当前默认管理端前端为 `a3-admin-web`（`3004`）。

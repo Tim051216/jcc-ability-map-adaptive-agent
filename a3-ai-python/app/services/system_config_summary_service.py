@@ -1,15 +1,23 @@
 from collections import Counter
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.db.repositories.admin_repository import SystemConfigRepository
 from app.db.session import async_session_factory
 from app.schemas.admin import SystemConfigSummaryResponse
+from app.services.admin_demo_data import AdminDemoStore, should_use_admin_demo_data
 from app.services.admin_service import AdminService
 
 
 class SystemConfigSummaryService:
     async def get_summary(self) -> SystemConfigSummaryResponse:
-        async with async_session_factory() as session:
-            items = await SystemConfigRepository().list_configs(session)
+        try:
+            async with async_session_factory() as session:
+                items = await SystemConfigRepository().list_configs(session)
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.get_config_summary()
+            raise
 
         by_prefix = Counter(self._extract_prefix(item.config_key) for item in items)
         sensitive_count = sum(1 for item in items if AdminService._is_sensitive_config_key(item.config_key))

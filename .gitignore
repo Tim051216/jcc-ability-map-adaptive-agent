@@ -25,8 +25,17 @@ docker/milvus/etcd/
 docker/milvus/minio/
 docker/milvus/standalone/
 .venv/
+.runtime/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .env
+a3-ai-python/.venv-anaconda-backup-*/
+a3-ai-python/local_data/
+a3-ai-python/tmp_question_request.json
+a3-student-react-web/node_modules/
+a3-student-react-web/dist/
+a3-student-react-web/*.log
+output/
+docs/course-materials/

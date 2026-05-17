@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # 可选：对外访问对象的前缀（含 bucket 路径），如 http://127.0.0.1:19000/learning-assets
     # 未配置时使用 presigned GET（默认 7 天），便于私有桶内网访问
     minio_public_base_url: str | None = Field(default=None, alias="MINIO_PUBLIC_BASE_URL")
+    object_storage_provider: str = Field(default="s3-compatible", alias="OBJECT_STORAGE_PROVIDER")
+    object_storage_bucket: str | None = Field(default=None, alias="OBJECT_STORAGE_BUCKET")
+    object_storage_public_base_url: str | None = Field(default=None, alias="OBJECT_STORAGE_PUBLIC_BASE_URL")
+    object_storage_presign_days: int = Field(default=7, alias="OBJECT_STORAGE_PRESIGN_DAYS")
+    resource_source_file_storage_enabled: bool = Field(default=False, alias="RESOURCE_SOURCE_FILE_STORAGE_ENABLED")
+    resource_source_file_presign_days: int = Field(default=7, alias="RESOURCE_SOURCE_FILE_PRESIGN_DAYS")
 
     java_gateway_base_url: str = Field(alias="JAVA_GATEWAY_BASE_URL")
     java_internal_token: str = Field(alias="JAVA_INTERNAL_TOKEN")
@@ -52,3 +58,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]
+
+if settings.object_storage_bucket is None:
+    settings.object_storage_bucket = settings.minio_bucket
+if settings.object_storage_public_base_url is None:
+    settings.object_storage_public_base_url = settings.minio_public_base_url

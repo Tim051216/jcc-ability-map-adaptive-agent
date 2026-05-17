@@ -1,35 +1,20 @@
-# A3 学习平台管理端
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-## 简介
+# Run and deploy your AI Studio app
 
-`a3-admin-web` 是当前仓库接入的管理后台前端，来源于开源教学演示项目的前端部分，已按软杯赛题场景改名并接入 A3 仓库。
+This contains everything you need to run your app locally.
 
-## 技术栈
+View your app in AI Studio: https://ai.studio/apps/df268062-f468-43c4-a6ae-57bafb2cb730
 
-- Vue 3
-- Vite 2
-- Pinia
-- Element Plus
+## Run Locally
 
-## 启动方式
+**Prerequisites:**  Node.js
 
-```bash
-npm install
 
-# 默认走本地网关 http://127.0.0.1:10010（Vite mode: devlocal，避免与 .env.local 保留名冲突）
-npm run dev
-
-# 明确指定本地联调（与 npm run dev 相同）
-npm run dev:local
-
-# 走上游公开测试环境，便于单独查看前端页面
-npm run dev:upstream
-```
-
-## 构建命令
-
-```bash
-npm run build
-npm run build:local
-npm run build:upstream
-```
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

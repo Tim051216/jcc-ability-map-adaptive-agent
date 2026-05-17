@@ -356,3 +356,58 @@ async def grading_node(state: LearningAgentState) -> LearningAgentState:
         state["error"] = str(e)
 
     return state
+
+
+async def grading_node(state: LearningAgentState) -> LearningAgentState:
+    """Runtime-logged override for monitoring."""
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    agent = GradingAgent()
+    runtime_logger = AgentRuntimeLoggingService()
+
+    questions = state.get("questions", [])
+    user_answers = state.get("user_answers", {})
+
+    try:
+        async with runtime_logger.track(
+            agent_name="grading_agent",
+            start_message="grading_agent started",
+            success_message="grading_agent completed",
+            start_payload={
+                "question_count": len(questions),
+                "answer_count": len(user_answers),
+            },
+            success_payload_factory=lambda: {
+                "graded_count": len(state.get("grading_results", [])),
+                "summary": state.get("grading_summary", {}),
+            },
+            error_message="grading_agent failed",
+        ):
+            grading_results = await agent.batch_grade(
+                questions=questions,
+                user_answers=user_answers,
+            )
+
+            state["grading_results"] = grading_results
+            total = len(grading_results)
+            correct = sum(1 for r in grading_results if r.get("is_correct") == 1)
+            wrong = sum(1 for r in grading_results if r.get("is_correct") == 0)
+            pending = total - correct - wrong
+
+            state["grading_summary"] = {
+                "total": total,
+                "correct": correct,
+                "wrong": wrong,
+                "pending": pending,
+                "accuracy_rate": round(correct / total * 100, 2) if total > 0 else 0,
+            }
+
+            trace = state.get("execution_trace", [])
+            trace.append("grading")
+            state["execution_trace"] = trace
+
+    except Exception as e:
+        logger.error(f"鎵规敼鑺傜偣鎵ц澶辫触: {e}")
+        state["error"] = str(e)
+
+    return state

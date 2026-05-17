@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.repositories.admin_repository import (
     AdminUserControlRepository,
@@ -10,6 +11,8 @@ from app.db.repositories.admin_repository import (
     ReviewTaskRepository,
     SystemConfigRepository,
 )
+from app.services.admin_demo_data import AdminDemoStore, should_use_admin_demo_data
+from app.services.agent_registry_service import AgentRegistryService
 from app.schemas.admin import (
     AgentRuntimeLogListResponse,
     AgentRuntimeLogResponse,
@@ -162,16 +165,21 @@ class AdminService:
     ) -> ReviewTaskListResponse:
         from app.db.session import async_session_factory
 
-        async with async_session_factory() as session:
-            items, total = await ReviewTaskRepository().list_tasks(
-                session,
-                status=status,
-                entity_type=entity_type,
-                priority=priority,
-                source_scene=source_scene,
-                reviewer_name=reviewer_name,
-                keyword=keyword,
-            )
+        try:
+            async with async_session_factory() as session:
+                items, total = await ReviewTaskRepository().list_tasks(
+                    session,
+                    status=status,
+                    entity_type=entity_type,
+                    priority=priority,
+                    source_scene=source_scene,
+                    reviewer_name=reviewer_name,
+                    keyword=keyword,
+                )
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.list_reviews(status=status)
+            raise
         return ReviewTaskListResponse(items=[self._to_review_response(item) for item in items], total=total)
 
     async def get_review_task(self, review_id: int) -> ReviewTaskResponse:
@@ -243,8 +251,15 @@ class AdminService:
     async def list_agent_status(self) -> AgentStatusListResponse:
         from app.db.session import async_session_factory
 
-        async with async_session_factory() as session:
-            logs, _ = await AgentRuntimeRepository().list_logs(session)
+        discovered_agents = AgentRegistryService.discover()
+
+        try:
+            async with async_session_factory() as session:
+                logs, _ = await AgentRuntimeRepository().list_logs(session)
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.list_agent_status()
+            raise
 
         grouped: dict[str, AgentStatusResponse] = {}
         for log in logs:
@@ -256,11 +271,46 @@ class AdminService:
                     latest_message=self._normalize_agent_message(log.agent_name, log.message),
                     error_count=1 if log.level == "error" else 0,
                     updated_at=log.updated_at,
+                    status_source="runtime",
                 )
                 continue
             if log.level == "error":
                 current.error_count += 1
-        items = list(grouped.values())
+        items: list[AgentStatusResponse] = []
+        seen_names: set[str] = set()
+
+        for agent in discovered_agents:
+            runtime_item = grouped.get(agent["agent_name"])
+            if runtime_item is None:
+                items.append(
+                    AgentStatusResponse(
+                        agent_name=agent["agent_name"],
+                        latest_status="unreported",
+                        latest_message="尚未收到该智能体的运行时状态上报",
+                        error_count=0,
+                        updated_at=None,
+                        display_name=agent["display_name"],
+                        category=agent["category"],
+                        source_path=agent["source_path"],
+                        status_source="registry",
+                    )
+                )
+            else:
+                runtime_item.display_name = agent["display_name"]
+                runtime_item.category = agent["category"]
+                runtime_item.source_path = agent["source_path"]
+                items.append(runtime_item)
+            seen_names.add(agent["agent_name"])
+
+        for agent_name, runtime_item in grouped.items():
+            if agent_name in seen_names:
+                continue
+            runtime_item.display_name = AgentRegistryService.humanize(agent_name)
+            runtime_item.category = "runtime"
+            runtime_item.status_source = "runtime"
+            items.append(runtime_item)
+
+        items.sort(key=lambda item: (0 if item.status_source == "runtime" else 1, item.category or "", item.agent_name))
         return AgentStatusListResponse(items=items, total=len(items))
 
     async def list_agent_runtime_logs(
@@ -271,8 +321,13 @@ class AdminService:
     ) -> AgentRuntimeLogListResponse:
         from app.db.session import async_session_factory
 
-        async with async_session_factory() as session:
-            items, total = await AgentRuntimeRepository().list_logs(session, agent_name=agent_name, level=level)
+        try:
+            async with async_session_factory() as session:
+                items, total = await AgentRuntimeRepository().list_logs(session, agent_name=agent_name, level=level)
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.list_agent_logs()
+            raise
         return AgentRuntimeLogListResponse(items=[self._to_agent_log_response(item) for item in items], total=total)
 
     async def list_admin_users(
@@ -284,8 +339,17 @@ class AdminService:
     ) -> AdminUserOverviewListResponse:
         from app.db.session import async_session_factory
 
-        async with async_session_factory() as session:
-            payload = await AdminUserOverviewRepository().list_user_overview(session)
+        try:
+            async with async_session_factory() as session:
+                payload = await AdminUserOverviewRepository().list_user_overview(session)
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.list_users(
+                    risk_level=risk_level,
+                    course_code=course_code,
+                    user_status=user_status,
+                )
+            raise
         items = self._build_admin_user_overview_items(payload)
         if risk_level:
             items = [item for item in items if item.risk_level == risk_level]
@@ -377,36 +441,46 @@ class AdminService:
         now = datetime.now(timezone.utc).isoformat()
         from app.db.session import async_session_factory
 
-        async with async_session_factory() as session:
-            payload = await AdminUserOverviewRepository().list_user_overview(session)
-            overview_by_user_id = {item.user_id: item for item in self._build_admin_user_overview_items(payload)}
-            if user_id not in overview_by_user_id:
-                raise HTTPException(status_code=404, detail="admin user not found")
+        try:
+            async with async_session_factory() as session:
+                payload = await AdminUserOverviewRepository().list_user_overview(session)
+                overview_by_user_id = {item.user_id: item for item in self._build_admin_user_overview_items(payload)}
+                if user_id not in overview_by_user_id:
+                    raise HTTPException(status_code=404, detail="admin user not found")
 
-            control = await AdminUserControlRepository().upsert_user_control(
-                session,
-                user_id=user_id,
-                status=normalized_status,
-                reason=request.reason,
-                updated_by=request.updated_by,
-                created_at=now,
-                updated_at=now,
-            )
-            await AuditLogRepository().create_log(
-                session,
-                trace_id=None,
-                scene="admin_user",
-                action="admin_user_status_updated",
-                payload={
-                    "user_id": user_id,
-                    "status": normalized_status,
-                    "reason": request.reason,
-                    "updated_by": request.updated_by,
-                },
-                created_at=now,
-                updated_at=now,
-            )
-            await session.commit()
+                control = await AdminUserControlRepository().upsert_user_control(
+                    session,
+                    user_id=user_id,
+                    status=normalized_status,
+                    reason=request.reason,
+                    updated_by=request.updated_by,
+                    created_at=now,
+                    updated_at=now,
+                )
+                await AuditLogRepository().create_log(
+                    session,
+                    trace_id=None,
+                    scene="admin_user",
+                    action="admin_user_status_updated",
+                    payload={
+                        "user_id": user_id,
+                        "status": normalized_status,
+                        "reason": request.reason,
+                        "updated_by": request.updated_by,
+                    },
+                    created_at=now,
+                    updated_at=now,
+                )
+                await session.commit()
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.update_user_status(
+                    user_id,
+                    status=normalized_status,
+                    reason=request.reason,
+                    updated_by=request.updated_by,
+                )
+            raise
 
         return AdminUserStatusResponse(
             user_id=user_id,
@@ -575,25 +649,35 @@ class AdminService:
         now = datetime.now(timezone.utc).isoformat()
         from app.db.session import async_session_factory
 
-        async with async_session_factory() as session:
-            repo = ReviewTaskRepository()
-            task = await repo.get_task(session, review_id)
-            if task is None:
-                raise HTTPException(status_code=404, detail="review task not found")
-            task.status = status
-            task.reviewer_name = request.reviewer_name
-            task.decision_note = request.decision_note
-            task.updated_at = now
-            await AuditLogRepository().create_log(
-                session,
-                trace_id=None,
-                scene="content_review",
-                action=action,
-                payload={"review_id": task.id, "reviewer_name": request.reviewer_name, "status": status},
-                created_at=now,
-                updated_at=now,
-            )
-            await session.commit()
+        try:
+            async with async_session_factory() as session:
+                repo = ReviewTaskRepository()
+                task = await repo.get_task(session, review_id)
+                if task is None:
+                    raise HTTPException(status_code=404, detail="review task not found")
+                task.status = status
+                task.reviewer_name = request.reviewer_name
+                task.decision_note = request.decision_note
+                task.updated_at = now
+                await AuditLogRepository().create_log(
+                    session,
+                    trace_id=None,
+                    scene="content_review",
+                    action=action,
+                    payload={"review_id": task.id, "reviewer_name": request.reviewer_name, "status": status},
+                    created_at=now,
+                    updated_at=now,
+                )
+                await session.commit()
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.update_review(
+                    review_id,
+                    status=status,
+                    reviewer_name=request.reviewer_name,
+                    decision_note=request.decision_note,
+                )
+            raise
         return self._to_review_response(task)
 
     async def _batch_update_review_tasks(

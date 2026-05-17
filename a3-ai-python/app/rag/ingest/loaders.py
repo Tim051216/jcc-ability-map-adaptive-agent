@@ -9,6 +9,10 @@ from app.schemas.java_models import JavaCourseDetail
 class KnowledgeSection:
     name: str
     description: str
+    source_name: str | None = None
+    source_path: str | None = None
+    priority: int = 0
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -87,7 +91,16 @@ class CourseKnowledgeLoader:
                 title = heading
                 introduction_parts.append(body)
             else:
-                sections.append(KnowledgeSection(name=heading, description=body))
+                sections.append(
+                    KnowledgeSection(
+                        name=heading,
+                        description=body,
+                        source_name=file_path.stem,
+                        source_path=str(file_path.relative_to(course_dir)),
+                        priority=self._local_markdown_priority(file_path.stem),
+                        tags=self._build_section_tags(heading, body, file_path.stem),
+                    )
+                )
 
         if not introduction_parts and sections:
             title = sections[0].name
@@ -100,3 +113,33 @@ class CourseKnowledgeLoader:
             source_type="local_markdown",
             source_uri=str(course_dir),
         )
+
+    @staticmethod
+    def _local_markdown_priority(file_stem: str) -> int:
+        normalized = file_stem.lower()
+        if normalized.startswith(("section_13", "section_14", "section_15", "section_16", "section_17", "section_18")):
+            return 3
+        if normalized.startswith("section_"):
+            return 2
+        return 1
+
+    @staticmethod
+    def _build_section_tags(heading: str, body: str, file_stem: str) -> list[str]:
+        tags: list[str] = []
+        candidates = [heading, file_stem.replace("_", " ")]
+        for line in body.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("## "):
+                candidates.append(line[3:].strip())
+            elif line.startswith("- "):
+                candidates.append(line[2:].strip())
+            if len(candidates) >= 10:
+                break
+
+        for item in candidates:
+            normalized = item.strip("`#- ").strip()
+            if normalized and normalized not in tags:
+                tags.append(normalized)
+        return tags[:10]

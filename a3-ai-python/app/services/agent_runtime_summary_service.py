@@ -1,8 +1,11 @@
 from collections import Counter
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.db.repositories.admin_repository import AgentRuntimeRepository
 from app.db.session import async_session_factory
 from app.schemas.admin import AgentRuntimeSummaryResponse
+from app.services.admin_demo_data import AdminDemoStore, should_use_admin_demo_data
 
 
 class AgentRuntimeSummaryService:
@@ -12,12 +15,17 @@ class AgentRuntimeSummaryService:
         agent_name: str | None = None,
         level: str | None = None,
     ) -> AgentRuntimeSummaryResponse:
-        async with async_session_factory() as session:
-            items, total = await AgentRuntimeRepository().list_logs(
-                session,
-                agent_name=agent_name,
-                level=level,
-            )
+        try:
+            async with async_session_factory() as session:
+                items, total = await AgentRuntimeRepository().list_logs(
+                    session,
+                    agent_name=agent_name,
+                    level=level,
+                )
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.get_agent_runtime_summary()
+            raise
 
         by_agent = Counter(item.agent_name for item in items)
         by_level = Counter(item.level for item in items)

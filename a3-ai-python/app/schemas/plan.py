@@ -3,7 +3,8 @@ from pydantic import BaseModel, Field
 
 class LearningPlanRequest(BaseModel):
     user_id: int
-    course_code: str
+    course_code: str | None = None
+    course_id: int | None = None
     target: str
     available_days: int = 7
     daily_study_minutes: int = 45
@@ -51,6 +52,7 @@ class LearningPlanResponse(BaseModel):
     plan_id: int | None = None
     user_id: int
     course_code: str
+    course_id: int | None = None
     course_name: str
     summary: str
     progress_hint: str

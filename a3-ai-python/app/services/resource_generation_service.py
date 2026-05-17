@@ -15,6 +15,8 @@ from app.db.models.generation_task import GenerationTask
 from app.db.repositories.resource_repository import ResourceRepository
 from app.db.session import async_session_factory
 from app.schemas.resource import ResourceGenerationTaskCreate, ResourceGenerationTaskResponse
+from app.services.resource_generation_event_service import ResourceGenerationEventService
+from app.services.resource_file_storage_service import ResourceFileStorageService
 from app.services.resource_management_service import ResourceManagementService
 
 if TYPE_CHECKING:
@@ -39,6 +41,7 @@ class ResourceGenerationService:
         self._coordinator_import_error: str | None = None
         self.task_cache = self.__class__._task_cache
         self.resource_repository = ResourceRepository()
+        self.file_storage = ResourceFileStorageService()
         self._db_available = True
 
     @classmethod
@@ -105,6 +108,7 @@ class ResourceGenerationService:
 
         cached = {"id": task_id, **response_payload}
         self.task_cache[task_id] = cached
+        await self._publish_task_event(task_id, ResourceGenerationTaskResponse(**cached))
         asyncio.create_task(self._process_generation_task(task_id, task_data))
         return ResourceGenerationTaskResponse(**cached)
 
@@ -201,6 +205,10 @@ class ResourceGenerationService:
         except Exception:
             self._db_available = False
 
+        latest = self.task_cache.get(task_id)
+        if latest is not None:
+            await self._publish_task_event(task_id, ResourceGenerationTaskResponse(**latest))
+
     async def _get_student_profile(self, student_id: int) -> dict[str, Any] | None:
         return {
             "student_id": student_id,
@@ -275,6 +283,8 @@ class ResourceGenerationService:
         now_iso = self._now_iso()
 
         resource_id: int
+        uploaded_file_url: str | None = None
+        uploaded_object_key: str | None = None
         if self._db_available:
             try:
                 async with async_session_factory() as session:
@@ -296,13 +306,38 @@ class ResourceGenerationService:
                         created_at=now_iso,
                         updated_at=now_iso,
                     )
-                    await session.commit()
                     resource_id = int(resource.id)
+                    uploaded_file_url, uploaded_object_key = self._try_upload_resource_file(
+                        resource_id=resource_id,
+                        resource_type_name=resource_type_name,
+                        title=title,
+                        content=content_markdown,
+                        file_format=generation_context["file_format"],
+                    )
+                    if uploaded_file_url:
+                        generation_context["file_url"] = uploaded_file_url
+                    if uploaded_object_key:
+                        generation_context["object_key"] = uploaded_object_key
+                    resource.generation_context = generation_context
+                    await session.commit()
             except Exception:
                 self._db_available = False
                 resource_id = ResourceManagementService.allocate_resource_id()
         else:
             resource_id = ResourceManagementService.allocate_resource_id()
+
+        if not uploaded_file_url and not uploaded_object_key:
+            uploaded_file_url, uploaded_object_key = self._try_upload_resource_file(
+                resource_id=resource_id,
+                resource_type_name=resource_type_name,
+                title=title,
+                content=content_markdown,
+                file_format=generation_context["file_format"],
+            )
+        if uploaded_file_url:
+            generation_context["file_url"] = uploaded_file_url
+        if uploaded_object_key:
+            generation_context["object_key"] = uploaded_object_key
 
         ResourceManagementService.register_resource(
             {
@@ -317,7 +352,7 @@ class ResourceGenerationService:
                 "difficulty_level": generation_context["difficulty_level"],
                 "status": 2,
                 "version": 1,
-                "file_url": None,
+                "file_url": generation_context.get("file_url"),
                 "file_size": None,
                 "file_format": generation_context["file_format"],
                 "generation_task_id": task_id,
@@ -330,6 +365,7 @@ class ResourceGenerationService:
                 "title": title,
                 "summary": summary,
                 "content": content_markdown,
+                "object_key": generation_context.get("object_key"),
                 resource_type_name: data,
             }
         )
@@ -530,3 +566,42 @@ class ResourceGenerationService:
         if isinstance(value, datetime):
             return value
         return cls._parse_time(str(value))
+
+    def _try_upload_resource_file(
+        self,
+        *,
+        resource_id: int,
+        resource_type_name: str,
+        title: str,
+        content: str,
+        file_format: str,
+    ) -> tuple[str | None, str | None]:
+        try:
+            result = self.file_storage.upload_generated_resource(
+                resource_id=resource_id,
+                resource_type_name=resource_type_name,
+                title=title,
+                content=content,
+                file_format=file_format,
+            )
+        except Exception:
+            return None, None
+        return result.get("file_url") or None, result.get("object_key") or None
+
+    async def _publish_task_event(
+        self,
+        task_id: int,
+        task: ResourceGenerationTaskResponse,
+    ) -> None:
+        chunk_type = "task_status"
+        if task.task_status == 3:
+            chunk_type = "complete"
+        elif task.task_status in (4, 5):
+            chunk_type = "error" if task.failed_resources >= task.total_resources else "partial"
+        await ResourceGenerationEventService.publish(
+            task_id,
+            {
+                "chunk_type": chunk_type,
+                "content": task.model_dump(mode="json"),
+            },
+        )

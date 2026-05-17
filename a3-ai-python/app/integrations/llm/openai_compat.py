@@ -6,6 +6,12 @@ from app.integrations.llm.base import BaseLLMProvider, LLMMessage
 
 
 class OpenAICompatProvider(BaseLLMProvider):
+    def _build_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {settings.llm_api_key}",
+            "Content-Type": "application/json",
+        }
+
     async def generate(self, messages: list[LLMMessage]) -> str:
         if not settings.llm_base_url or not settings.llm_api_key:
             raise ValueError("LLM base url or api key is missing")
@@ -24,10 +30,7 @@ class OpenAICompatProvider(BaseLLMProvider):
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.post(
                         f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.llm_api_key}",
-                            "Content-Type": "application/json",
-                        },
+                        headers=self._build_headers(),
                         json=payload,
                     )
                     response.raise_for_status()
@@ -53,3 +56,32 @@ class OpenAICompatProvider(BaseLLMProvider):
                 raise RuntimeError(detail or exc.__class__.__name__) from exc
 
         raise RuntimeError(f"LLM response timed out after {timeout_seconds}s") from last_error
+
+    async def ping(self) -> str:
+        if not settings.llm_base_url or not settings.llm_api_key:
+            raise ValueError("LLM base url or api key is missing")
+
+        timeout = httpx.Timeout(5.0, connect=3.0, write=3.0, pool=3.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                f"{settings.llm_base_url.rstrip('/')}/models",
+                headers=self._build_headers(),
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        models = data.get("data")
+        if isinstance(models, list):
+            matched = next(
+                (
+                    item
+                    for item in models
+                    if isinstance(item, dict) and item.get("id") == settings.llm_model
+                ),
+                None,
+            )
+            if matched is not None:
+                return f"model {settings.llm_model} reachable"
+            return f"provider reachable ({len(models)} models listed)"
+
+        return "provider reachable"

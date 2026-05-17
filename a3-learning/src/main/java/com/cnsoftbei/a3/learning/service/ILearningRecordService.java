@@ -2,6 +2,7 @@ package com.cnsoftbei.a3.learning.service;
 
 import com.cnsoftbei.a3.api.dto.leanring.LearningLessonDTO;
 import com.cnsoftbei.a3.learning.domain.dto.LearningRecordFormDTO;
+import com.cnsoftbei.a3.learning.domain.dto.LearningSectionPositionFormDTO;
 import com.cnsoftbei.a3.learning.domain.po.LearningRecord;
 import com.baomidou.mybatisplus.extension.service.IService;
 
@@ -18,4 +19,6 @@ public interface ILearningRecordService extends IService<LearningRecord> {
     LearningLessonDTO queryLearningRecordByCourse(Long courseId);
 
     void addLearningRecord(LearningRecordFormDTO formDTO);
+
+    void updateLearningPosition(LearningSectionPositionFormDTO formDTO);
 }

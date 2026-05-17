@@ -3,56 +3,83 @@
 ## 1. 启动基础依赖
 
 在仓库根目录执行：
+
 ```powershell
 docker compose -f docker-compose.local.yml up -d postgres redis rabbitmq minio etcd milvus
 ```
 
 如果 Java 微服务也要联调，可以同时启动：
+
 ```powershell
 docker compose -f docker-compose.local.yml up -d mysql
 ```
 
 ## 2. 初始化 Python 环境
 
-推荐 Python `3.11+`。
+推荐使用标准 Python，不要使用 Anaconda。当前本机建议解释器为 `D:\Python\python.exe`。
+
 ```powershell
 cd a3-ai-python
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .[dev]
+D:\Python\python.exe -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python.exe -m pip install -e .[dev]
 Copy-Item .env.example .env
 ```
 
 ## 3. 启动 AI 服务
 
+推荐统一使用仓库脚本：
+
 ```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 18080
+powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1
 ```
 
-访问：
+如果需要热更新：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1 -Reload
+```
+
+如果只想手动直接启动 `uvicorn`，也请固定使用项目 `.venv`：
+
+```powershell
+cd a3-ai-python
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 18080
+```
+
+请不要直接使用系统 `python`、`uvicorn` 或 Anaconda 环境启动，否则容易出现错误 Python 抢占 `18080` 端口的问题。
+
+访问地址：
+
 - 健康检查：`http://127.0.0.1:18080/health`
 - OpenAPI：`http://127.0.0.1:18080/docs`
 
 通过网关访问时：
+
 - `http://127.0.0.1:10010/ai/v1/chat`
 - `http://127.0.0.1:10010/ai/v1/rag/search`
 
 本地知识库示例：
+
 - `a3-ai-python/knowledge_base/ml_intro`
 
 入库示例：
+
 ```powershell
 Invoke-RestMethod -Method Post http://127.0.0.1:18080/api/v1/admin/knowledge/ml_intro/ingest
 ```
 
 检索示例：
+
 ```powershell
 Invoke-RestMethod -Method Post http://127.0.0.1:18080/api/v1/rag/search -ContentType 'application/json' -Body '{"course_code":"ml_intro","query":"什么是过拟合","top_k":3}'
 ```
 
 数据库迁移：
+
 ```powershell
-alembic upgrade head
+cd a3-ai-python
+.\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
 ## 4. 当前环境端口
@@ -87,7 +114,7 @@ alembic upgrade head
 
 ## 6. 注意事项
 
-- 当前已经具备企业化骨架，数据库迁移、Milvus collection 建表、课程知识入库和检索链路都可本地验证。
-- 已新增 Java 网关到本地 Python AI 服务的 `/ai/**` 路由，并已完成本地验证。
-- `a3-gateway` 的 `local` 模式已禁用 Nacos，并放行 `/ai/**` 方便本地联调。
-- 如果要启用真实 embedding，请在 `.env` 中填写 `EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY` 和 `EMBEDDING_MODEL`。
+- AI 服务本地开发请统一保留一个 `18080` 实例，避免多套 `uvicorn` 并行抢端口。
+- `scripts/start-ai-local.ps1` 默认会先执行数据库迁移，再启动 `uvicorn`。
+- 如需跳过迁移，可执行：`powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1 -SkipMigrations`
+- 如需启用真实模型，请先在 `a3-ai-python/.env` 中配置 LLM 与 Embedding 相关参数。

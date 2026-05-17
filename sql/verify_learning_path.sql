@@ -2,19 +2,19 @@
 -- 此脚本用于验证所有表是否创建成功
 
 -- 创建测试数据库（如果不存在）
-CREATE DATABASE IF NOT EXISTS `tj_learning` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS `learning` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE `tj_learning`;
+USE `learning`;
 
 -- 执行主脚本
-SOURCE f:/A3-cnsoftbei/a3-learning-agent-system/sql/tj_learning_path.sql;
+SOURCE f:/A3-cnsoftbei/a3-learning-agent-system/sql/learning_path.sql;
 
 -- 验证所有表是否创建成功
 SELECT 
     '验证表结构' AS verification_step,
     COUNT(*) AS table_count
 FROM information_schema.TABLES 
-WHERE TABLE_SCHEMA = 'tj_learning' 
+WHERE TABLE_SCHEMA = 'learning' 
 AND TABLE_NAME IN (
     'learning_path',
     'path_node',
@@ -33,7 +33,7 @@ SELECT
     ENGINE AS engine,
     TABLE_COLLATION AS collation
 FROM information_schema.TABLES 
-WHERE TABLE_SCHEMA = 'tj_learning' 
+WHERE TABLE_SCHEMA = 'learning' 
 AND TABLE_NAME IN (
     'learning_path',
     'path_node',
@@ -53,7 +53,7 @@ SELECT
     COLUMN_NAME AS column_name,
     INDEX_TYPE AS index_type
 FROM information_schema.STATISTICS 
-WHERE TABLE_SCHEMA = 'tj_learning' 
+WHERE TABLE_SCHEMA = 'learning' 
 AND TABLE_NAME IN (
     'learning_path',
     'path_node',
@@ -71,7 +71,7 @@ SELECT
     TABLE_NAME AS table_name,
     COUNT(*) AS column_count
 FROM information_schema.COLUMNS 
-WHERE TABLE_SCHEMA = 'tj_learning' 
+WHERE TABLE_SCHEMA = 'learning' 
 AND TABLE_NAME IN (
     'learning_path',
     'path_node',

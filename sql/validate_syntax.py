@@ -240,5 +240,5 @@ def validate_sql_script(sql_file_path):
         return False
 
 if __name__ == '__main__':
-    sql_file = Path(__file__).parent / 'tj_learning_path.sql'
+    sql_file = Path(__file__).parent / 'learning_path.sql'
     validate_sql_script(sql_file)

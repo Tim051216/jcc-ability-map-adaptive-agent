@@ -88,4 +88,25 @@ class LearningCourseDetailResponse(BaseModel):
     chapters: list[CourseChapterResponse] = Field(default_factory=list)
 
 
+class CourseSectionPlayResponse(BaseModel):
+    section_id: int
+    play_enabled: bool = False
+    file_id: str | None = None
+    signature: str | None = None
+    message: str | None = None
+
+
+class LearningProgressUpdateRequest(BaseModel):
+    section_id: int = Field(alias="sectionId")
+    lesson_id: int | None = Field(default=None, alias="lessonId")
+    moment: int = 0
+    duration: int = 0
+
+
+class LearningProgressUpdateResponse(BaseModel):
+    lesson_id: int = Field(alias="lessonId")
+    latest_section_id: int = Field(alias="latestSectionId")
+    recorded: bool = True
+
+
 CourseCategoryItem.model_rebuild()

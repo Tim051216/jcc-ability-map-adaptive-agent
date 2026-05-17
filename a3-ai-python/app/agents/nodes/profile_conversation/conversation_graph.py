@@ -8,6 +8,37 @@ from .conversation_state import ProfileConversationState
 from .info_extractor_agent import info_extractor_node
 from .profile_builder_agent import profile_builder_node
 from .profile_updater_agent import profile_updater_node
+from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+
+def _build_state_payload(state: ProfileConversationState) -> dict[str, object]:
+    return {
+        "user_id": state.get("user_id"),
+        "session_id": state.get("session_id"),
+        "session_status": state.get("session_status"),
+        "current_round": state.get("current_round"),
+        "message_count": len(state.get("messages", [])),
+    }
+
+
+def _with_runtime_logging(agent_name: str, node_fn):
+    async def wrapped(state: ProfileConversationState) -> ProfileConversationState:
+        logger = AgentRuntimeLoggingService()
+        async with logger.track(
+            agent_name=agent_name,
+            start_message=f"{agent_name} started",
+            success_message=f"{agent_name} completed",
+            start_payload=_build_state_payload(state),
+            success_payload_factory=lambda: {
+                **_build_state_payload(state),
+                "trace_size": len(state.get("execution_trace", [])),
+                "completeness": state.get("completeness"),
+            },
+            error_message=f"{agent_name} failed",
+        ):
+            return await node_fn(state)
+
+    return wrapped
 
 
 def _should_continue_conversation(state: ProfileConversationState) -> str:
@@ -79,9 +110,9 @@ def build_profile_conversation_graph():
     graph = StateGraph(ProfileConversationState)
 
     # 添加节点
-    graph.add_node("info_extractor", info_extractor_node)
-    graph.add_node("profile_builder", profile_builder_node)
-    graph.add_node("profile_updater", profile_updater_node)
+    graph.add_node("info_extractor", _with_runtime_logging("info_extractor_agent", info_extractor_node))
+    graph.add_node("profile_builder", _with_runtime_logging("profile_builder_agent", profile_builder_node))
+    graph.add_node("profile_updater", _with_runtime_logging("profile_updater_agent", profile_updater_node))
 
     # 设置入口点
     graph.set_entry_point("info_extractor")

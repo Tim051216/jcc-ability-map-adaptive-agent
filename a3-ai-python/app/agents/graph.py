@@ -9,6 +9,36 @@ from app.agents.nodes.retriever_agent import retriever_node
 from app.agents.nodes.router_agent import router_node
 from app.agents.nodes.safety_agent import safety_node
 from app.agents.state import LearningAgentState
+from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+
+def _build_state_payload(state: LearningAgentState) -> dict[str, object]:
+    return {
+        "user_id": state.get("user_id"),
+        "course_code": state.get("course_code"),
+        "scene": state.get("scene"),
+        "message_count": len(state.get("messages", [])),
+        "intent": state.get("intent"),
+    }
+
+
+def _with_runtime_logging(agent_name: str, node_fn):
+    async def wrapped(state: LearningAgentState) -> LearningAgentState:
+        logger = AgentRuntimeLoggingService()
+        async with logger.track(
+            agent_name=agent_name,
+            start_message=f"{agent_name} started",
+            success_message=f"{agent_name} completed",
+            start_payload=_build_state_payload(state),
+            success_payload_factory=lambda: {
+                **_build_state_payload(state),
+                "trace_size": len(state.get("execution_trace", [])),
+            },
+            error_message=f"{agent_name} failed",
+        ):
+            return await node_fn(state)
+
+    return wrapped
 
 
 def _route_after_router(state: LearningAgentState) -> str:
@@ -53,14 +83,14 @@ def _route_after_resource(state: LearningAgentState) -> str:
 
 def build_learning_graph():
     graph = StateGraph(LearningAgentState)
-    graph.add_node("profile_agent", profile_node)
-    graph.add_node("router_agent", router_node)
-    graph.add_node("retriever_agent", retriever_node)
-    graph.add_node("planner_agent", planner_node)
-    graph.add_node("resource_agent", resource_node)
-    graph.add_node("assessment_agent", assessment_node)
-    graph.add_node("evaluator_agent", evaluator_node)
-    graph.add_node("safety_agent", safety_node)
+    graph.add_node("profile_agent", _with_runtime_logging("profile_agent", profile_node))
+    graph.add_node("router_agent", _with_runtime_logging("router_agent", router_node))
+    graph.add_node("retriever_agent", _with_runtime_logging("retriever_agent", retriever_node))
+    graph.add_node("planner_agent", _with_runtime_logging("planner_agent", planner_node))
+    graph.add_node("resource_agent", _with_runtime_logging("resource_agent", resource_node))
+    graph.add_node("assessment_agent", _with_runtime_logging("assessment_agent", assessment_node))
+    graph.add_node("evaluator_agent", _with_runtime_logging("evaluator_agent", evaluator_node))
+    graph.add_node("safety_agent", _with_runtime_logging("safety_agent", safety_node))
 
     graph.set_entry_point("profile_agent")
     graph.add_edge("profile_agent", "router_agent")

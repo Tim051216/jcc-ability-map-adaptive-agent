@@ -5,11 +5,11 @@ from app.db.base import Base, TimestampMixin
 
 
 class ChatTicket(Base, TimestampMixin):
-    __tablename__ = "ai_chat_ticket"
+    __tablename__ = "chat_ticket"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)
-    session_id: Mapped[int | None] = mapped_column(ForeignKey("ai_chat_session.id"), nullable=True, index=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("chat_session.id"), nullable=True, index=True)
     course_code: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     question_summary: Mapped[str] = mapped_column(Text)
@@ -19,10 +19,10 @@ class ChatTicket(Base, TimestampMixin):
 
 
 class ChatTicketReply(Base, TimestampMixin):
-    __tablename__ = "ai_chat_ticket_reply"
+    __tablename__ = "chat_ticket_reply"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    ticket_id: Mapped[int] = mapped_column(ForeignKey("ai_chat_ticket.id"), index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("chat_ticket.id"), index=True)
     replier_name: Mapped[str] = mapped_column(String(128))
     replier_role: Mapped[str] = mapped_column(String(32), default="staff")
     content: Mapped[str] = mapped_column(Text)

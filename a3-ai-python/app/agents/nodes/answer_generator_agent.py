@@ -4,12 +4,18 @@
 """
 import asyncio
 import json
+import math
+import re
 from typing import Any
 
 from app.core.logging import logger
+from app.db.models.tutoring import TutoringAnswer, TutoringQuestion
+from app.db.session import async_session_factory
 from app.integrations.llm.client import get_llm_client
 from app.schemas.rag import RagSearchRequest
+from app.services.embedding_service import EmbeddingService
 from app.services.rag_service import RagService
+from sqlalchemy import select
 
 
 class AnswerGeneratorAgent:
@@ -19,6 +25,7 @@ class AnswerGeneratorAgent:
     def __init__(self):
         self.llm_client = get_llm_client()
         self.rag_service = RagService()
+        self.embedding_service = EmbeddingService()
 
     async def generate_answer(
         self,
@@ -112,13 +119,124 @@ class AnswerGeneratorAgent:
             except Exception as e:
                 logger.error(f"知识检索失败: {e}")
 
-        # TODO: 检索相似问题解答（从历史答疑记录中）
-        # 这需要建立答疑历史的向量索引
+        try:
+            similar_qa_pairs = await self._retrieve_similar_qa_pairs(
+                question_text,
+                question_analysis,
+                course_id=course_id,
+            )
+        except Exception as e:
+            logger.error(f"相似问答检索失败: {e}")
 
         return {
             "retrieved_chunks": retrieved_chunks,
             "similar_qa_pairs": similar_qa_pairs,
         }
+
+    async def _retrieve_similar_qa_pairs(
+        self,
+        question_text: str,
+        question_analysis: dict[str, Any],
+        *,
+        course_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if not course_id:
+            return []
+
+        async with async_session_factory() as session:
+            stmt = (
+                select(TutoringQuestion, TutoringAnswer)
+                .join(TutoringAnswer, TutoringAnswer.question_id == TutoringQuestion.id)
+                .where(TutoringQuestion.course_id == course_id, TutoringQuestion.has_answer.is_(True))
+                .order_by(TutoringAnswer.create_time.desc())
+                .limit(24)
+            )
+            rows = (await session.execute(stmt)).all()
+
+        if not rows:
+            return []
+
+        query_keywords = self._extract_keywords(
+            " ".join(
+                [
+                    question_text,
+                    " ".join(str(x) for x in question_analysis.get("knowledge_points", []) if x),
+                ]
+            )
+        )
+        query_vector = await self.embedding_service.embed_text(question_text)
+
+        scored_pairs: list[dict[str, Any]] = []
+        for question, answer in rows:
+            candidate_text = str(question.question_text or "").strip()
+            answer_text = str(answer.answer_text or "").strip()
+            if not candidate_text or not answer_text:
+                continue
+
+            candidate_keywords = self._extract_keywords(
+                " ".join(
+                    [
+                        candidate_text,
+                        " ".join(str(x) for x in (question.knowledge_points or []) if x),
+                    ]
+                )
+            )
+            lexical_score = self._keyword_overlap_score(query_keywords, candidate_keywords)
+            if lexical_score <= 0 and len(scored_pairs) >= 8:
+                continue
+
+            candidate_vector = await self.embedding_service.embed_text(candidate_text)
+            semantic_score = self._cosine_similarity(query_vector, candidate_vector)
+            final_score = round((semantic_score * 0.7 + lexical_score * 0.3), 4)
+            if final_score < 0.15:
+                continue
+
+            scored_pairs.append(
+                {
+                    "question_id": question.id,
+                    "answer_id": answer.id,
+                    "question": candidate_text[:160],
+                    "answer_excerpt": answer_text[:220],
+                    "score": final_score,
+                    "knowledge_points": list(question.knowledge_points or [])[:5],
+                }
+            )
+
+        scored_pairs.sort(key=lambda item: item["score"], reverse=True)
+        return scored_pairs[:3]
+
+    @staticmethod
+    def _extract_keywords(text: str) -> list[str]:
+        tokens = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z][A-Za-z0-9_+-]{2,}", text or "")
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for token in tokens:
+            normalized = token.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+        return deduped[:12]
+
+    @staticmethod
+    def _keyword_overlap_score(left: list[str], right: list[str]) -> float:
+        if not left or not right:
+            return 0.0
+        left_set = set(left)
+        right_set = set(right)
+        overlap = left_set & right_set
+        return len(overlap) / max(len(left_set), len(right_set), 1)
+
+    @staticmethod
+    def _cosine_similarity(left: list[float], right: list[float]) -> float:
+        if not left or not right or len(left) != len(right):
+            return 0.0
+        numerator = sum(a * b for a, b in zip(left, right))
+        left_norm = math.sqrt(sum(a * a for a in left))
+        right_norm = math.sqrt(sum(b * b for b in right))
+        if left_norm == 0 or right_norm == 0:
+            return 0.0
+        return numerator / (left_norm * right_norm)
 
     async def _generate_answer_text(
         self,
@@ -145,6 +263,14 @@ class AnswerGeneratorAgent:
             context_parts.append("参考知识：")
             for i, chunk in enumerate(retrieved_chunks[:3], 1):
                 context_parts.append(f"{i}. {chunk['content'][:300]}")
+
+        similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
+        if similar_qa_pairs:
+            context_parts.append("相似问答参考：")
+            for i, pair in enumerate(similar_qa_pairs[:2], 1):
+                context_parts.append(
+                    f"{i}. 问题：{pair['question']}\n   历史解答摘要：{pair['answer_excerpt']}\n   相似度：{pair['score']}"
+                )
 
         context = "\n\n".join(context_parts) if context_parts else "无相关参考资料"
 
@@ -292,6 +418,18 @@ class AnswerGeneratorAgent:
             }
             sources.append(source)
 
+        similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
+        for pair in similar_qa_pairs:
+            sources.append(
+                {
+                    "source_type": "similar_qa",
+                    "title": f"历史相似问答 #{pair.get('question_id')}",
+                    "url": None,
+                    "excerpt": pair.get("answer_excerpt", ""),
+                    "relevance_score": pair.get("score", 0.0),
+                }
+            )
+
         return sources
 
     async def _evaluate_confidence(
@@ -320,6 +458,11 @@ class AnswerGeneratorAgent:
         else:
             # 没有检索结果，降低置信度
             base_confidence -= 20
+
+        similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
+        if similar_qa_pairs:
+            avg_similar_score = sum(pair.get("score", 0) for pair in similar_qa_pairs) / len(similar_qa_pairs)
+            base_confidence += avg_similar_score * 10
 
         # 根据解答长度调整（太短可能不完整）
         answer_length = len(answer_text)

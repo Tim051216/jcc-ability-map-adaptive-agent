@@ -19,12 +19,10 @@ from app.agents.nodes.profile_conversation.conversation_state import (
 )
 from app.agents.nodes.profile_conversation.info_extractor_agent import (
     generate_guide_question,
-    info_extractor_node,
 )
 from app.agents.nodes.profile_conversation.profile_builder_agent import (
     calculate_profile_completeness,
     generate_profile_tags,
-    profile_builder_node,
 )
 from app.db.models.profile_conversation import (
     ConversationMessageModel,
@@ -305,7 +303,7 @@ class ProfileConversationService:
         # 完成画像时同样只基于用户消息构建最终画像。
         message_contents = [msg.content for msg in messages if msg.role == "user"]
 
-        # 调用画像构建智能体
+        # 调用 LangGraph 编排的画像构建链路
         state: ProfileConversationState = {
             "user_id": session.user_id,
             "session_id": session_id,
@@ -316,11 +314,8 @@ class ProfileConversationService:
             "execution_trace": [],
         }
 
-        # 完成会话时显式执行提取与构建，避免图路由提前结束而跳过画像生成。
-        result_state = await info_extractor_node(state)
-        result_state = await profile_builder_node(result_state)
+        result_state = await profile_conversation_graph.ainvoke(state)
 
-        # 获取构建的画像
         built_profile = result_state.get("built_profile", {})
 
         existing_result = await self.db.execute(
@@ -687,7 +682,7 @@ class ProfileConversationService:
             .order_by(StudentProfileModel.version.desc())
         )
         profile = result.scalar_one_or_none()
-        
+
         if not profile:
             return None
 
@@ -750,7 +745,7 @@ class ProfileConversationService:
             .order_by(StudentProfileModel.version.desc())
         )
         profile = result.scalar_one_or_none()
-        
+
         if not profile:
             return None
 

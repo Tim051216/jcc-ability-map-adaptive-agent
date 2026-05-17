@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class KnowledgeDocument(Base, TimestampMixin):
-    __tablename__ = "ai_knowledge_document"
+    __tablename__ = "knowledge_document"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     course_code: Mapped[str] = mapped_column(String(128), index=True)
@@ -16,10 +16,10 @@ class KnowledgeDocument(Base, TimestampMixin):
 
 
 class KnowledgeChunk(Base, TimestampMixin):
-    __tablename__ = "ai_knowledge_chunk"
+    __tablename__ = "knowledge_chunk"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("ai_knowledge_document.id"), index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("knowledge_document.id"), index=True)
     chunk_index: Mapped[int] = mapped_column(index=True)
     content: Mapped[str] = mapped_column(Text)
     keywords: Mapped[str | None] = mapped_column(String(500), nullable=True)

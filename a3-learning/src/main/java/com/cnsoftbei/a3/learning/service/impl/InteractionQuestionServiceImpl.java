@@ -135,8 +135,11 @@ public class InteractionQuestionServiceImpl extends ServiceImpl<InteractionQuest
         }
 
         //2.远程查询课程信息
-        //2.1远程调用搜索服务查询课程ids
-        List<CourseSimpleInfoDTO> cinfos = courseClient.getSimpleInfoList(cIds);
+        //2.1 如果没有按课程名筛选，则直接基于当前问题页汇总课程id
+        List<Long> queryCourseIds = CollUtils.isNotEmpty(cIds)
+                ? cIds
+                : questions.stream().map(InteractionQuestion::getCourseId).distinct().collect(Collectors.toList());
+        List<CourseSimpleInfoDTO> cinfos = courseClient.getSimpleInfoList(queryCourseIds);
         if(CollUtils.isEmpty(cinfos)){
             throw new BizIllegalException("课程集合不存在");
         }
@@ -334,7 +337,13 @@ public class InteractionQuestionServiceImpl extends ServiceImpl<InteractionQuest
         if(userMap != null){
             vo.setUserName(userMap.get(question.getUserId()).getName());
             vo.setUserIcon(userMap.get(question.getUserId()).getIcon());
-            vo.setTeacherName(userMap.get(course.getTeacherIds().get(0)).getName());
+            List<Long> teacherIds = course.getTeacherIds();
+            if (CollUtils.isNotEmpty(teacherIds)) {
+                UserDTO teacher = userMap.get(teacherIds.get(0));
+                if (teacher != null) {
+                    vo.setTeacherName(teacher.getName());
+                }
+            }
         }
         //6.3设置章节信息
         if(cataMap != null){

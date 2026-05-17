@@ -36,3 +36,10 @@ class MediaClient(BaseJavaClient):
         except Exception as e:
             logger.warning("media.search_videos_failed", course_id=course_id, keyword=keyword, error=str(e))
             return {"items": []}
+
+    async def get_play_signature(self, *, section_id: int, user_id: int) -> dict[str, Any]:
+        return await self.get(
+            "/ms/medias/signature/play",
+            params={"sectionId": section_id},
+            user_id=user_id,
+        )

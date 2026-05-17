@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class EvaluationPaper(Base, TimestampMixin):
-    __tablename__ = "ai_evaluation_paper"
+    __tablename__ = "evaluation_paper"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)
@@ -16,10 +16,10 @@ class EvaluationPaper(Base, TimestampMixin):
 
 
 class EvaluationAnswer(Base, TimestampMixin):
-    __tablename__ = "ai_evaluation_answer"
+    __tablename__ = "evaluation_answer"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    paper_id: Mapped[int] = mapped_column(ForeignKey("ai_evaluation_paper.id"), index=True)
+    paper_id: Mapped[int] = mapped_column(ForeignKey("evaluation_paper.id"), index=True)
     user_id: Mapped[int] = mapped_column(index=True)
     question_id: Mapped[str] = mapped_column(String(64), index=True)
     question_type: Mapped[str] = mapped_column(String(32), default="single_choice")

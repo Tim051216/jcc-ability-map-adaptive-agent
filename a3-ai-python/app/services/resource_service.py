@@ -1,4 +1,6 @@
+import asyncio
 from datetime import datetime, timezone
+from typing import ClassVar
 
 from fastapi import HTTPException
 
@@ -17,13 +19,35 @@ from app.schemas.resource import (
     ResourceGenerationResponse,
     ResourceListResponse,
 )
+from app.services.course_context_service import CourseContextService
+from app.services.resource_source_file_service import ResourceSourceFileService
 
 
 class ResourceService:
+    _resource_cache: ClassVar[dict[int, ResourceCard]] = {}
+    _favorite_cache: ClassVar[set[tuple[int, int]]] = set()
+    _favorite_history_cache: ClassVar[list[dict[str, str | int | None]]] = []
+    _archived_cache: ClassVar[dict[int, dict[str, str | int | None]]] = {}
+    _next_resource_id: ClassVar[int] = 1
+
     async def generate_resources(
         self,
         request: ResourceGenerationRequest,
     ) -> ResourceGenerationResponse:
+        course_context = await CourseContextService().resolve(
+            course_id=request.course_id,
+            course_code=request.course_code,
+        )
+        request = request.model_copy(
+            update={
+                "course_id": course_context.course_id,
+                "course_code": course_context.course_code,
+                "knowledge_points": self._normalize_knowledge_points(
+                    request.knowledge_points,
+                    course_context.course_code,
+                ),
+            }
+        )
         resource_types = request.resource_types or RESOURCE_TYPES
         resources = await self._generate_resource_cards(request, resource_types)
         persisted_resources = await self._persist_resources(request, resources)
@@ -36,14 +60,20 @@ class ResourceService:
         self,
         *,
         user_id: int,
+        course_id: int | None = None,
         course_code: str | None = None,
         resource_type: str | None = None,
     ) -> ResourceListResponse:
+        resolved_course_code = course_code
+        if course_id is not None:
+            resolved_course_code = (
+                await CourseContextService().resolve(course_id=course_id, course_code=course_code)
+            ).course_code
         async with async_session_factory() as session:
             items, total = await ResourceRepository().list_resources(
                 session,
                 user_id=user_id,
-                course_code=course_code,
+                course_code=resolved_course_code,
                 resource_type=resource_type,
             )
         return ResourceListResponse(items=[self._to_card(item) for item in items], total=total)
@@ -52,14 +82,20 @@ class ResourceService:
         self,
         *,
         user_id: int,
+        course_id: int | None = None,
         course_code: str | None = None,
         resource_type: str | None = None,
     ) -> ResourceListResponse:
+        resolved_course_code = course_code
+        if course_id is not None:
+            resolved_course_code = (
+                await CourseContextService().resolve(course_id=course_id, course_code=course_code)
+            ).course_code
         async with async_session_factory() as session:
             items, total = await ResourceRepository().list_resources(
                 session,
                 user_id=user_id,
-                course_code=course_code,
+                course_code=resolved_course_code,
                 resource_type=resource_type,
                 archived_only=True,
             )
@@ -70,7 +106,22 @@ class ResourceService:
             resource = await ResourceRepository().get_resource(session, resource_id)
             if resource is None:
                 raise HTTPException(status_code=404, detail="resource not found")
-            return self._to_card(resource)
+            card = self._to_card(resource)
+            source_files = await ResourceSourceFileService().list_for_resource(
+                resource_id=resource_id,
+                course_code=str(resource.course_code or ""),
+            )
+            return ResourceCard(
+                resource_id=card.resource_id,
+                resource_type=card.resource_type,
+                title=card.title,
+                summary=card.summary,
+                content_markdown=card.content_markdown,
+                source_titles=card.source_titles,
+                study_suggestion=card.study_suggestion,
+                source_file_count=len(source_files),
+                source_files=source_files,
+            )
 
     async def list_favorites(self, user_id: int) -> ResourceListResponse:
         async with async_session_factory() as session:
@@ -219,7 +270,10 @@ class ResourceService:
                     created_at=now,
                     updated_at=now,
                 )
-                persisted.append(item.model_copy(update={"resource_id": record.id}))
+                persisted_item = item.model_copy(update={"resource_id": record.id})
+                persisted.append(persisted_item)
+                self.__class__._resource_cache[record.id] = persisted_item
+                self.__class__._next_resource_id = max(self.__class__._next_resource_id, record.id + 1)
             await session.commit()
         return persisted
 
@@ -235,13 +289,17 @@ class ResourceService:
         source_text = self._build_fallback_source_text(request)
         source_titles = list(request.knowledge_points) or [request.course_code]
         return [
-            ResourceCard(
-                resource_type=resource_type,
-                title=self._build_title(resource_type, request.course_code),
-                summary=self._build_summary(resource_type, request.course_code, source_titles),
-                content_markdown=self._build_markdown(resource_type, request.course_code, source_titles, source_text),
+            self._sanitize_card(
+                ResourceCard(
+                    resource_type=resource_type,
+                    title=self._build_title(resource_type, request.course_code),
+                    summary=self._build_summary(resource_type, request.course_code, source_titles),
+                    content_markdown=self._build_markdown(resource_type, request.course_code, source_titles, source_text),
+                    source_titles=source_titles,
+                    study_suggestion=self._build_study_suggestion(resource_type),
+                ),
+                course_code=request.course_code,
                 source_titles=source_titles,
-                study_suggestion=self._build_study_suggestion(resource_type),
             )
             for resource_type in resource_types
         ]
@@ -264,17 +322,20 @@ class ResourceService:
 
         try:
             coordinator = ResourceGenerationCoordinator()
-            result = await coordinator.coordinate_generation(
-                knowledge_point=(request.knowledge_points or [request.course_code])[0],
-                resource_types=mapped_types,
-                student_profile={
-                    "student_id": request.user_id,
-                    "difficulty_level": 1,
-                    "cognitive_style": "mixed",
-                },
-                course_context=request.course_code,
-                related_knowledge=request.knowledge_points or None,
-                programming_language="Python",
+            result = await asyncio.wait_for(
+                coordinator.coordinate_generation(
+                    knowledge_point=(request.knowledge_points or [request.course_code])[0],
+                    resource_types=mapped_types,
+                    student_profile={
+                        "student_id": request.user_id,
+                        "difficulty_level": 1,
+                        "cognitive_style": "mixed",
+                    },
+                    course_context=request.course_code,
+                    related_knowledge=request.knowledge_points or None,
+                    programming_language="Python",
+                ),
+                timeout=8,
             )
         except Exception:
             return []
@@ -289,111 +350,221 @@ class ResourceService:
                 continue
             data = item.get("data") or {}
             cards.append(
-                ResourceCard(
-                    resource_type=resource_type,
-                    title=self._coordinator_title(resource_type, request.course_code, data),
-                    summary=self._coordinator_summary(resource_type, request.course_code, source_titles, data),
-                    content_markdown=self._coordinator_content(resource_type, data),
+                self._sanitize_card(
+                    ResourceCard(
+                        resource_type=resource_type,
+                        title=self._coordinator_title(resource_type, request.course_code, data),
+                        summary=self._coordinator_summary(resource_type, request.course_code, source_titles, data),
+                        content_markdown=self._coordinator_content(resource_type, data),
+                        source_titles=source_titles,
+                        study_suggestion=data.get("study_suggestion") or self._build_study_suggestion(resource_type),
+                    ),
+                    course_code=request.course_code,
                     source_titles=source_titles,
-                    study_suggestion=data.get("study_suggestion") or self._build_study_suggestion(resource_type),
                 )
             )
         return cards
 
     @staticmethod
     def _to_card(resource) -> ResourceCard:
-        return ResourceCard(
-            resource_id=resource.id,
-            resource_type=resource.resource_type,
-            title=resource.title,
-            summary=resource.summary,
-            content_markdown=resource.content_markdown,
+        return ResourceService._sanitize_card(
+            ResourceCard(
+                resource_id=resource.id,
+                resource_type=resource.resource_type,
+                title=resource.title,
+                summary=resource.summary,
+                content_markdown=resource.content_markdown,
+                source_titles=list(resource.source_titles or []),
+                study_suggestion=resource.study_suggestion,
+            ),
+            course_code=str(resource.course_code or ""),
             source_titles=list(resource.source_titles or []),
-            study_suggestion=resource.study_suggestion,
         )
 
     @staticmethod
-    def _build_title(resource_type: str, course_code: str) -> str:
-        mapping = {
-            "lecture_note": f"{course_code} 课程讲义",
-            "lecture_notes": f"{course_code} 课程讲义",
-            "mind_map": f"{course_code} 思维导图",
-            "quiz_set": f"{course_code} 分层练习",
-            "practice_set": f"{course_code} 分层练习",
-            "extended_reading": f"{course_code} 延伸阅读",
-            "coding_lab": f"{course_code} 编码实验",
-            "case_study": f"{course_code} 案例拆解",
+    def _sanitize_card(card: ResourceCard, *, course_code: str, source_titles: list[str]) -> ResourceCard:
+        cleaned_sources = ResourceService._normalize_knowledge_points(source_titles, course_code)
+        title = ResourceService._normalize_text(card.title)
+        summary = ResourceService._normalize_text(card.summary)
+        content_markdown = ResourceService._normalize_text(card.content_markdown)
+        study_suggestion = ResourceService._normalize_text(card.study_suggestion) if card.study_suggestion else ""
+
+        if ResourceService._looks_placeholder_text(title):
+            title = ResourceService._build_title(card.resource_type, course_code)
+        if ResourceService._looks_placeholder_text(summary):
+            summary = ResourceService._build_summary(card.resource_type, course_code, cleaned_sources)
+        if ResourceService._looks_placeholder_text(content_markdown):
+            content_markdown = ResourceService._build_markdown(
+                card.resource_type,
+                course_code,
+                cleaned_sources,
+                ResourceService._build_fallback_source_text(
+                    ResourceGenerationRequest(
+                        user_id=0,
+                        course_code=course_code,
+                        knowledge_points=cleaned_sources,
+                        resource_types=[card.resource_type],
+                    )
+                ),
+            )
+        if ResourceService._looks_placeholder_text(study_suggestion):
+            study_suggestion = ResourceService._build_study_suggestion(card.resource_type)
+
+        return ResourceCard(
+            resource_id=card.resource_id,
+            resource_type=card.resource_type,
+            title=title,
+            summary=summary,
+            content_markdown=content_markdown,
+            source_titles=cleaned_sources,
+            study_suggestion=study_suggestion,
+            source_file_count=card.source_file_count,
+            source_files=card.source_files,
+        )
+
+    @staticmethod
+    def _normalize_text(value: str | None) -> str:
+        if not value:
+            return ""
+        return str(value).replace("\uFFFD", "").strip()
+
+    @staticmethod
+    def _looks_placeholder_text(value: str | None) -> bool:
+        if not value:
+            return True
+        text = str(value).strip()
+        lowered = text.lower()
+        if not text:
+            return True
+        if any(token in lowered for token in ("????", "placeholder", "todo", "knowledge-point-")):
+            return True
+        if any(token in text for token in ("知识点1", "知识点2", "知识点3")):
+            return True
+        return text.count("?") >= 3
+
+    @staticmethod
+    def _normalize_knowledge_points(points: list[str] | None, course_code: str) -> list[str]:
+        fallback_map = {
+            "ml_intro": [
+                "model evaluation",
+                "supervised learning",
+                "feature engineering",
+                "learning workflow",
+            ],
+            "software_engineering_4th": [
+                "software engineering fundamentals",
+                "requirements analysis",
+                "software design",
+                "testing and project management",
+            ],
         }
-        return mapping.get(resource_type, f"{course_code} 学习资源")
+        cleaned: list[str] = []
+        for point in points or []:
+            normalized = ResourceService._normalize_text(point)
+            if not normalized or ResourceService._looks_placeholder_text(normalized):
+                continue
+            if normalized not in cleaned:
+                cleaned.append(normalized)
+        if cleaned:
+            return cleaned
+        return fallback_map.get(course_code, [course_code or "general topic", "core concepts", "practice tasks"])
+
+    @staticmethod
+    def _course_label(course_code: str) -> str:
+        labels = {
+            "ml_intro": "Machine Learning Foundations",
+            "software_engineering_4th": "Software Engineering Practice (4th Edition)",
+        }
+        return labels.get(course_code, course_code.replace("_", " ").title() if course_code else "Learning Course")
+
+    @staticmethod
+    def _build_title(resource_type: str, course_code: str) -> str:
+        course_label = ResourceService._course_label(course_code)
+        mapping = {
+            "lecture_note": f"{course_label} Study Notes",
+            "lecture_notes": f"{course_label} Study Notes",
+            "mind_map": f"{course_label} Mind Map",
+            "quiz_set": f"{course_label} Practice Set",
+            "practice_set": f"{course_label} Practice Set",
+            "extended_reading": f"{course_label} Extended Reading",
+            "coding_lab": f"{course_label} Coding Lab",
+            "case_study": f"{course_label} Case Study",
+        }
+        return mapping.get(resource_type, f"{course_label} Learning Resource")
 
     @staticmethod
     def _build_summary(resource_type: str, course_code: str, source_titles: list[str]) -> str:
-        focus = "、".join(source_titles[:3]) or course_code
+        focus = ", ".join(source_titles[:3]) or ResourceService._course_label(course_code)
         mapping = {
-            "lecture_note": f"围绕 {focus} 整理的课程讲义，适合课前预习与课后复盘。",
-            "lecture_notes": f"围绕 {focus} 整理的课程讲义，适合课前预习与课后复盘。",
-            "mind_map": f"提炼 {focus} 的核心概念关系，便于快速串联知识结构。",
-            "quiz_set": f"针对 {focus} 设计的分层练习，便于定位薄弱点。",
-            "practice_set": f"针对 {focus} 设计的分层练习，便于定位薄弱点。",
-            "extended_reading": f"补充 {focus} 的背景理解与扩展应用场景。",
-            "coding_lab": f"通过实操任务巩固 {focus}，适合边学边练。",
-            "case_study": f"结合 {focus} 拆解真实案例，帮助建立应用视角。",
+            "lecture_note": f"Structured notes focused on {focus}, suitable for preview and review.",
+            "lecture_notes": f"Structured notes focused on {focus}, suitable for preview and review.",
+            "mind_map": f"A concise concept map that connects the key ideas in {focus}.",
+            "quiz_set": f"Layered practice items built around {focus} to expose weak spots quickly.",
+            "practice_set": f"Layered practice items built around {focus} to expose weak spots quickly.",
+            "extended_reading": f"Supplementary reading that expands the context and applications of {focus}.",
+            "coding_lab": f"Hands-on coding tasks that reinforce {focus} through implementation.",
+            "case_study": f"A practical case walkthrough that shows how {focus} appears in context.",
         }
-        return mapping.get(resource_type, f"{course_code} 学习资源")
+        return mapping.get(resource_type, f"Learning resources for {ResourceService._course_label(course_code)}.")
 
     @staticmethod
     def _build_markdown(resource_type: str, course_code: str, source_titles: list[str], source_text: str) -> str:
         focus_lines = "\n".join(f"- {item}" for item in source_titles) or f"- {course_code}"
         if resource_type == "mind_map":
             return (
-                f"# {course_code} 思维导图\n\n"
+                f"# {ResourceService._course_label(course_code)} Mind Map\n\n"
                 "```mermaid\n"
                 "mindmap\n"
-                f"  root(({course_code}))\n"
+                f"  root(({ResourceService._course_label(course_code)}))\n"
                 + "".join(f"    {item}\n" for item in source_titles[:5])
                 + "```\n"
             )
         if resource_type in {"quiz_set", "practice_set"}:
             return (
-                f"# {course_code} 分层练习\n\n"
-                "## 基础题\n"
-                f"1. 请解释“{source_titles[0] if source_titles else course_code}”的核心概念。\n\n"
-                "## 进阶题\n"
-                f"2. 结合 {course_code} 场景，说明相关知识点的应用方式。\n\n"
-                "## 复盘提示\n"
-                "- 记录错误原因\n- 总结易混淆概念\n"
+                f"# {ResourceService._course_label(course_code)} Practice Set\n\n"
+                "## Core Question\n"
+                f"1. Explain the core idea behind \"{source_titles[0] if source_titles else course_code}\".\n\n"
+                "## Application Question\n"
+                f"2. Describe how this concept can be applied in the context of {ResourceService._course_label(course_code)}.\n\n"
+                "## Review Prompts\n"
+                "- Record the mistakes you made.\n"
+                "- Summarize the concepts that still feel unclear.\n"
             )
         if resource_type in {"coding_lab", "case_study"}:
             return (
-                f"# {course_code} 实战案例\n\n"
-                "## 任务背景\n"
-                f"围绕以下知识点完成案例拆解或编码练习：\n{focus_lines}\n\n"
-                "## 实施步骤\n"
-                "1. 先梳理输入输出。\n2. 再拆分关键流程。\n3. 最后总结可复用经验。\n"
+                f"# {ResourceService._course_label(course_code)} Case Study\n\n"
+                "## Focus Areas\n"
+                f"{focus_lines}\n\n"
+                "## Suggested Approach\n"
+                "1. Clarify the inputs and expected outputs.\n"
+                "2. Break the workflow into key steps.\n"
+                "3. Summarize reusable patterns and decisions.\n"
             )
         if resource_type == "extended_reading":
             return (
-                f"# {course_code} 延伸阅读\n\n"
-                "## 阅读目标\n"
-                f"围绕以下主题扩展理解：\n{focus_lines}\n\n"
-                "## 阅读建议\n"
-                "1. 先阅读概念背景。\n2. 再对比典型应用。\n3. 最后输出自己的理解摘要。\n"
+                f"# {ResourceService._course_label(course_code)} Extended Reading\n\n"
+                "## Reading Goals\n"
+                f"{focus_lines}\n\n"
+                "## Reading Guide\n"
+                "1. Review the background and motivation.\n"
+                "2. Compare typical applications.\n"
+                "3. Write a short summary in your own words.\n"
             )
-        return f"# {course_code} 课程讲义\n\n{source_text}"
+        return f"# {ResourceService._course_label(course_code)} Study Notes\n\n{source_text}"
 
     @staticmethod
     def _build_study_suggestion(resource_type: str) -> str:
         mapping = {
-            "lecture_note": "建议先快速通读，再按知识点回看。",
-            "lecture_notes": "建议先快速通读，再按知识点回看。",
-            "mind_map": "建议用于复盘章节结构和概念关系。",
-            "quiz_set": "建议学完当日内容后立即练习。",
-            "practice_set": "建议学完当日内容后立即练习。",
-            "extended_reading": "建议在主线学习完成后扩展阅读。",
-            "coding_lab": "建议边写边验证，及时记录错误原因。",
-            "case_study": "建议先拆解案例结构，再抽取可迁移的方法。",
+            "lecture_note": "Skim once first, then revisit the sections that matter most.",
+            "lecture_notes": "Skim once first, then revisit the sections that matter most.",
+            "mind_map": "Use this as a fast recap before or after a study session.",
+            "quiz_set": "Try it right after the related lesson while the concepts are still fresh.",
+            "practice_set": "Try it right after the related lesson while the concepts are still fresh.",
+            "extended_reading": "Read this after the core lesson to widen your understanding.",
+            "coding_lab": "Implement step by step and record mistakes as you go.",
+            "case_study": "Break the case into structure, decisions, and reusable patterns.",
         }
-        return mapping.get(resource_type, "建议结合当前学习目标分阶段使用。")
+        return mapping.get(resource_type, "Use this resource alongside the current learning objective.")
 
     @staticmethod
     def _map_resource_types_for_coordinator(resource_types: list[str]) -> list[int]:
@@ -452,7 +623,7 @@ class ResourceService:
         if resource_type in {"quiz_set", "practice_set"}:
             questions = data.get("questions")
             if isinstance(questions, list) and questions:
-                lines = ["# 分层练习"]
+                lines = ["# Practice Set"]
                 for index, item in enumerate(questions[:10], start=1):
                     question = item.get("question") or item.get("question_content") or ""
                     lines.append(f"{index}. {question}")
@@ -463,10 +634,10 @@ class ResourceService:
 
     @staticmethod
     def _build_fallback_source_text(request: ResourceGenerationRequest) -> str:
-        points = request.knowledge_points or [request.course_code]
+        points = ResourceService._normalize_knowledge_points(request.knowledge_points, request.course_code or "")
         point_lines = "\n".join(f"- {item}" for item in points)
         return (
-            f"## Course\n{request.course_code}\n\n"
+            f"## Course\n{ResourceService._course_label(request.course_code or '')}\n\n"
             "## Knowledge Points\n"
             f"{point_lines}\n\n"
             "## Usage\n"

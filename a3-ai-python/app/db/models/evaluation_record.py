@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class EvaluationRecord(Base, TimestampMixin):
-    __tablename__ = "ai_evaluation_record"
+    __tablename__ = "evaluation_record"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)

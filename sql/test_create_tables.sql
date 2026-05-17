@@ -2,13 +2,13 @@
 -- 使用测试数据库避免影响现有数据
 
 -- 创建测试数据库
-DROP DATABASE IF EXISTS `tj_learning_test`;
-CREATE DATABASE `tj_learning_test` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP DATABASE IF EXISTS `learning_test`;
+CREATE DATABASE `learning_test` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE `tj_learning_test`;
+USE `learning_test`;
 
 -- 执行表创建脚本内容
-SOURCE tj_learning_path.sql;
+SOURCE learning_path.sql;
 
 -- 验证表创建结果
 SHOW TABLES;

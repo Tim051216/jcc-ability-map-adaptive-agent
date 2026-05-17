@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class UserProfileSnapshot(Base, TimestampMixin):
-    __tablename__ = "ai_user_profile_snapshot"
+    __tablename__ = "user_profile_snapshot"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)

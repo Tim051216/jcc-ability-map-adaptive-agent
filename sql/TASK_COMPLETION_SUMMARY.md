@@ -82,7 +82,7 @@
 
 ## 创建的文件
 
-1. **SQL脚本**: `sql/tj_learning_path.sql`
+1. **SQL脚本**: `sql/learning_path.sql`
    - 包含8个表的完整定义
    - 包含所有索引定义
    - 包含详细的中文注释

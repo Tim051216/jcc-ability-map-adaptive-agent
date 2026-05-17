@@ -24,6 +24,8 @@ from app.db.models.tutoring import (
 from app.schemas.tutoring import (
     AnswerEvaluationRequest,
     EscalationRecordCreate,
+    ExpertAnswerSubmitRequest,
+    ExpertAssignmentRequest,
     TutoringHistoryItem,
     TutoringHistoryQuery,
     TutoringHistoryResponse,
@@ -221,9 +223,29 @@ class TutoringService:
             update_time=now,
         )
         self.db.add(answer)
+        if bool(result.get("should_escalate")):
+            existing = await self._get_open_escalation(question.id)
+            if existing is None:
+                self.db.add(
+                    EscalationRecord(
+                        id=self._generate_id(),
+                        question_id=question.id,
+                        session_id=question.session_id,
+                        user_id=question.user_id,
+                        escalation_reason=1,
+                        ai_confidence_score=confidence,
+                        escalation_status=0,
+                        create_time=now,
+                        update_time=now,
+                    )
+                )
+                question.is_escalated = True
+                question.question_status = 2
         await self.db.commit()
 
         return {
+            "question_id": question.id,
+            "session_id": question.session_id,
             "answer_id": answer_id,
             "answer_text": answer.answer_text,
             "diagrams": answer.answer_diagrams or [],
@@ -232,6 +254,8 @@ class TutoringService:
             "confidence_score": float(confidence),
             "generation_time": answer.generation_time,
             "should_escalate": bool(result.get("should_escalate")),
+            "question_type": question.question_type,
+            "knowledge_points": question.knowledge_points or [],
         }
 
     async def generate_answer(
@@ -253,6 +277,8 @@ class TutoringService:
                 await self.db.commit()
                 conf = float(existing.confidence_score or 0)
                 return {
+                    "question_id": question.id,
+                    "session_id": question.session_id,
                     "answer_id": existing.id,
                     "answer_text": existing.answer_text,
                     "diagrams": existing.answer_diagrams or [],
@@ -261,6 +287,8 @@ class TutoringService:
                     "confidence_score": conf,
                     "generation_time": existing.generation_time,
                     "should_escalate": conf < 60.0,
+                    "question_type": getattr(question, "question_type", None),
+                    "knowledge_points": getattr(question, "knowledge_points", None) or [],
                 }
 
         coordinator = TutoringCoordinator()
@@ -426,3 +454,169 @@ class TutoringService:
             "estimated_response_minutes": 120,
             "message": "已提交人工处理，预计 2 小时内响应",
         }
+
+    async def list_escalations(
+        self,
+        user_id: int | None = None,
+        *,
+        course_id: int | None = None,
+        escalation_status: int | None = None,
+        assigned_expert_id: int | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        filters: list[Any] = []
+        if user_id is not None:
+            question_match = select(TutoringQuestion.id).where(TutoringQuestion.user_id == user_id)
+            if course_id is not None:
+                question_match = question_match.where(TutoringQuestion.course_id == course_id)
+            filters.append(EscalationRecord.question_id.in_(question_match))
+        elif course_id is not None:
+            course_match = select(TutoringQuestion.id).where(TutoringQuestion.course_id == course_id)
+            filters.append(EscalationRecord.question_id.in_(course_match))
+        if escalation_status is not None:
+            filters.append(EscalationRecord.escalation_status == escalation_status)
+        if assigned_expert_id is not None:
+            filters.append(EscalationRecord.assigned_expert_id == assigned_expert_id)
+        total_stmt = select(func.count()).select_from(EscalationRecord)
+        if filters:
+            total_stmt = total_stmt.where(and_(*filters))
+        total = int((await self.db.execute(total_stmt)).scalar_one())
+
+        stmt = select(EscalationRecord).order_by(EscalationRecord.create_time.desc())
+        if filters:
+            stmt = stmt.where(and_(*filters))
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        result = await self.db.execute(stmt)
+        items = list(result.scalars().all())
+
+        return {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": items,
+        }
+
+    async def get_escalation_detail(self, escalation_id: int, *, user_id: int | None = None) -> EscalationRecord:
+        stmt = select(EscalationRecord).where(EscalationRecord.id == escalation_id)
+        escalation = (await self.db.execute(stmt)).scalar_one_or_none()
+        if escalation is None:
+            raise ValueError("升级记录不存在")
+        if user_id is not None and escalation.user_id != user_id:
+            raise ValueError("无权查看该升级记录")
+        question = await self._get_question(escalation.question_id)
+        latest_answer = await self._get_answer_by_question(escalation.question_id)
+        setattr(escalation, "question_text", getattr(question, "question_text", None))
+        setattr(escalation, "question_images", getattr(question, "question_images", None))
+        setattr(escalation, "question_type", getattr(question, "question_type", None))
+        setattr(escalation, "knowledge_points", getattr(question, "knowledge_points", None))
+        setattr(escalation, "latest_answer_id", getattr(latest_answer, "id", None))
+        setattr(escalation, "latest_answer_text", getattr(latest_answer, "answer_text", None))
+        setattr(escalation, "latest_answer_source", getattr(latest_answer, "answer_source", None))
+        return escalation
+
+    async def assign_escalation(self, request: ExpertAssignmentRequest) -> dict[str, Any]:
+        escalation = await self.get_escalation_detail(request.escalation_id)
+        if escalation.escalation_status in [3, 4]:
+            raise ValueError("升级记录已结束，无法重新分配")
+
+        now = datetime.now()
+        escalation.assigned_expert_id = request.expert_id
+        escalation.assign_time = now
+        escalation.expert_notes = request.notes
+        escalation.escalation_status = 1
+        escalation.update_time = now
+        await self.db.commit()
+
+        return {
+            "status": "success",
+            "escalation_id": escalation.id,
+            "assigned_expert_id": escalation.assigned_expert_id,
+        }
+
+    async def submit_expert_answer(self, request: ExpertAnswerSubmitRequest) -> dict[str, Any]:
+        escalation = await self.get_escalation_detail(request.escalation_id)
+        if escalation.escalation_status == 4:
+            raise ValueError("升级记录已取消，无法提交人工解答")
+
+        question = await self._get_question(escalation.question_id)
+        if question is None:
+            raise ValueError("关联问题不存在")
+
+        now = datetime.now()
+        answer_id = self._generate_id()
+        answer = TutoringAnswer(
+            id=answer_id,
+            question_id=question.id,
+            session_id=question.session_id,
+            answer_source=1,
+            answerer_id=request.expert_id,
+            answer_text=request.answer_text.strip(),
+            answer_diagrams=request.answer_diagrams,
+            answer_videos=request.answer_videos,
+            reference_sources=request.reference_sources,
+            confidence_score=Decimal("100.00"),
+            generation_time=None,
+            create_time=now,
+            update_time=now,
+        )
+        self.db.add(answer)
+
+        question.has_answer = True
+        question.question_status = 1
+        question.is_escalated = True
+        question.update_time = now
+
+        escalation.assigned_expert_id = request.expert_id
+        escalation.escalation_status = 3
+        escalation.expert_answer_id = answer_id
+        escalation.complete_time = now
+        escalation.expert_notes = request.expert_notes
+        escalation.feedback_to_ai = bool(request.feedback_to_ai)
+        escalation.update_time = now
+        if escalation.create_time:
+            escalation.response_time = max(1, int((now - escalation.create_time).total_seconds() // 60))
+
+        await self.db.commit()
+        return {
+            "status": "success",
+            "answer_id": answer_id,
+            "escalation_id": escalation.id,
+        }
+
+    async def delete_history_item(self, user_id: int, question_id: int) -> dict[str, Any]:
+        question = await self._get_question(question_id)
+        if not question or question.user_id != user_id:
+            raise ValueError("答疑记录不存在或无权访问")
+
+        session_row = None
+        if question.session_id:
+            stmt = select(TutoringSession).where(TutoringSession.id == question.session_id)
+            session_row = (await self.db.execute(stmt)).scalar_one_or_none()
+
+        answers_stmt = select(TutoringAnswer).where(TutoringAnswer.question_id == question_id)
+        answers = list((await self.db.execute(answers_stmt)).scalars().all())
+        for answer in answers:
+            await self.db.delete(answer)
+
+        escalations_stmt = select(EscalationRecord).where(EscalationRecord.question_id == question_id)
+        escalations = list((await self.db.execute(escalations_stmt)).scalars().all())
+        for escalation in escalations:
+            await self.db.delete(escalation)
+
+        favorites_stmt = select(TutoringFavorite).where(TutoringFavorite.question_id == question_id)
+        favorites = list((await self.db.execute(favorites_stmt)).scalars().all())
+        for favorite in favorites:
+            await self.db.delete(favorite)
+
+        await self.db.delete(question)
+
+        if session_row:
+            session_row.question_count = max(0, int(session_row.question_count or 0) - 1)
+            session_row.update_time = datetime.now()
+            if session_row.question_count == 0:
+                session_row.session_status = 1
+                session_row.end_time = datetime.now()
+
+        await self.db.commit()
+        return {"status": "success"}

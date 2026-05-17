@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import base64
 import json
+import re
+import zipfile
 from datetime import datetime
+from io import BytesIO
 from typing import Any, ClassVar
 
 from fastapi import HTTPException
@@ -23,6 +26,7 @@ from app.schemas.resource import (
     ResourceListResponseV2,
     ResourceQueryParams,
 )
+from app.services.resource_file_storage_service import ResourceFileStorageService
 
 
 class ResourceManagementService:
@@ -48,6 +52,7 @@ class ResourceManagementService:
         self.resource_cache = self.__class__._resource_cache
         self.favorite_cache = self.__class__._favorite_cache
         self.repository = ResourceRepository()
+        self.file_storage = ResourceFileStorageService()
         self._db_available = True
 
     @classmethod
@@ -347,10 +352,25 @@ class ResourceManagementService:
             resource["download_count"] = int(resource.get("download_count") or 0) + 1
             self.resource_cache[resource_id] = resource
 
+        file_name = f"{resource['resource_name']}.{self._normalize_download_extension(format)}"
+        stored_format = str(resource.get("file_format") or "").lower()
+        requested_format = self._normalize_requested_format(format)
+        object_key = resource.get("object_key")
+        if object_key and requested_format == stored_format:
+            try:
+                return {
+                    "resource_id": resource_id,
+                    "download_url": self.file_storage.build_download_url(str(object_key)),
+                    "format": format,
+                    "expires_in": 604800,
+                    "file_name": file_name,
+                }
+            except Exception:
+                pass
+
         content = self._render_download_content(resource, format=format)
         mime = self._get_download_mime(format)
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
-        file_name = f"{resource['resource_name']}.{self._normalize_download_extension(format)}"
         return {
             "resource_id": resource_id,
             "download_url": f"data:{mime};base64,{encoded}",
@@ -374,26 +394,40 @@ class ResourceManagementService:
         if not resources:
             raise HTTPException(status_code=400, detail="没有可下载的资源")
 
-        bundle = []
-        for resource in resources:
-            bundle.append(
-                {
-                    "id": resource["id"],
-                    "title": resource["resource_name"],
-                    "resource_type": resource["resource_type"],
-                    "content": self._extract_primary_content(resource),
-                }
+        archive = BytesIO()
+        with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            manifest: list[dict[str, Any]] = []
+            for resource in resources:
+                ext = self._normalize_download_extension(
+                    resource.get("file_format") or self._default_file_format(int(resource["resource_type"]))
+                )
+                entry_name = (
+                    f"{int(resource['id']):04d}_"
+                    f"{self._sanitize_file_stem(resource['resource_name'])}.{ext}"
+                )
+                content = self._extract_primary_content(resource)
+                zf.writestr(entry_name, content.encode("utf-8"))
+                manifest.append(
+                    {
+                        "id": resource["id"],
+                        "title": resource["resource_name"],
+                        "resource_type": resource["resource_type"],
+                        "file_name": entry_name,
+                        "file_format": resource.get("file_format"),
+                    }
+                )
+            zf.writestr(
+                "manifest.json",
+                json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
             )
 
-        encoded = base64.b64encode(
-            json.dumps(bundle, ensure_ascii=False, indent=2).encode("utf-8")
-        ).decode("ascii")
+        encoded = base64.b64encode(archive.getvalue()).decode("ascii")
         return {
-            "download_url": f"data:application/json;base64,{encoded}",
+            "download_url": f"data:application/zip;base64,{encoded}",
             "format": format,
             "resource_count": len(resources),
             "expires_in": 3600,
-            "file_name": f"resources_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            "file_name": f"resources_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
         }
 
     async def delete_resource(
@@ -668,6 +702,7 @@ class ResourceManagementService:
             "status": int(ctx.get("status") or (3 if resource.is_archived else 2)),
             "version": int(ctx.get("version") or 1),
             "file_url": ctx.get("file_url"),
+            "object_key": ctx.get("object_key"),
             "file_size": ctx.get("file_size"),
             "file_format": ctx.get("file_format") or self._default_file_format(int(resource_type_value)),
             "generation_task_id": ctx.get("generation_task_id"),
@@ -711,6 +746,7 @@ class ResourceManagementService:
         normalized.setdefault("status", 2)
         normalized.setdefault("version", 1)
         normalized.setdefault("file_format", self._default_file_format(int(normalized.get("resource_type") or 1)))
+        normalized.setdefault("object_key", normalized.get("object_key"))
         normalized.setdefault("content", self._extract_primary_content(normalized))
         normalized.setdefault(
             "videos",
@@ -832,7 +868,30 @@ class ResourceManagementService:
             return "pdf"
         if format == "html":
             return "html"
+        if format == "markdown":
+            return "md"
+        if format == "mermaid":
+            return "mmd"
+        if format in {"json", "py", "java", "js", "cpp", "txt", "md"}:
+            return format
         return "md"
+
+    @staticmethod
+    def _normalize_requested_format(format: str) -> str:
+        normalized = (format or "").lower()
+        if normalized == "markdown":
+            return "markdown"
+        if normalized == "html":
+            return "html"
+        if normalized == "pdf":
+            return "pdf"
+        return normalized
+
+    @staticmethod
+    def _sanitize_file_stem(value: str) -> str:
+        cleaned = re.sub(r'[\\/:*?"<>|]+', "-", str(value or "").strip())
+        cleaned = re.sub(r"\s+", "_", cleaned).strip("._-")
+        return cleaned[:80] or "resource"
 
     @staticmethod
     def _default_file_format(resource_type: int) -> str:

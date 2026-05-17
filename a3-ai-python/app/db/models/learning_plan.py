@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class LearningPlan(Base, TimestampMixin):
-    __tablename__ = "ai_learning_plan"
+    __tablename__ = "learning_plan"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)

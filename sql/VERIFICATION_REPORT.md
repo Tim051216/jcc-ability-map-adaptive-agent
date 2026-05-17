@@ -253,7 +253,7 @@ path_node (1) ----< (N) learning_calendar
 
 ### 8.1 相关文件
 
-- SQL脚本: `sql/tj_learning_path.sql`
+- SQL脚本: `sql/learning_path.sql`
 - 验证脚本: `sql/validate_syntax.py`
 - 测试脚本: `sql/test_data_insertion.sql`
 - 验证报告: `sql/VERIFICATION_REPORT.md`
@@ -265,13 +265,13 @@ path_node (1) ----< (N) learning_calendar
 python sql/validate_syntax.py
 
 # 创建表结构
-mysql -u root -p < sql/tj_learning_path.sql
+mysql -u root -p < sql/learning_path.sql
 
 # 数据插入测试
 mysql -u root -p --default-character-set=utf8mb4 < sql/test_data_insertion.sql
 
 # 查看表结构
-mysql -u root -p tj_learning -e "SHOW TABLES;"
+mysql -u root -p learning -e "SHOW TABLES;"
 ```
 
 ---

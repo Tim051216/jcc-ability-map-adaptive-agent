@@ -157,3 +157,50 @@ async def test_query_history_batches_answers_and_favorites(monkeypatch: pytest.M
     assert result["items"][1].answer.answer_text == "队列答案"
     assert result["items"][1].is_favorited is True
     assert db.execute.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_persist_result_auto_creates_escalation_when_confidence_low() -> None:
+    now = datetime(2026, 5, 11, 10, 0, 0)
+    question = SimpleNamespace(
+        id=101,
+        session_id=501,
+        user_id=1001,
+        question_type=None,
+        knowledge_points=None,
+        difficulty_level=None,
+        has_answer=False,
+        question_status=0,
+        is_escalated=False,
+        update_time=now,
+    )
+    db = MagicMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    service = TutoringService(db)
+    service._generate_id = staticmethod(lambda: 99901)  # type: ignore[method-assign]
+    service._get_open_escalation = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    result = await service._persist_coordinator_result(
+        question,
+        {
+            "answer_text": "AI 答案",
+            "answer_diagrams": [],
+            "answer_videos": [],
+            "reference_sources": [],
+            "confidence_score": 55.0,
+            "generation_time_ms": 123,
+            "should_escalate": True,
+            "question_analysis": {
+                "question_type": "概念理解",
+                "knowledge_points": ["overfitting"],
+                "difficulty_level": 2,
+            },
+        },
+    )
+
+    assert result["should_escalate"] is True
+    assert question.is_escalated is True
+    assert question.question_status == 2
+    assert db.add.call_count == 2
+    assert db.commit.await_count == 1

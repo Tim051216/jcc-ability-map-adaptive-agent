@@ -8,7 +8,9 @@
 
 - `a3-learning` 为本地可独立启动的 Java 学习服务，承载学习路径、学习进度、测评、错题、A3 演示骨架接口等能力
 - `a3-ai-python` 为 Python AI 中台，承载画像、问答、RAG、学习计划、资源生成、智能辅导、后台运营摘要等能力
-- `a3-portal-web` / `a3-admin-web` 为学生端与管理端前端
+- `a3-student-react-web` 为当前唯一学生端前端，默认本地端口 `3002`
+- `a3-portal-web` 为 legacy 学生端前端，仅保留作历史代码参考
+- `a3-admin-web` 为当前唯一管理端前端
 
 ## 当前建议口径
 
@@ -26,8 +28,9 @@
 - `a3-gateway`：Java 网关，默认本地端口 `10010`
 - `a3-learning`：Java 学习服务，默认本地端口 `8090`
 - `a3-ai-python`：Python AI 服务，默认本地端口 `18080`
-- `a3-portal-web`：学生端前端，默认本地端口 `18082`
-- `a3-admin-web`：管理端前端，默认本地端口 `18081`
+- `a3-student-react-web`：学生端前端，默认本地端口 `3002`
+- `a3-portal-web`：legacy 学生端前端，不再作为默认入口
+- `a3-admin-web`：管理端前端，默认本地端口 `3004`
 - `sql/`：MySQL 初始化脚本、A3 扩展 SQL、验证脚本
 - `scripts/`：本地启动、数据库初始化、演示验证脚本
 
@@ -52,7 +55,7 @@
 2. 初始化 MySQL：`powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1`
 3. 启动 Java 学习服务：`.\mvnw.cmd -f .\a3-learning\pom.xml -DskipTests spring-boot:run "-Dspring-boot.run.profiles=local"`
 4. 启动 Java 网关：`powershell -ExecutionPolicy Bypass -File .\scripts\start-gateway-local.ps1`
-5. 启动 Python AI 服务：参考 `a3-ai-python\README.md`
+5. 启动 Python AI 服务：`powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1`
 6. 启动学生端/管理端前端
 
 完整步骤见 [LOCAL_SETUP.md](/F:/A3-cnsoftbei/a3-learning-agent-system/LOCAL_SETUP.md)。
@@ -70,8 +73,8 @@
 - Java 网关：`http://127.0.0.1:10010`
 - Java 学习服务：`http://127.0.0.1:8090`
 - Python AI 服务：`http://127.0.0.1:18080`
-- 管理端前端：`http://127.0.0.1:18081`
-- 学生端前端：`http://127.0.0.1:18082`
+- 管理端前端：`http://127.0.0.1:3004`
+- 学生端前端：`http://127.0.0.1:3002`
 
 ## 文档索引
 

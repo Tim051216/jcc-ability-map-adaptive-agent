@@ -2,10 +2,18 @@ import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.models.generation_task import GenerationTask
 from app.db.session import async_session_factory
-from app.schemas.chat import ChatRequest, ChatResponse, ChatTaskStatusResponse, ChatTaskSubmitResponse
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    ChatTaskHistoryItem,
+    ChatTaskHistoryResponse,
+    ChatTaskStatusResponse,
+    ChatTaskSubmitResponse,
+)
 from app.services.chat_service import ChatService
 
 
@@ -71,6 +79,71 @@ class ChatTaskService:
             result=result,
             error_message=error_message,
         )
+
+    async def list_tasks(
+        self,
+        *,
+        user_id: int | None = None,
+        course_id: int | None = None,
+        course_code: str | None = None,
+        limit: int = 10,
+    ) -> ChatTaskHistoryResponse:
+        items: list[ChatTaskHistoryItem] = []
+        try:
+            stmt = select(GenerationTask).where(GenerationTask.task_type == "chat").order_by(GenerationTask.id.desc())
+            if user_id is not None:
+                stmt = stmt.where(GenerationTask.user_id == user_id)
+            result = await self.db.execute(stmt.limit(limit))
+            records = result.scalars().all()
+            for task in records:
+                payload = task.payload or {}
+                if course_id is not None and int(payload.get("course_id") or 0) != int(course_id):
+                    continue
+                if course_code and payload.get("course_code") != course_code:
+                    continue
+                result_data = task.result_data or {}
+                items.append(
+                    ChatTaskHistoryItem(
+                        task_id=task.id,
+                        user_id=task.user_id,
+                        course_id=payload.get("course_id"),
+                        course_code=payload.get("course_code"),
+                        scene=payload.get("scene"),
+                        message=payload.get("message"),
+                        status=task.status,
+                        answer=result_data.get("answer"),
+                        created_at=task.created_at,
+                        updated_at=task.updated_at,
+                    )
+                )
+            return ChatTaskHistoryResponse(items=items, total=len(items))
+        except Exception:
+            filtered = []
+            for task_id, task in sorted(_memory_tasks.items(), key=lambda item: item[0], reverse=True):
+                payload = task.get("payload") or {}
+                if user_id is not None and payload.get("user_id") != user_id:
+                    continue
+                if course_id is not None and int(payload.get("course_id") or 0) != int(course_id):
+                    continue
+                if course_code and payload.get("course_code") != course_code:
+                    continue
+                filtered.append(
+                    ChatTaskHistoryItem(
+                        task_id=task_id,
+                        user_id=payload.get("user_id"),
+                        course_id=payload.get("course_id"),
+                        course_code=payload.get("course_code"),
+                        scene=payload.get("scene"),
+                        message=payload.get("message"),
+                        status=task.get("status", "pending"),
+                        answer=(task.get("result_data") or {}).get("answer"),
+                        created_at=task.get("updated_at"),
+                        updated_at=task.get("updated_at"),
+                    )
+                )
+                if len(filtered) >= limit:
+                    break
+            return ChatTaskHistoryResponse(items=filtered, total=len(filtered))
 
     async def _submit_db_task(self, request: ChatRequest) -> ChatTaskSubmitResponse:
         now = _now_iso()

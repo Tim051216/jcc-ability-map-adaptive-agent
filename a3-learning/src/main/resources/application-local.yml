@@ -17,6 +17,14 @@ spring:
         enabled: false
       discovery:
         enabled: false
+    discovery:
+      client:
+        simple:
+          instances:
+            user-service:
+              - uri: http://127.0.0.1:8082
+            course-service:
+              - uri: http://127.0.0.1:8086
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:13306/tj_learning?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
@@ -42,3 +50,12 @@ spring:
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
+
+mybatis-plus:
+  configuration:
+    default-enum-type-handler: com.baomidou.mybatisplus.core.handlers.MybatisEnumTypeHandler
+  global-config:
+    field-strategy: 0
+    db-config:
+      logic-delete-field: deleted
+      id-type: assign_id

@@ -3,14 +3,18 @@
 负责理解、分类和扩展学生提出的问题
 """
 import asyncio
+import base64
 import json
 import re
 from typing import Any
+
+import httpx
 
 from app.core.logging import logger
 from app.integrations.llm.client import get_llm_client
 from app.schemas.rag import RagSearchRequest
 from app.services.rag_service import RagService
+from app.services.tutoring_ocr_service import extract_text_from_base64_image
 
 
 class QuestionAnalyzerAgent:
@@ -47,26 +51,36 @@ class QuestionAnalyzerAgent:
         logger.info(f"开始分析问题，文字长度: {len(question_text)}, 图片数量: {len(question_images or [])}")
 
         # 1. 问题理解
-        understanding = await self._understand_question(question_text, question_images)
+        image_context = await self._extract_image_context(question_images)
+        effective_question_text = self._build_effective_question_text(question_text, image_context)
+        understanding = await self._understand_question(
+            effective_question_text,
+            question_images,
+            image_context,
+        )
 
         # 2. 问题分类
-        classification = await self._classify_question(question_text, understanding)
+        classification = await self._classify_question(effective_question_text, understanding)
 
         # 3. 问题扩展
-        expansion = await self._expand_question(question_text, classification, course_id)
+        expansion = await self._expand_question(effective_question_text, classification, course_id)
 
         # 合并结果
         result = {
             **understanding,
             **classification,
             **expansion,
+            "image_context": image_context,
         }
 
         logger.info(f"问题分析完成: 类型={result.get('question_type')}, 难度={result.get('difficulty_level')}")
         return result
 
     async def _understand_question(
-        self, question_text: str, question_images: list[str] | None = None
+        self,
+        question_text: str,
+        question_images: list[str] | None = None,
+        image_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         理解问题内容
@@ -96,6 +110,12 @@ class QuestionAnalyzerAgent:
         # 如果有图片，添加图片分析提示
         if question_images:
             prompt += f"\n\n注意：问题包含 {len(question_images)} 张图片，可能包含公式、代码、图表等内容。"
+        if image_context and image_context.get("combined_text"):
+            prompt += (
+                "\n\n图片 OCR 提取内容：\n"
+                f"{image_context.get('combined_text')[:1200]}\n"
+                f"图片特征：{', '.join(image_context.get('visual_hints', [])) or 'none'}"
+            )
 
         try:
             response = await asyncio.wait_for(
@@ -131,6 +151,79 @@ class QuestionAnalyzerAgent:
         except Exception as e:
             logger.error(f"问题理解失败: {e}")
             return self._heuristic_understanding(question_text, question_images)
+
+    async def _extract_image_context(self, question_images: list[str] | None = None) -> dict[str, Any]:
+        result = {
+            "image_count": len(question_images or []),
+            "combined_text": "",
+            "ocr_texts": [],
+            "visual_hints": [],
+        }
+        if not question_images:
+            return result
+
+        combined_parts: list[str] = []
+        hint_set: set[str] = set()
+        for index, url in enumerate(question_images[:3], start=1):
+            try:
+                text, hints = await self._extract_text_from_image_source(url)
+            except Exception as exc:
+                logger.warning("tutoring.image_context.failed", url=url, error=str(exc))
+                text, hints = "", ["unreadable"]
+
+            cleaned = re.sub(r"\s+", " ", text or "").strip()
+            if cleaned:
+                combined_parts.append(f"图{index}: {cleaned[:400]}")
+            hint_set.update(hints)
+            result["ocr_texts"].append(
+                {
+                    "url": url,
+                    "text": cleaned[:500],
+                    "visual_hints": hints,
+                }
+            )
+
+        result["combined_text"] = "\n".join(combined_parts)
+        result["visual_hints"] = sorted(hint_set)
+        return result
+
+    async def _extract_text_from_image_source(self, image_source: str) -> tuple[str, list[str]]:
+        if not image_source:
+            return "", []
+
+        if image_source.startswith("data:"):
+            text, _, _ = extract_text_from_base64_image(image_source)
+            return text, self._infer_visual_hints(text)
+
+        timeout = httpx.Timeout(6.0, connect=3.0)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(image_source)
+            response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "image/png").split(";", 1)[0].strip() or "image/png"
+        image_base64 = base64.b64encode(response.content).decode("ascii")
+        text, _, _ = extract_text_from_base64_image(f"data:{content_type};base64,{image_base64}")
+        return text, self._infer_visual_hints(text)
+
+    @staticmethod
+    def _build_effective_question_text(question_text: str, image_context: dict[str, Any]) -> str:
+        combined_text = str(image_context.get("combined_text") or "").strip()
+        if not combined_text:
+            return question_text
+        return f"{question_text}\n\n[图片 OCR 内容]\n{combined_text}"
+
+    @staticmethod
+    def _infer_visual_hints(text: str) -> list[str]:
+        hints: list[str] = []
+        if any(token in text for token in ("def ", "class ", "{", "}", "Exception", "import ")):
+            hints.append("code")
+        if any(token in text for token in ("=", "+", "-", "*", "/", "sin", "cos", "log", "y=")):
+            hints.append("formula")
+        if any(token in text for token in ("流程", "步骤", "开始", "结束", "判断")):
+            hints.append("diagram")
+        if any(token in text for token in ("表", "列", "行", "accuracy", "loss")):
+            hints.append("table_or_chart")
+        return hints
 
     async def _classify_question(
         self, question_text: str, understanding: dict[str, Any]

@@ -7,6 +7,7 @@ from app.schemas.evaluation import (
     EvaluationHistoryResponse,
     EvaluationTrendResponse,
 )
+from app.services.course_context_service import CourseContextService
 
 
 class EvaluationHistoryService:
@@ -14,19 +15,20 @@ class EvaluationHistoryService:
         self,
         *,
         user_id: int,
-        course_code: str,
+        course_id: int | None = None,
+        course_code: str | None = None,
         evaluation_type: str | None = None,
         limit: int = 10,
     ) -> EvaluationHistoryResponse:
+        course_context = await CourseContextService().resolve(course_id=course_id, course_code=course_code)
         async with async_session_factory() as session:
             records = await EvaluationRepository().list_by_user_course(
                 session,
                 user_id=user_id,
-                course_code=course_code,
+                course_code=course_context.course_code,
                 evaluation_type=evaluation_type,
                 limit=limit,
             )
-
         items = [self._to_history_item(record) for record in records]
         return EvaluationHistoryResponse(items=items, total=len(items))
 
@@ -34,21 +36,23 @@ class EvaluationHistoryService:
         self,
         *,
         user_id: int,
-        course_code: str,
+        course_id: int | None = None,
+        course_code: str | None = None,
         evaluation_type: str | None = None,
         limit: int = 10,
     ) -> EvaluationTrendResponse:
+        course_context = await CourseContextService().resolve(course_id=course_id, course_code=course_code)
         async with async_session_factory() as session:
             records = await EvaluationRepository().list_by_user_course(
                 session,
                 user_id=user_id,
-                course_code=course_code,
+                course_code=course_context.course_code,
                 evaluation_type=evaluation_type,
                 limit=limit,
             )
 
         if not records:
-            return EvaluationTrendResponse(user_id=user_id, course_code=course_code, total=0)
+            return EvaluationTrendResponse(user_id=user_id, course_code=course_context.course_code, total=0)
 
         chronological_scores = [
             float((record.result_data or {}).get("overall_score", 0.0))
@@ -69,7 +73,7 @@ class EvaluationHistoryService:
 
         return EvaluationTrendResponse(
             user_id=user_id,
-            course_code=course_code,
+            course_code=course_context.course_code,
             total=len(records),
             latest_score=round(float(latest_payload.get("overall_score", 0.0)), 2),
             average_score=average_score,

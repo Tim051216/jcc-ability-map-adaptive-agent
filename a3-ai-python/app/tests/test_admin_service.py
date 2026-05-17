@@ -288,11 +288,60 @@ async def test_list_agent_status_returns_empty_when_no_runtime_logs(monkeypatch)
             return [], 0
 
     monkeypatch.setattr("app.services.admin_service.AgentRuntimeRepository", lambda: FakeAgentRuntimeRepository())
+    monkeypatch.setattr("app.services.admin_service.AgentRegistryService.discover", lambda: [])
 
     response = await AdminService().list_agent_status()
 
     assert response.total == 0
     assert response.items == []
+
+
+@pytest.mark.asyncio
+async def test_list_agent_status_merges_registry_with_runtime_logs(monkeypatch) -> None:
+    session = SimpleNamespace()
+    _patch_session_factory(monkeypatch, session)
+
+    class FakeAgentRuntimeRepository:
+        async def list_logs(self, session_obj, **kwargs):
+            assert session_obj is session
+            return [
+                SimpleNamespace(
+                    agent_name="planner_agent",
+                    status="ok",
+                    message="ready",
+                    level="info",
+                    updated_at="2026-05-10T10:00:00+00:00",
+                )
+            ], 1
+
+    monkeypatch.setattr("app.services.admin_service.AgentRuntimeRepository", lambda: FakeAgentRuntimeRepository())
+    monkeypatch.setattr(
+        "app.services.admin_service.AgentRegistryService.discover",
+        lambda: [
+            {
+                "agent_name": "planner_agent",
+                "display_name": "Planner Agent",
+                "category": "general",
+                "source_path": "agents/nodes/planner_agent.py",
+            },
+            {
+                "agent_name": "profile_builder_agent",
+                "display_name": "Profile Builder Agent",
+                "category": "profile_conversation",
+                "source_path": "agents/nodes/profile_conversation/profile_builder_agent.py",
+            },
+        ],
+    )
+
+    response = await AdminService().list_agent_status()
+
+    assert response.total == 2
+    assert response.items[0].agent_name == "planner_agent"
+    assert response.items[0].status_source == "runtime"
+    assert response.items[0].source_path == "agents/nodes/planner_agent.py"
+    assert response.items[1].agent_name == "profile_builder_agent"
+    assert response.items[1].latest_status == "unreported"
+    assert response.items[1].status_source == "registry"
 
 
 @pytest.mark.asyncio

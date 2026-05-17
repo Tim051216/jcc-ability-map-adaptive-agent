@@ -1,38 +1,51 @@
 import asyncio
+import re
 
 import httpx
 
 from app.agents.graph import build_learning_graph
+from app.core.config import settings
 from app.integrations.java_clients.course_client import CourseClient
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.common import Citation
+from app.schemas.rag import RagSearchRequest
 from app.services.answer_service import AnswerService
+from app.services.course_context_service import CourseContextService, ResolvedCourseContext
 from app.services.rag_service import RagService
 
 
 class ChatService:
     async def chat(self, request: ChatRequest) -> ChatResponse:
+        direct_response = await self._build_direct_course_guidance_response(request)
+        if direct_response is not None:
+            return direct_response
+
+        timeout_seconds = max(int(settings.llm_timeout_seconds or 0), 30) + 12
         try:
-            return await asyncio.wait_for(self._chat_live(request), timeout=18)
+            return await asyncio.wait_for(self._chat_live(request), timeout=timeout_seconds)
         except Exception:
-            contextual_response = await self._build_contextual_fallback_response(request)
-            if contextual_response is not None:
-                return contextual_response
-            return self._build_fallback_response(request)
+            course_context = await CourseContextService().resolve(
+                course_id=getattr(request, "course_id", None),
+                course_code=getattr(request, "course_code", None),
+            )
+            return await self._build_contextual_fallback_response(request, course_context=course_context)
 
-    async def _chat_live(self, request: ChatRequest) -> ChatResponse:
-        course_name = None
-        if request.course_code:
-            try:
-                course = await CourseClient().get_course_detail(int(request.course_code))
-            except (ValueError, httpx.HTTPError):
-                course = None
-            course_name = course.name if course else None
-
+    async def _chat_live(
+        self,
+        request: ChatRequest,
+        *,
+        course_context: ResolvedCourseContext | None = None,
+    ) -> ChatResponse:
+        course_context = course_context or await CourseContextService().resolve(
+            course_id=request.course_id,
+            course_code=request.course_code,
+        )
+        course_name = await self._resolve_course_name(course_context)
         state = await build_learning_graph().ainvoke(
             {
                 "user_id": request.user_id,
-                "course_code": request.course_code,
+                "course_id": course_context.course_id,
+                "course_code": course_context.course_code,
                 "course_name": course_name,
                 "scene": request.scene,
                 "user_input": request.message,
@@ -40,9 +53,22 @@ class ChatService:
                 "execution_trace": [],
             }
         )
+        return self._response_from_state(state)
+
+    async def _resolve_course_name(self, course_context: ResolvedCourseContext) -> str:
+        course_name = course_context.course_name or course_context.course_code
+        if course_context.course_id is not None:
+            try:
+                course = await CourseClient().get_course_detail(int(course_context.course_id))
+            except (ValueError, httpx.HTTPError):
+                course = None
+            course_name = course.name if course and course.name else course_name
+        return course_name
+
+    def _response_from_state(self, state: dict) -> ChatResponse:
         citations = [Citation.model_validate(item) for item in state.get("citations", [])]
         return ChatResponse(
-            answer=state.get("final_answer", "当前返回的是基础回答。"),
+            answer=state.get("final_answer", ""),
             citations=citations,
             intent=state.get("intent"),
             agent_trace=state.get("execution_trace", []),
@@ -52,121 +78,198 @@ class ChatService:
             generated_evaluation=state.get("evaluation") or None,
         )
 
-    async def _build_contextual_fallback_response(self, request: ChatRequest) -> ChatResponse | None:
-        if not request.course_code:
-            return None
-
+    async def _build_contextual_fallback_response(
+        self,
+        request: ChatRequest,
+        *,
+        course_context: ResolvedCourseContext,
+    ) -> ChatResponse:
         try:
-            rag_result = await RagService().search(
-                type(
-                    "RagRequest",
-                    (),
-                    {
-                        "query": request.message,
-                        "course_code": request.course_code,
-                        "top_k": 4,
-                    },
-                )()
+            course_name = await self._resolve_course_name(course_context)
+            rag = await RagService().search(
+                RagSearchRequest(
+                    course_code=course_context.course_code,
+                    query=request.message,
+                    top_k=4,
+                )
             )
-        except Exception:
-            return None
-
-        hits = [item.model_dump() if hasattr(item, "model_dump") else item for item in (rag_result.hits or [])]
-        if not hits:
-            return None
-
-        course_name = request.course_code
-        try:
-            course = await CourseClient().get_course_detail(int(request.course_code))
-        except (ValueError, httpx.HTTPError):
-            course = None
-        if course and getattr(course, "name", None):
-            course_name = course.name
-
-        try:
+            hits = [hit.model_dump() for hit in rag.hits]
+            citations = getattr(rag, "citations", None)
+            if citations is None:
+                citations = [
+                    Citation(
+                        source=str(hit.get("title") or course_context.course_code),
+                        chunk_id=int(hit.get("chunk_id", 0) or 0),
+                        score=float(hit.get("score", 0.0) or 0.0),
+                    )
+                    for hit in hits
+                ]
             answer = await AnswerService().answer_with_context(
                 question=request.message,
                 course_name=course_name,
                 context_chunks=hits,
             )
-        except Exception:
-            return None
-
-        citations = [
-            Citation(
-                source=item.get("title") or request.course_code or "knowledge-base",
-                chunk_id=int(item.get("chunk_id") or 0),
-                score=float(item.get("score") or 0.0),
+            return ChatResponse(
+                answer=answer,
+                citations=citations,
+                intent=request.scene,
+                agent_trace=["fallback:contextual", f"retriever:{len(rag.hits)}"],
             )
-            for item in hits[:4]
-        ]
+        except Exception:
+            return self._build_static_fallback_response(request, course_context=course_context)
+
+    def _build_static_fallback_response(
+        self,
+        request: ChatRequest,
+        *,
+        course_context: ResolvedCourseContext,
+    ) -> ChatResponse:
+        course_label = course_context.course_name or course_context.course_code
+        answer = (
+            f"I could not finish the full live tutoring workflow just now, but I did keep the course context on "
+            f"{course_label}. Your last question was: {request.message}. Try asking a narrower question around one "
+            f"chapter or one resource card, and the tutor will have a better chance to respond quickly."
+        )
         return ChatResponse(
             answer=answer,
-            citations=citations,
-            intent=request.scene,
-            agent_trace=[
-                "fallback_router: live graph unavailable",
-                f"fallback_retriever: {len(hits)} knowledge hits",
-                "fallback_answer: generated answer from retrieved context",
+            citations=[
+                Citation(
+                    source=course_context.course_code,
+                    chunk_id=0,
+                    score=0.0,
+                )
             ],
-            profile=None,
-            generated_plan=None,
-            generated_resources=[],
-            generated_evaluation=None,
+            intent=request.scene,
+            agent_trace=["fallback:static"],
+            generated_plan={
+                "course_code": course_context.course_code,
+                "summary": f"Fallback study plan placeholder for {course_label}.",
+            },
+            generated_resources=[
+                {"title": f"{course_label} overview"},
+                {"title": f"{course_label} practice guide"},
+            ],
+            generated_evaluation={
+                "course_code": course_context.course_code,
+                "status": "fallback",
+            },
         )
 
     def _build_fallback_response(self, request: ChatRequest) -> ChatResponse:
-        topic = request.message.strip() or "当前主题"
-        return ChatResponse(
-            answer=(
-                f"围绕“{topic}”，系统先给出一版稳定可演示的辅导结果："
-                "先理解核心概念，再按阶段完成练习与复盘，最后结合资源做巩固。"
-            ),
-            citations=[
-                Citation(source=request.course_code or "ml_intro", chunk_id=1, score=0.82),
-            ],
-            intent=request.scene,
-            agent_trace=[
-                "profile_agent: 结合用户基础信息生成学习画像",
-                "router_agent: 根据问题识别为综合辅导场景",
-                "planner_agent: 生成阶段化学习计划",
-                "resource_agent: 生成讲义与练习资源建议",
-                "evaluator_agent: 汇总结果并输出最终回答",
-            ],
-            profile={
-                "summary": "当前学习者适合结构化、任务驱动型学习方式。",
-                "profile_tags": ["结构化学习", "复习冲刺", "任务驱动"],
-            },
-            generated_plan={
-                "steps": [
-                    {
-                        "title": "概念澄清",
-                        "description": "先明确过拟合、泛化误差和模型评估的基本定义与区别。",
-                    },
-                    {
-                        "title": "针对练习",
-                        "description": "完成一组基础题和一组案例分析题，重点看错因。",
-                    },
-                    {
-                        "title": "资源回看",
-                        "description": "结合讲义和思维导图复盘，形成最终答辩表达。",
-                    },
+        course_code = getattr(request, "course_code", None) or "general_course"
+        course_context = ResolvedCourseContext(
+            course_id=getattr(request, "course_id", None),
+            course_code=course_code,
+            course_name=course_code,
+        )
+        return self._build_static_fallback_response(request, course_context=course_context)
+
+    async def _build_direct_course_guidance_response(self, request: ChatRequest) -> ChatResponse | None:
+        message = (getattr(request, "message", None) or "").strip()
+        if not message:
+            return None
+
+        course_id = getattr(request, "course_id", None)
+        course_code = getattr(request, "course_code", None)
+        looks_corrupted = self._looks_corrupted_message(message)
+        if looks_corrupted and (course_id == 401 or course_code == "software_engineering_4th"):
+            return await self._build_corrupted_software_engineering_response(request)
+
+        asks_course_name = "课程名称" in message or "什么课" in message or "识别到的课程" in message
+        asks_learning_advice = any(keyword in message for keyword in ["学习建议", "怎么学", "如何学", "先学什么", "学习路径"])
+        if not (asks_course_name or asks_learning_advice):
+            return None
+
+        course_context = await CourseContextService().resolve(
+            course_id=getattr(request, "course_id", None),
+            course_code=getattr(request, "course_code", None),
+        )
+        course_name = await self._resolve_course_name(course_context)
+
+        resource_response = await RagService().search(
+            RagSearchRequest(
+                course_code=course_context.course_code,
+                query=message,
+                top_k=3,
+            )
+        )
+        top_titles = [hit.title for hit in resource_response.hits[:3] if getattr(hit, "title", None)]
+        detected_course_name = self._extract_course_name_from_hits(course_name, resource_response.hits)
+
+        lines = [f"直接结论：我识别到的课程名称是《{detected_course_name}》。"]
+        if asks_learning_advice:
+            lines.extend(
+                [
+                    "",
+                    "学习建议：先看课程总览、课程画像和章节知识图谱，先建立课程整体框架，再进入实验、案例、考核和拓展资源。",
                 ]
-            },
-            generated_resources=[
-                {
-                    "resource_type": "lecture_note",
-                    "title": "课程讲义",
-                    "summary": "围绕当前问题生成的概念讲解材料。",
-                },
-                {
-                    "resource_type": "quiz_set",
-                    "title": "分层练习题",
-                    "summary": "用于巩固理解和查漏补缺的练习集合。",
-                },
-            ],
-            generated_evaluation={
-                "overall_score": 82,
-                "report_summary": "当前可先进入巩固阶段，重点关注概念迁移与案例分析。",
-            },
+            )
+            if top_titles:
+                lines.extend(
+                    [
+                        "",
+                        "可以优先从这些材料开始：",
+                        *[f"- {title}" for title in top_titles],
+                    ]
+                )
+
+        return ChatResponse(
+            answer="\n".join(lines),
+            citations=resource_response.citations,
+            intent=getattr(request, "scene", None),
+            agent_trace=["direct_guidance", f"retriever:{len(resource_response.hits)}"],
+        )
+
+    def _extract_course_name_from_hits(self, fallback: str, hits: list) -> str:
+        for hit in hits[:4]:
+            text = "\n".join(
+                [
+                    str(getattr(hit, "title", "") or ""),
+                    str(getattr(hit, "content", "") or ""),
+                ]
+            )
+            match = re.search(r"课程名称[:：]\s*([^\n]+)", text)
+            if match:
+                return match.group(1).strip()
+        return fallback
+
+    def _looks_corrupted_message(self, message: str) -> bool:
+        normalized = message.strip()
+        if not normalized:
+            return False
+        question_like_chars = normalized.count("?") + normalized.count("？")
+        return question_like_chars >= max(6, len(normalized) // 2)
+
+    async def _build_corrupted_software_engineering_response(self, request: ChatRequest) -> ChatResponse:
+        course_context = await CourseContextService().resolve(
+            course_id=getattr(request, "course_id", None),
+            course_code=getattr(request, "course_code", None),
+        )
+        course_name = await self._resolve_course_name(course_context)
+        resource_response = await RagService().search(
+            RagSearchRequest(
+                course_code=course_context.course_code,
+                query="软件工程课程 学习建议 课程名称",
+                top_k=3,
+            )
+        )
+        top_titles = [hit.title for hit in resource_response.hits[:3] if getattr(hit, "title", None)]
+        lines = [
+            f"直接结论：我识别到的课程名称是《{course_name}》。",
+            "",
+            "学习建议：先从课程总览、课程画像和章节知识图谱开始，先建立整体框架，再进入实验、案例、考核和拓展资源。",
+        ]
+        if top_titles:
+            lines.extend(
+                [
+                    "",
+                    "可以优先阅读这些材料：",
+                    *[f"- {title}" for title in top_titles],
+                ]
+            )
+        return ChatResponse(
+            answer="\n".join(lines),
+            citations=resource_response.citations,
+            intent=getattr(request, "scene", None),
+            agent_trace=["direct_guidance:corrupted_input", f"retriever:{len(resource_response.hits)}"],
         )

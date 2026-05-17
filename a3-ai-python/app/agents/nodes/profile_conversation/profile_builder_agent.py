@@ -322,12 +322,9 @@ async def profile_builder_node(state: LearningAgentState) -> LearningAgentState:
         return state
 
     if ChatOpenAI is None:
-        profile_data = _fallback_build_profile(extracted_items)
-        state["built_profile"] = profile_data
-        trace = state.get("execution_trace", [])
-        trace.append(f"profile_builder: fallback built profile with {len(profile_data.get('tags', []))} tags")
-        state["execution_trace"] = trace
-        return state
+        raise RuntimeError(
+            "langchain_openai is required for conversational-profile building"
+        )
 
     llm = ChatOpenAI(
         model=settings.llm_model,
@@ -358,12 +355,10 @@ async def profile_builder_node(state: LearningAgentState) -> LearningAgentState:
         trace.append(f"profile_builder: built profile with {len(profile_data.get('tags', []))} tags")
         state["execution_trace"] = trace
     except Exception as exc:
-        fallback_data = _fallback_build_profile(extracted_items)
-        fallback_data["error"] = str(exc)
-        state["built_profile"] = fallback_data
         trace = state.get("execution_trace", [])
-        trace.append(f"profile_builder: llm failed, fallback used - {exc}")
+        trace.append(f"profile_builder: llm failed - {exc}")
         state["execution_trace"] = trace
+        raise RuntimeError("LLM profile building failed") from exc
 
     return state
 

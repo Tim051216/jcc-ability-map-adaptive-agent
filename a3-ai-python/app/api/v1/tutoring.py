@@ -12,19 +12,27 @@ from app.db.session import async_session_factory
 from app.schemas.tutoring import (
     AnswerEvaluationRequest,
     EscalationRecordCreate,
+    EscalationListResponse,
+    EscalationDetailResponse,
     EscalationRecordResponse,
+    ExpertAnswerSubmitRequest,
+    ExpertAssignmentRequest,
     OcrPreviewRequest,
     OcrPreviewResponse,
     TutoringImageUploadResponse,
     TutoringAnswerResponse,
     TutoringHistoryQuery,
     TutoringHistoryResponse,
+    TutoringTaskHistoryResponse,
+    TutoringTaskStatusResponse,
+    TutoringTaskSubmitResponse,
     TutoringQuestionCreate,
     TutoringQuestionResponse,
 )
 from app.services.tutoring_image_storage import upload_tutoring_question_image
 from app.services.tutoring_ocr_service import extract_text_from_base64_image
 from app.services.tutoring_service import TutoringService
+from app.services.tutoring_task_service import TutoringTaskService
 
 router = APIRouter()
 
@@ -99,6 +107,46 @@ async def submit_question(
         raise HTTPException(status_code=500, detail=f"问题提交失败: {str(e)}")
 
 
+@router.post("/tasks", response_model=TutoringTaskSubmitResponse)
+async def submit_tutoring_task(
+    request: TutoringQuestionCreate,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> TutoringTaskSubmitResponse:
+    service = TutoringTaskService(db)
+    try:
+        return await service.submit_task(user_id, request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"异步答疑任务提交失败: {str(e)}")
+
+
+@router.get("/tasks/{task_id}", response_model=TutoringTaskStatusResponse)
+async def get_tutoring_task_status(
+    task_id: int,
+    db: AsyncSession = Depends(get_db_session),
+) -> TutoringTaskStatusResponse:
+    service = TutoringTaskService(db)
+    result = await service.get_task_status(task_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="tutoring task not found")
+    return result
+
+
+@router.get("/tasks", response_model=TutoringTaskHistoryResponse)
+async def list_tutoring_tasks(
+    course_id: int | None = Query(None, description="课程ID"),
+    limit: int = Query(10, ge=1, le=50, description="返回数量"),
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> TutoringTaskHistoryResponse:
+    service = TutoringTaskService(db)
+    return await service.list_tasks(user_id=user_id, course_id=course_id, limit=limit)
+
+
 @router.get("/answer/{question_id}", response_model=dict)
 async def get_answer(
     question_id: int,
@@ -126,8 +174,12 @@ async def get_answer(
                 answer.update_time = datetime.now()
                 await db.commit()
                 conf = float(answer.confidence_score or 0)
+                resolved_question_id = getattr(question, "id", question_id)
+                resolved_session_id = getattr(question, "session_id", None)
                 return {
                     "status": "completed",
+                    "question_id": resolved_question_id,
+                    "session_id": resolved_session_id,
                     "answer_id": answer.id,
                     "answer_text": answer.answer_text,
                     "diagrams": answer.answer_diagrams,
@@ -136,6 +188,8 @@ async def get_answer(
                     "confidence_score": conf,
                     "generation_time": answer.generation_time,
                     "should_escalate": conf < 60.0,
+                    "question_type": getattr(question, "question_type", None),
+                    "knowledge_points": getattr(question, "knowledge_points", None) or [],
                 }
 
         # 如果没有解答，生成新解答
@@ -245,6 +299,132 @@ async def escalate_question(
         raise HTTPException(status_code=500, detail=f"升级失败: {str(e)}")
 
 
+@router.get("/escalations", response_model=EscalationListResponse)
+async def list_escalations(
+    course_id: int | None = Query(None, description="课程ID"),
+    escalation_status: int | None = Query(None, description="升级状态"),
+    assigned_expert_id: int | None = Query(None, description="专家ID"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> EscalationListResponse:
+    """查询当前用户的人工升级记录。"""
+    service = TutoringService(db)
+    try:
+        result = await service.list_escalations(
+            user_id,
+            course_id=course_id,
+            escalation_status=escalation_status,
+            assigned_expert_id=assigned_expert_id,
+            page=page,
+            page_size=page_size,
+        )
+        return EscalationListResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"升级记录查询失败: {str(e)}")
+
+
+@router.get("/escalations/{escalation_id}", response_model=EscalationDetailResponse)
+async def get_escalation_detail(
+    escalation_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> EscalationDetailResponse:
+    """查询单条升级记录详情。"""
+    service = TutoringService(db)
+    try:
+        result = await service.get_escalation_detail(escalation_id, user_id=user_id)
+        return EscalationDetailResponse.model_validate(result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"升级详情查询失败: {str(e)}")
+
+
+@router.post("/escalations/assign", response_model=dict)
+async def assign_escalation(
+    request: ExpertAssignmentRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """为升级记录分配处理专家。"""
+    service = TutoringService(db)
+    try:
+        return await service.assign_escalation(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"专家分配失败: {str(e)}")
+
+
+@router.post("/escalations/answer", response_model=dict)
+async def submit_expert_answer(
+    request: ExpertAnswerSubmitRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """提交人工专家解答并关闭升级记录。"""
+    service = TutoringService(db)
+    try:
+        return await service.submit_expert_answer(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"人工解答提交失败: {str(e)}")
+
+
+@router.get("/admin/escalations", response_model=EscalationListResponse)
+async def admin_list_escalations(
+    course_id: int | None = Query(None, description="课程ID"),
+    escalation_status: int | None = Query(None, description="升级状态"),
+    assigned_expert_id: int | None = Query(None, description="专家ID"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    db: AsyncSession = Depends(get_db_session),
+) -> EscalationListResponse:
+    """管理员查询全量升级记录。"""
+    service = TutoringService(db)
+    try:
+        result = await service.list_escalations(
+            None,
+            course_id=course_id,
+            escalation_status=escalation_status,
+            assigned_expert_id=assigned_expert_id,
+            page=page,
+            page_size=page_size,
+        )
+        return EscalationListResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"管理员升级记录查询失败: {str(e)}")
+
+
+@router.get("/admin/escalations/{escalation_id}", response_model=EscalationDetailResponse)
+async def admin_get_escalation_detail(
+    escalation_id: int,
+    db: AsyncSession = Depends(get_db_session),
+) -> EscalationDetailResponse:
+    """管理员查询单条升级记录详情。"""
+    service = TutoringService(db)
+    try:
+        result = await service.get_escalation_detail(escalation_id)
+        return EscalationDetailResponse.model_validate(result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"管理员升级详情查询失败: {str(e)}")
+
+
 @router.post("/favorite", response_model=dict)
 async def add_favorite(
     question_id: int,
@@ -328,12 +508,16 @@ async def stream_tutoring_answer(websocket: WebSocket, question_id: int) -> None
                     answer.update_time = datetime.now()
                     await db.commit()
                     conf = float(answer.confidence_score or 0)
+                    resolved_question_id = getattr(question, "id", question_id)
+                    resolved_session_id = getattr(question, "session_id", None)
                     await websocket.send_text(
                         json.dumps(
                             {
                                 "chunk_type": "complete",
                                 "content": {
                                     "status": "completed",
+                                    "question_id": resolved_question_id,
+                                    "session_id": resolved_session_id,
                                     "answer_id": answer.id,
                                     "answer_text": answer.answer_text,
                                     "diagrams": answer.answer_diagrams or [],
@@ -342,6 +526,8 @@ async def stream_tutoring_answer(websocket: WebSocket, question_id: int) -> None
                                     "confidence_score": conf,
                                     "generation_time": answer.generation_time,
                                     "should_escalate": conf < 60.0,
+                                    "question_type": getattr(question, "question_type", None),
+                                    "knowledge_points": getattr(question, "knowledge_points", None) or [],
                                 },
                             },
                             ensure_ascii=False,
@@ -403,3 +589,21 @@ async def remove_favorite(
     await db.commit()
 
     return {"status": "success"}
+
+
+@router.delete("/question/{question_id}", response_model=dict)
+async def delete_history_item(
+    question_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """删除当前用户的一条答疑历史记录。"""
+    service = TutoringService(db)
+    try:
+        return await service.delete_history_item(user_id, question_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除答疑记录失败: {str(e)}")

@@ -107,51 +107,47 @@ async def test_complete_conversation_creates_history_for_first_profile(monkeypat
         )
     ]
 
-    async def fake_info_extractor_node(state):
-        return {
-            **state,
-            "extracted_info": {
-                "completeness": 86,
-                "missing_dimensions": [],
-                "extracted_info": [],
-            },
-        }
+    class _FakeGraph:
+        async def ainvoke(self, state):
+            assert state["session_status"] == "completed"
+            return {
+                **state,
+                "extracted_info": {
+                    "completeness": 86,
+                    "missing_dimensions": [],
+                    "extracted_info": [],
+                },
+                "built_profile": {
+                    "knowledge_base": {
+                        "level": "中级",
+                        "background": "有一定 Python 基础",
+                        "mastered_topics": ["Python基础"],
+                    },
+                    "cognitive_style": {
+                        "preferred_format": ["文字", "实操"],
+                        "learning_preference": "先讲解后练习",
+                    },
+                    "learning_progress": {
+                        "learning_pace": "中等",
+                        "completion_rate": 50,
+                    },
+                    "error_preference": {
+                        "high_frequency_errors": ["调试卡住"],
+                    },
+                    "interest_direction": {
+                        "interested_topics": ["数据分析"],
+                        "learning_motivation": "想先打牢基础",
+                    },
+                    "learning_habit": {
+                        "best_study_time": "晚上",
+                        "weekly_hours": "4-6小时",
+                    },
+                    "tags": ["中级学习者", "Python基础"],
+                    "summary": "测试画像摘要",
+                },
+            }
 
-    async def fake_profile_builder_node(state):
-        return {
-            **state,
-            "built_profile": {
-                "knowledge_base": {
-                    "level": "中级",
-                    "background": "有一定 Python 基础",
-                    "mastered_topics": ["Python基础"],
-                },
-                "cognitive_style": {
-                    "preferred_format": ["文字", "实操"],
-                    "learning_preference": "先讲解后练习",
-                },
-                "learning_progress": {
-                    "learning_pace": "中等",
-                    "completion_rate": 50,
-                },
-                "error_preference": {
-                    "high_frequency_errors": ["调试卡住"],
-                },
-                "interest_direction": {
-                    "interested_topics": ["数据分析"],
-                    "learning_motivation": "想先打牢基础",
-                },
-                "learning_habit": {
-                    "best_study_time": "晚上",
-                    "weekly_hours": "4-6小时",
-                },
-                "tags": ["中级学习者", "Python基础"],
-                "summary": "测试画像摘要",
-            },
-        }
-
-    monkeypatch.setattr(service_module, "info_extractor_node", fake_info_extractor_node)
-    monkeypatch.setattr(service_module, "profile_builder_node", fake_profile_builder_node)
+    monkeypatch.setattr(service_module, "profile_conversation_graph", _FakeGraph())
 
     fake_db = _FakeAsyncSession(session_record=session_record, messages=messages)
     service = ProfileConversationService(fake_db)

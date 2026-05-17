@@ -1,39 +1,34 @@
 # 学生端 AI 闭环任务
 
-## 负责人目标
+## 当前口径
 
-把学生端和 AI 相关的四条核心能力链路接成可稳定演示的闭环：学习画像、资源生成、学习路径、学习测评。
+- 当前默认学生端前端：`a3-student-react-web`
+- 默认本地端口：`3002`
+- `a3-portal-web` 已降级为 legacy 目录，仅保留历史代码参考，不再作为默认 AI 闭环任务承接目录
 
 ## 建议负责目录
 
-- `a3-portal-web/src/pages/learningProfile`
-- `a3-portal-web/src/pages/resourceCenter`
-- `a3-portal-web/src/pages/resourceFavorites`
-- `a3-portal-web/src/pages/learningPath`
-- `a3-portal-web/src/pages/learningReport`
-- `a3-portal-web/src/pages/evaluation`
-- `a3-portal-web/src/pages/wrongQuestion`
-- `a3-portal-web/src/pages/intelligentTutor`
-- `a3-portal-web/src/api/ai.js`
+- `a3-student-react-web/src/pages/CapabilityModel.tsx`
+- `a3-student-react-web/src/pages/ResourceCenter.tsx`
+- `a3-student-react-web/src/pages/Collection.tsx`
+- `a3-student-react-web/src/pages/LearningPath.tsx`
+- `a3-student-react-web/src/pages/StudyReport.tsx`
+- `a3-student-react-web/src/pages/Evaluation.tsx`
+- `a3-student-react-web/src/pages/AITutor.tsx`
+- `a3-student-react-web/src/lib/studentApi.ts`
 
 ## 任务清单
 
-1. 学习画像页补齐历史记录、版本变化、手动调整结果展示。
-2. 资源中心补齐生成、预览、下载权限、收藏、归档、历史记录展示。
-3. 学习路径页补齐打卡、暂停、继续、节点状态变化和进度回溯。
-4. 测评页补齐在线作答、提交作答、错题查看、历史记录、趋势摘要、报告导出入口。
-5. 智能辅导页补齐 OCR 提问、答疑历史、收藏、人工升级工单入口。
-6. 明确哪些接口是真实后端返回，哪些仍是 fallback/demo 数据，并在页面层做好降级处理。
+1. 学习画像页补齐真实数据来源、失败提示和版本说明。
+2. 资源中心补齐生成、刷新、收藏、筛选和结果预览闭环。
+3. 学习路径页补齐生成、刷新、步骤完成和进度回写闭环。
+4. 测评页补齐出题、历史、趋势、错题查看和报告联动。
+5. AI 助教页补齐提问、引用、历史、异常态和人工升级入口。
+6. 明确哪些数据来自真实接口，哪些仍是 fallback，并在界面上给出稳定降级体验。
 
 ## 验收标准
 
-- 四条核心 AI 页面都能独立演示
-- 页面之间能互相跳转，形成讲解闭环
-- 真实接口可用时优先走真实数据
+- 学习画像、资源、路径、测评、助教五条链路都能独立演示
+- 页面之间能够互相跳转，形成完整学习闭环
+- 真实接口可用时优先使用真实数据
 - 接口不可用时不会白屏，并能给出明确提示
-
-## 适合的成员类型
-
-- 熟悉前后端联调
-- 能快速判断 mock、fallback、真实接口边界
-- 对答辩链路敏感，知道什么页面必须稳定

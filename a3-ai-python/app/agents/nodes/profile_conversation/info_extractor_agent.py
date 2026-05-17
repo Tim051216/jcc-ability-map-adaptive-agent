@@ -165,14 +165,9 @@ async def info_extractor_node(state: LearningAgentState) -> LearningAgentState:
         return state
 
     if ChatOpenAI is None:
-        extracted_data = _fallback_extract_info(messages)
-        _store_extracted_info(state, extracted_data)
-        trace = state.get("execution_trace", [])
-        trace.append(
-            f"info_extractor: fallback extracted {len(extracted_data.get('extracted_info', []))} items"
+        raise RuntimeError(
+            "langchain_openai is required for conversational-profile info extraction"
         )
-        state["execution_trace"] = trace
-        return state
 
     conversation_text = "\n".join(
         [f"{'学生' if i % 2 == 0 else '助手'}: {msg}" for i, msg in enumerate(messages)]
@@ -211,12 +206,10 @@ async def info_extractor_node(state: LearningAgentState) -> LearningAgentState:
         )
         state["execution_trace"] = trace
     except Exception as exc:
-        fallback_data = _fallback_extract_info(messages)
-        fallback_data["error"] = str(exc)
-        _store_extracted_info(state, fallback_data)
         trace = state.get("execution_trace", [])
-        trace.append(f"info_extractor: llm failed, fallback used - {exc}")
+        trace.append(f"info_extractor: llm failed - {exc}")
         state["execution_trace"] = trace
+        raise RuntimeError("LLM info extraction failed") from exc
 
     return state
 

@@ -1,6 +1,8 @@
+import json
 from typing import List, Optional
-from fastapi import APIRouter, Query, Body
+from fastapi import APIRouter, Query, Body, HTTPException, WebSocket, WebSocketDisconnect
 
+from app.api.deps import get_websocket_user_id
 from app.schemas.common import ResourceCard
 from app.schemas.resource import (
     ResourceArchiveRequest,
@@ -30,7 +32,9 @@ from app.services.resource_delivery_service import ResourceDeliveryService
 from app.services.resource_archive_summary_service import ResourceArchiveSummaryService
 from app.services.resource_favorite_summary_service import ResourceFavoriteSummaryService
 from app.services.resource_service import ResourceService
+from app.services.resource_source_file_service import ResourceSourceFileService
 # 新增的服务
+from app.services.resource_generation_event_service import ResourceGenerationEventService
 from app.services.resource_generation_service import ResourceGenerationService
 from app.services.resource_management_service import ResourceManagementService
 
@@ -48,21 +52,33 @@ async def generate_resource(
 @router.get("", response_model=ResourceListResponse)
 async def list_resources(
     user_id: int,
+    course_id: int | None = None,
     course_code: str | None = None,
     resource_type: str | None = None,
 ) -> ResourceListResponse:
     service = ResourceService()
-    return await service.list_resources(user_id=user_id, course_code=course_code, resource_type=resource_type)
+    return await service.list_resources(
+        user_id=user_id,
+        course_id=course_id,
+        course_code=course_code,
+        resource_type=resource_type,
+    )
 
 
 @router.get("/history", response_model=ResourceListResponse)
 async def list_archived_resources(
     user_id: int,
+    course_id: int | None = None,
     course_code: str | None = None,
     resource_type: str | None = None,
 ) -> ResourceListResponse:
     service = ResourceService()
-    return await service.list_archived_resources(user_id=user_id, course_code=course_code, resource_type=resource_type)
+    return await service.list_archived_resources(
+        user_id=user_id,
+        course_id=course_id,
+        course_code=course_code,
+        resource_type=resource_type,
+    )
 
 
 @router.get("/history/summary", response_model=ResourceArchiveSummaryResponse)
@@ -93,6 +109,24 @@ async def list_favorite_history(user_id: int) -> ResourceFavoriteHistoryListResp
 async def get_resource(resource_id: int) -> ResourceCard:
     service = ResourceService()
     return await service.get_resource(resource_id)
+
+
+@router.get("/source-files/{file_id}/open")
+async def open_resource_source_file(file_id: int):
+    service = ResourceSourceFileService()
+    return await service.open_source_file(file_id)
+
+
+@router.get("/source-files/{file_id}/preview")
+async def preview_resource_source_file(file_id: int):
+    service = ResourceSourceFileService()
+    return await service.preview_source_file(file_id)
+
+
+@router.get("/source-files/{file_id}/preview-assets/{asset_path:path}")
+async def preview_resource_source_file_asset(file_id: int, asset_path: str):
+    service = ResourceSourceFileService()
+    return await service.preview_source_file_asset(file_id, asset_path)
 
 
 @router.get("/{resource_id}/download-access", response_model=ResourceDownloadAccessResponse)
@@ -228,6 +262,70 @@ async def cancel_generation_task(
     service = ResourceGenerationService()
     success = await service.cancel_task(task_id)
     return {"success": success, "message": "任务已取消"}
+
+
+@router.websocket("/generation/tasks/{task_id}/stream")
+async def stream_generation_task(websocket: WebSocket, task_id: int) -> None:
+    """
+    WebSocket 实时推送资源生成任务进度。
+    """
+    await websocket.accept()
+    queue = None
+    try:
+        try:
+            user_id = get_websocket_user_id(websocket)
+        except HTTPException:
+            await websocket.send_text(
+                json.dumps({"chunk_type": "error", "content": "missing authentication"}, ensure_ascii=False)
+            )
+            await websocket.close(code=4401)
+            return
+
+        service = ResourceGenerationService()
+        try:
+            task = await service.get_task_status(task_id)
+        except HTTPException as exc:
+            await websocket.send_text(
+                json.dumps({"chunk_type": "error", "content": exc.detail}, ensure_ascii=False)
+            )
+            await websocket.close(code=4404)
+            return
+
+        if int(task.student_id) != int(user_id):
+            await websocket.send_text(
+                json.dumps({"chunk_type": "error", "content": "无权访问该任务"}, ensure_ascii=False)
+            )
+            await websocket.close(code=4403)
+            return
+
+        await websocket.send_text(
+            json.dumps({"chunk_type": "task_status", "content": task.model_dump(mode="json")}, ensure_ascii=False)
+        )
+        if task.task_status in (3, 4, 5):
+            await websocket.close()
+            return
+
+        queue = ResourceGenerationEventService.subscribe(task_id)
+        while True:
+            event = await queue.get()
+            await websocket.send_text(json.dumps(event, ensure_ascii=False))
+            content = event.get("content") or {}
+            if int(content.get("task_status") or 0) in (3, 4, 5):
+                await websocket.close()
+                return
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        try:
+            await websocket.send_text(
+                json.dumps({"chunk_type": "error", "content": str(exc)}, ensure_ascii=False)
+            )
+        except Exception:
+            pass
+        await websocket.close(code=1011)
+    finally:
+        if queue is not None:
+            ResourceGenerationEventService.unsubscribe(task_id, queue)
 
 
 # ========================================

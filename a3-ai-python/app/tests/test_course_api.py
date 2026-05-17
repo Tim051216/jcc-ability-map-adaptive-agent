@@ -120,3 +120,47 @@ def test_get_learning_course_detail_endpoint_returns_payload(monkeypatch) -> Non
     assert response.status_code == 200
     assert response.json()["latest_section_id"] == 10111
     assert response.json()["chapters"][0]["sections"][0]["name"] == "项目导览与业务目标"
+
+
+def test_get_course_section_play_info_endpoint_returns_payload(monkeypatch) -> None:
+    async def fake_get_section_play_info(self, course_id: int, section_id: int):
+        assert course_id == 101
+        assert section_id == 10111
+        return {
+            "section_id": 10111,
+            "play_enabled": True,
+            "file_id": "file-demo-1",
+            "signature": "signed-demo",
+            "message": None,
+        }
+
+    monkeypatch.setattr(CourseService, "get_section_play_info", fake_get_section_play_info)
+
+    response = client.get("/api/v1/course/courses/101/sections/10111/play")
+
+    assert response.status_code == 200
+    assert response.json()["play_enabled"] is True
+    assert response.json()["file_id"] == "file-demo-1"
+
+
+def test_update_learning_progress_endpoint_returns_payload(monkeypatch) -> None:
+    async def fake_update_learning_progress(self, course_id: int, payload):
+        assert course_id == 101
+        assert payload.section_id == 10111
+        assert payload.lesson_id == 10100
+        return {
+            "lessonId": 10100,
+            "latestSectionId": 10111,
+            "recorded": True,
+        }
+
+    monkeypatch.setattr(CourseService, "update_learning_progress", fake_update_learning_progress)
+
+    response = client.post(
+        "/api/v1/course/courses/101/learning-progress",
+        json={"sectionId": 10111, "lessonId": 10100, "moment": 0, "duration": 540},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["latestSectionId"] == 10111
+    assert response.json()["recorded"] is True

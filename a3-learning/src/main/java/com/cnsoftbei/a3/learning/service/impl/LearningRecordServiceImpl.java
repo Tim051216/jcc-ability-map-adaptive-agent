@@ -9,6 +9,7 @@ import com.cnsoftbei.a3.common.exceptions.DbException;
 import com.cnsoftbei.a3.common.utils.BeanUtils;
 import com.cnsoftbei.a3.common.utils.UserContext;
 import com.cnsoftbei.a3.learning.domain.dto.LearningRecordFormDTO;
+import com.cnsoftbei.a3.learning.domain.dto.LearningSectionPositionFormDTO;
 import com.cnsoftbei.a3.learning.domain.po.LearningLesson;
 import com.cnsoftbei.a3.learning.domain.po.LearningRecord;
 import com.cnsoftbei.a3.learning.enums.LessonStatus;
@@ -104,6 +105,27 @@ public class LearningRecordServiceImpl extends ServiceImpl<LearningRecordMapper,
         }
         //更新课表
         handleLearningLessonsChanges(recordDTO);
+    }
+
+    @Override
+    @Transactional
+    public void updateLearningPosition(LearningSectionPositionFormDTO formDTO) {
+        Long userId = UserContext.requireUser();
+        LearningLesson lesson = lessonService.getById(formDTO.getLessonId());
+        if (lesson == null || !userId.equals(lesson.getUserId())) {
+            throw new BizIllegalException("当前课表不存在");
+        }
+        LocalDateTime commitTime = formDTO.getCommitTime() == null ? LocalDateTime.now() : formDTO.getCommitTime();
+        boolean update = lessonService.lambdaUpdate()
+                .set(lesson.getStatus() == LessonStatus.NOT_BEGIN, LearningLesson::getStatus, LessonStatus.LEARNING)
+                .set(LearningLesson::getLatestSectionId, formDTO.getSectionId())
+                .set(LearningLesson::getLatestLearnTime, commitTime)
+                .eq(LearningLesson::getId, lesson.getId())
+                .eq(LearningLesson::getUserId, userId)
+                .update();
+        if(!update){
+            throw new DbException("课表定位写回失败");
+        }
     }
 
     /**

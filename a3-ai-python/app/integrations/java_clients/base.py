@@ -12,8 +12,14 @@ class BaseJavaClient:
             return data.get("data")
         return data
 
-    async def get(self, path: str, params: dict | None = None) -> dict:
+    async def get(self, path: str, params: dict | None = None, *, user_id: int | None = None) -> dict:
         async with httpx.AsyncClient(base_url=settings.java_gateway_base_url, timeout=15.0) as client:
-            response = await client.get(path, params=params, headers=build_internal_headers())
+            response = await client.get(path, params=params, headers=build_internal_headers(user_id=user_id))
+            response.raise_for_status()
+            return self.unwrap_payload(response.json())
+
+    async def post(self, path: str, json: dict | None = None, *, user_id: int | None = None) -> dict | None:
+        async with httpx.AsyncClient(base_url=settings.java_gateway_base_url, timeout=15.0) as client:
+            response = await client.post(path, json=json, headers=build_internal_headers(user_id=user_id))
             response.raise_for_status()
             return self.unwrap_payload(response.json())

@@ -4,9 +4,21 @@
 """
 from typing import Dict, List, Any, Optional
 from app.agents.state import LearningAgentState
-from app.core.llm import get_llm
-from app.core.logger import logger
+from app.core.logging import logger
+from app.integrations.llm.client import get_llm_client
 import json
+
+
+class _CompatLLM:
+    def __init__(self) -> None:
+        self._client = get_llm_client()
+
+    async def ainvoke(self, prompt: str):
+        return await self._client.chat_completion(messages=[{"role": "user", "content": prompt}])
+
+
+def get_llm() -> _CompatLLM:
+    return _CompatLLM()
 
 
 async def path_optimizer_node(state: LearningAgentState) -> LearningAgentState:
@@ -76,6 +88,76 @@ async def path_optimizer_node(state: LearningAgentState) -> LearningAgentState:
             "error": f"路径优化失败: {str(e)}"
         }
     
+    return state
+
+
+async def path_optimizer_node(state: LearningAgentState) -> LearningAgentState:
+    """Runtime-logged override for monitoring."""
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    learning_path = state.get("learning_path", {})
+    learning_records = state.get("learning_records", [])
+    assessment_results = state.get("assessment_results", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not learning_path:
+        state["path_optimization"] = {
+            "needed": False,
+            "reason": "missing learning_path",
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_optimizer_agent",
+            start_message="path_optimizer_agent started",
+            success_message="path_optimizer_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "learning_record_count": len(learning_records),
+                "assessment_result_count": len(assessment_results),
+                "path_node_count": len(learning_path.get("nodes", [])),
+            },
+            success_payload_factory=lambda: {
+                "needed": state.get("path_optimization", {}).get("needed"),
+                "weak_point_count": len(state.get("path_optimization", {}).get("weak_points", [])),
+            },
+            error_message="path_optimizer_agent failed",
+        ):
+            effectiveness_analysis = await _analyze_learning_effectiveness(
+                learning_records,
+                assessment_results,
+            )
+            weak_points = _identify_weak_knowledge_points(
+                effectiveness_analysis,
+                assessment_results,
+            )
+            adjustment_strategy = await _generate_adjustment_strategy(
+                learning_path,
+                effectiveness_analysis,
+                weak_points,
+            )
+            optimization_result = {
+                "needed": adjustment_strategy.get("needed", False),
+                "effectiveness_analysis": effectiveness_analysis,
+                "weak_points": weak_points,
+                "adjustment_strategy": adjustment_strategy,
+                "recommendations": adjustment_strategy.get("recommendations", []),
+            }
+            state["path_optimization"] = optimization_result
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_optimizer:analyzed_{len(weak_points)}_weak_points")
+            state["execution_trace"] = trace
+            logger.info(f"璺緞浼樺寲鍒嗘瀽瀹屾垚: user_id={user_id}, needed={adjustment_strategy.get('needed')}")
+
+    except Exception as e:
+        logger.error(f"璺緞浼樺寲澶辫触: {str(e)}")
+        state["path_optimization"] = {
+            "needed": False,
+            "error": f"璺緞浼樺寲澶辫触: {str(e)}",
+        }
+
     return state
 
 
@@ -341,3 +423,75 @@ async def apply_path_adjustment(
     # 这个函数将在Service层实现
     # 这里只是定义接口
     pass
+
+
+async def path_optimizer_node(state: LearningAgentState) -> LearningAgentState:
+    """ASCII-safe runtime-logged override for monitoring."""
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    learning_path = state.get("learning_path", {})
+    learning_records = state.get("learning_records", [])
+    assessment_results = state.get("assessment_results", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not learning_path:
+        state["path_optimization"] = {
+            "needed": False,
+            "reason": "missing learning_path",
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_optimizer_agent",
+            start_message="path_optimizer_agent started",
+            success_message="path_optimizer_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "learning_record_count": len(learning_records),
+                "assessment_result_count": len(assessment_results),
+                "path_node_count": len(learning_path.get("nodes", [])),
+            },
+            success_payload_factory=lambda: {
+                "needed": state.get("path_optimization", {}).get("needed"),
+                "weak_point_count": len(state.get("path_optimization", {}).get("weak_points", [])),
+            },
+            error_message="path_optimizer_agent failed",
+        ):
+            effectiveness_analysis = await _analyze_learning_effectiveness(
+                learning_records,
+                assessment_results,
+            )
+            weak_points = _identify_weak_knowledge_points(
+                effectiveness_analysis,
+                assessment_results,
+            )
+            adjustment_strategy = await _generate_adjustment_strategy(
+                learning_path,
+                effectiveness_analysis,
+                weak_points,
+            )
+            state["path_optimization"] = {
+                "needed": adjustment_strategy.get("needed", False),
+                "effectiveness_analysis": effectiveness_analysis,
+                "weak_points": weak_points,
+                "adjustment_strategy": adjustment_strategy,
+                "recommendations": adjustment_strategy.get("recommendations", []),
+            }
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_optimizer:analyzed_{len(weak_points)}_weak_points")
+            state["execution_trace"] = trace
+            logger.info(
+                "path optimization completed",
+                user_id=user_id,
+                needed=adjustment_strategy.get("needed"),
+            )
+    except Exception as exc:
+        logger.error("path optimization failed", error=str(exc), user_id=user_id)
+        state["path_optimization"] = {
+            "needed": False,
+            "error": f"path optimization failed: {str(exc)}",
+        }
+
+    return state

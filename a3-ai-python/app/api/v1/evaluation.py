@@ -21,6 +21,7 @@ from app.schemas.evaluation import (
     WrongQuestionListResponse,
     WrongQuestionSummaryResponse,
 )
+from app.services.course_context_service import CourseContextService
 from app.services.evaluation_agent_service import EvaluationAgentService
 from app.services.evaluation_export_service import EvaluationExportService
 from app.services.evaluation_history_service import EvaluationHistoryService
@@ -102,9 +103,14 @@ async def get_wrong_question_summary(record_id: int) -> WrongQuestionSummaryResp
 
 
 @router.get("/latest", response_model=EvaluationResponse)
-async def get_latest_evaluation(user_id: int, course_code: str) -> EvaluationResponse:
+async def get_latest_evaluation(
+    user_id: int,
+    course_id: int | None = None,
+    course_code: str | None = None,
+) -> EvaluationResponse:
     service = EvaluationService()
-    evaluation = await service.get_latest_evaluation(user_id=user_id, course_code=course_code)
+    course_context = await CourseContextService().resolve(course_id=course_id, course_code=course_code)
+    evaluation = await service.get_latest_evaluation(user_id=user_id, course_code=course_context.course_code)
     if evaluation is None:
         raise HTTPException(status_code=404, detail="evaluation not found")
     return evaluation
@@ -113,13 +119,15 @@ async def get_latest_evaluation(user_id: int, course_code: str) -> EvaluationRes
 @router.get("/history", response_model=EvaluationHistoryResponse)
 async def get_evaluation_history(
     user_id: int,
-    course_code: str,
+    course_id: int | None = None,
+    course_code: str | None = None,
     evaluation_type: str | None = None,
     limit: int = 10,
 ) -> EvaluationHistoryResponse:
     service = EvaluationHistoryService()
     return await service.list_history(
         user_id=user_id,
+        course_id=course_id,
         course_code=course_code,
         evaluation_type=evaluation_type,
         limit=limit,
@@ -129,13 +137,15 @@ async def get_evaluation_history(
 @router.get("/trend", response_model=EvaluationTrendResponse)
 async def get_evaluation_trend(
     user_id: int,
-    course_code: str,
+    course_id: int | None = None,
+    course_code: str | None = None,
     evaluation_type: str | None = None,
     limit: int = 10,
 ) -> EvaluationTrendResponse:
     service = EvaluationHistoryService()
     return await service.get_trend(
         user_id=user_id,
+        course_id=course_id,
         course_code=course_code,
         evaluation_type=evaluation_type,
         limit=limit,

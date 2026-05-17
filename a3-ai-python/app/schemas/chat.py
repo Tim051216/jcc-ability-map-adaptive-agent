@@ -8,6 +8,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: int | None = None
     course_code: str | None = None
+    course_id: int | None = None
     scene: str = Field(default="study_assistant")
 
 
@@ -36,6 +37,24 @@ class ChatTaskStatusResponse(BaseModel):
     error_message: str | None = None
 
 
+class ChatTaskHistoryItem(BaseModel):
+    task_id: int
+    user_id: int
+    course_id: int | None = None
+    course_code: str | None = None
+    scene: str | None = None
+    message: str | None = None
+    status: str
+    answer: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ChatTaskHistoryResponse(BaseModel):
+    items: list[ChatTaskHistoryItem] = Field(default_factory=list)
+    total: int = 0
+
+
 class ChatTaskSummaryResponse(BaseModel):
     total: int = 0
     pending_count: int = 0
@@ -48,6 +67,7 @@ class ChatTicketCreateRequest(BaseModel):
     user_id: int
     session_id: int | None = None
     course_code: str | None = None
+    course_id: int | None = None
     title: str
     question_summary: str
     latest_answer: str | None = None
@@ -78,6 +98,7 @@ class ChatTicketResponse(BaseModel):
     user_id: int
     session_id: int | None = None
     course_code: str | None = None
+    course_id: int | None = None
     title: str
     question_summary: str
     latest_answer: str | None = None

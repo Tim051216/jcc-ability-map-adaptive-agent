@@ -69,7 +69,14 @@ class KnowledgeIngestPipeline:
                     chunk_index=item["chunk_index"],
                     content=item["content"],
                     keywords=item["title"],
-                    metadata_json={"title": item["title"]},
+                    metadata_json={
+                        "title": item["title"],
+                        "priority": item.get("priority", 0),
+                        "chunk_kind": item.get("chunk_kind"),
+                        "source_name": item.get("source_name"),
+                        "source_path": item.get("source_path"),
+                        "tags": item.get("tags", []),
+                    },
                 )
                 session.add(chunk_entity)
                 chunk_entities.append(chunk_entity)
@@ -77,15 +84,21 @@ class KnowledgeIngestPipeline:
             await session.flush()
 
             for chunk_entity in chunk_entities:
-                title = (chunk_entity.metadata_json or {}).get("title", "")
+                metadata = chunk_entity.metadata_json or {}
+                title = metadata.get("title", "")
                 milvus_rows.append(
                     {
                         "id": chunk_entity.id,
-                        "vector": await self.embedding_service.embed_text(chunk_entity.content),
+                        "vector": await self.embedding_service.embed_text(f"{title}\n{chunk_entity.content}"),
                         "document_id": document.id,
                         "chunk_id": chunk_entity.id,
                         "content": chunk_entity.content[:8192],
                         "title": title[:255],
+                        "priority": int(metadata.get("priority", 0) or 0),
+                        "chunk_kind": str(metadata.get("chunk_kind") or "")[:64],
+                        "source_name": str(metadata.get("source_name") or "")[:255],
+                        "source_path": str(metadata.get("source_path") or "")[:500],
+                        "tags": list(metadata.get("tags", []) or [])[:12],
                     }
                 )
 

@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class ChatSession(Base, TimestampMixin):
-    __tablename__ = "ai_chat_session"
+    __tablename__ = "chat_session"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(index=True)
@@ -14,10 +14,10 @@ class ChatSession(Base, TimestampMixin):
 
 
 class ChatMessage(Base, TimestampMixin):
-    __tablename__ = "ai_chat_message"
+    __tablename__ = "chat_message"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("ai_chat_session.id"), index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("chat_session.id"), index=True)
     role: Mapped[str] = mapped_column(String(32))
     content: Mapped[str] = mapped_column(Text)
     citations: Mapped[str | None] = mapped_column(Text, nullable=True)

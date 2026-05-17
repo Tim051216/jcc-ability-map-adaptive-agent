@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class ContentReviewTask(Base, TimestampMixin):
-    __tablename__ = "ai_content_review_task"
+    __tablename__ = "content_review_task"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     entity_type: Mapped[str] = mapped_column(String(64), index=True)

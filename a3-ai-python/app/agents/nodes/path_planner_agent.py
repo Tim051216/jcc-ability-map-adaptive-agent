@@ -4,10 +4,22 @@
 """
 from typing import Dict, List, Any, Optional
 from app.agents.state import LearningAgentState
-from app.core.llm import get_llm
-from app.core.logger import logger
+from app.core.logging import logger
+from app.integrations.llm.client import get_llm_client
 from app.schemas.learning_path import PathPlanningRequest
 import json
+
+
+class _CompatLLM:
+    def __init__(self) -> None:
+        self._client = get_llm_client()
+
+    async def ainvoke(self, prompt: str):
+        return await self._client.chat_completion(messages=[{"role": "user", "content": prompt}])
+
+
+def get_llm() -> _CompatLLM:
+    return _CompatLLM()
 
 
 async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
@@ -80,6 +92,450 @@ async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
             "nodes": []
         }
     
+    return state
+
+
+def _build_fallback_learning_path(
+    target_knowledge_points: list[str],
+    course_code: str | None,
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    for index, point in enumerate(target_knowledge_points or ["core_topic"], start=1):
+        nodes.append(
+            {
+                "node_id": f"fallback_{index}",
+                "node_name": point,
+                "node_desc": f"Fallback path node for {point}",
+                "node_type": 1 if index == 1 else 2,
+                "difficulty_level": min(5, max(1, index + 1)),
+                "estimated_duration": 45,
+                "prerequisites": [] if index == 1 else [f"fallback_{index - 1}"],
+                "resources": [],
+                "completion_criteria": {"type": "manual_completion"},
+            }
+        )
+    return {
+        "path_name": "Personalized Learning Path",
+        "path_desc": f"Fallback path for {course_code or 'general_course'}",
+        "nodes": nodes,
+        "total_nodes": len(nodes),
+        "estimated_duration": sum(node.get("estimated_duration", 0) for node in nodes),
+        "difficulty_level": _calculate_overall_difficulty(nodes),
+        "knowledge_graph": {
+            "nodes": [
+                {
+                    "id": node["node_id"],
+                    "name": node["node_name"],
+                    "level": node["difficulty_level"],
+                    "prerequisites": node["prerequisites"],
+                }
+                for node in nodes
+            ],
+            "learning_order": [node["node_id"] for node in nodes],
+        },
+    }
+
+
+async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
+    """Timeout-safe runtime-logged override for monitoring."""
+    import asyncio
+
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    profile = state.get("profile", {})
+    course_code = state.get("course_code")
+    target_knowledge_points = state.get("target_knowledge_points", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not profile:
+        state["learning_path"] = {
+            "error": "missing user_id or profile",
+            "nodes": [],
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_planner_agent",
+            start_message="path_planner_agent started",
+            success_message="path_planner_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "course_code": course_code,
+                "target_knowledge_points": target_knowledge_points,
+            },
+            success_payload_factory=lambda: {
+                "node_count": len(state.get("learning_path", {}).get("nodes", [])),
+                "estimated_duration": state.get("learning_path", {}).get("estimated_duration"),
+            },
+            error_message="path_planner_agent failed",
+        ):
+            try:
+                knowledge_graph = await asyncio.wait_for(
+                    _analyze_knowledge_dependencies(target_knowledge_points, course_code),
+                    timeout=45,
+                )
+                path_structure = await asyncio.wait_for(
+                    _generate_path_structure(profile, knowledge_graph, course_code),
+                    timeout=45,
+                )
+                enriched_nodes = await asyncio.wait_for(
+                    _enrich_path_nodes(path_structure["nodes"], profile, course_code),
+                    timeout=30,
+                )
+                state["learning_path"] = {
+                    "path_name": path_structure.get("path_name", "Personalized Learning Path"),
+                    "path_desc": path_structure.get("path_desc", ""),
+                    "nodes": enriched_nodes,
+                    "total_nodes": len(enriched_nodes),
+                    "estimated_duration": sum(node.get("estimated_duration", 0) for node in enriched_nodes),
+                    "difficulty_level": _calculate_overall_difficulty(enriched_nodes),
+                    "knowledge_graph": knowledge_graph,
+                }
+            except TimeoutError:
+                state["learning_path"] = _build_fallback_learning_path(
+                    target_knowledge_points=target_knowledge_points,
+                    course_code=course_code,
+                )
+                state["learning_path"]["fallback_reason"] = "llm_timeout"
+
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_planner:generated_{len(state['learning_path'].get('nodes', []))}_nodes")
+            state["execution_trace"] = trace
+            logger.info(
+                "path planning completed",
+                user_id=user_id,
+                node_count=len(state["learning_path"].get("nodes", [])),
+                fallback_reason=state["learning_path"].get("fallback_reason"),
+            )
+    except Exception as exc:
+        logger.error("path planning failed", error=str(exc), user_id=user_id)
+        state["learning_path"] = {
+            "error": f"path planning failed: {str(exc)}",
+            "nodes": [],
+        }
+
+    return state
+
+
+def _build_fallback_learning_path(
+    target_knowledge_points: list[str],
+    course_code: str | None,
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    for index, point in enumerate(target_knowledge_points or ["core_topic"], start=1):
+        nodes.append(
+            {
+                "node_id": f"fallback_{index}",
+                "node_name": point,
+                "node_desc": f"Fallback path node for {point}",
+                "node_type": 1 if index == 1 else 2,
+                "difficulty_level": min(5, max(1, index + 1)),
+                "estimated_duration": 45,
+                "prerequisites": [] if index == 1 else [f"fallback_{index - 1}"],
+                "resources": [],
+                "completion_criteria": {"type": "manual_completion"},
+            }
+        )
+    return {
+        "path_name": "Personalized Learning Path",
+        "path_desc": f"Fallback path for {course_code or 'general_course'}",
+        "nodes": nodes,
+        "total_nodes": len(nodes),
+        "estimated_duration": sum(node.get("estimated_duration", 0) for node in nodes),
+        "difficulty_level": _calculate_overall_difficulty(nodes),
+        "knowledge_graph": {
+            "nodes": [
+                {
+                    "id": node["node_id"],
+                    "name": node["node_name"],
+                    "level": node["difficulty_level"],
+                    "prerequisites": node["prerequisites"],
+                }
+                for node in nodes
+            ],
+            "learning_order": [node["node_id"] for node in nodes],
+        },
+    }
+
+
+async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
+    """Timeout-safe runtime-logged override for monitoring."""
+    import asyncio
+
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    profile = state.get("profile", {})
+    course_code = state.get("course_code")
+    target_knowledge_points = state.get("target_knowledge_points", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not profile:
+        state["learning_path"] = {
+            "error": "missing user_id or profile",
+            "nodes": [],
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_planner_agent",
+            start_message="path_planner_agent started",
+            success_message="path_planner_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "course_code": course_code,
+                "target_knowledge_points": target_knowledge_points,
+            },
+            success_payload_factory=lambda: {
+                "node_count": len(state.get("learning_path", {}).get("nodes", [])),
+                "estimated_duration": state.get("learning_path", {}).get("estimated_duration"),
+            },
+            error_message="path_planner_agent failed",
+        ):
+            try:
+                knowledge_graph = await asyncio.wait_for(
+                    _analyze_knowledge_dependencies(target_knowledge_points, course_code),
+                    timeout=45,
+                )
+                path_structure = await asyncio.wait_for(
+                    _generate_path_structure(profile, knowledge_graph, course_code),
+                    timeout=45,
+                )
+                enriched_nodes = await asyncio.wait_for(
+                    _enrich_path_nodes(path_structure["nodes"], profile, course_code),
+                    timeout=30,
+                )
+                state["learning_path"] = {
+                    "path_name": path_structure.get("path_name", "Personalized Learning Path"),
+                    "path_desc": path_structure.get("path_desc", ""),
+                    "nodes": enriched_nodes,
+                    "total_nodes": len(enriched_nodes),
+                    "estimated_duration": sum(node.get("estimated_duration", 0) for node in enriched_nodes),
+                    "difficulty_level": _calculate_overall_difficulty(enriched_nodes),
+                    "knowledge_graph": knowledge_graph,
+                }
+            except TimeoutError:
+                state["learning_path"] = _build_fallback_learning_path(
+                    target_knowledge_points=target_knowledge_points,
+                    course_code=course_code,
+                )
+                state["learning_path"]["fallback_reason"] = "llm_timeout"
+
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_planner:generated_{len(state['learning_path'].get('nodes', []))}_nodes")
+            state["execution_trace"] = trace
+            logger.info(
+                "path planning completed",
+                user_id=user_id,
+                node_count=len(state["learning_path"].get("nodes", [])),
+                fallback_reason=state["learning_path"].get("fallback_reason"),
+            )
+    except Exception as exc:
+        logger.error("path planning failed", error=str(exc), user_id=user_id)
+        state["learning_path"] = {
+            "error": f"path planning failed: {str(exc)}",
+            "nodes": [],
+        }
+
+    return state
+
+
+async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
+    """Runtime-logged override for monitoring."""
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    profile = state.get("profile", {})
+    course_code = state.get("course_code")
+    target_knowledge_points = state.get("target_knowledge_points", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not profile:
+        state["learning_path"] = {
+            "error": "missing user_id or profile",
+            "nodes": [],
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_planner_agent",
+            start_message="path_planner_agent started",
+            success_message="path_planner_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "course_code": course_code,
+                "target_knowledge_points": target_knowledge_points,
+            },
+            success_payload_factory=lambda: {
+                "node_count": len(state.get("learning_path", {}).get("nodes", [])),
+                "estimated_duration": state.get("learning_path", {}).get("estimated_duration"),
+            },
+            error_message="path_planner_agent failed",
+        ):
+            knowledge_graph = await _analyze_knowledge_dependencies(
+                target_knowledge_points,
+                course_code,
+            )
+            path_structure = await _generate_path_structure(
+                profile,
+                knowledge_graph,
+                course_code,
+            )
+            enriched_nodes = await _enrich_path_nodes(
+                path_structure["nodes"],
+                profile,
+                course_code,
+            )
+            learning_path = {
+                "path_name": path_structure.get("path_name", "涓€у寲瀛︿範璺緞"),
+                "path_desc": path_structure.get("path_desc", ""),
+                "nodes": enriched_nodes,
+                "total_nodes": len(enriched_nodes),
+                "estimated_duration": sum(node.get("estimated_duration", 0) for node in enriched_nodes),
+                "difficulty_level": _calculate_overall_difficulty(enriched_nodes),
+                "knowledge_graph": knowledge_graph,
+            }
+            state["learning_path"] = learning_path
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_planner:generated_{len(enriched_nodes)}_nodes")
+            state["execution_trace"] = trace
+            logger.info(f"璺緞瑙勫垝瀹屾垚: user_id={user_id}, nodes={len(enriched_nodes)}")
+
+    except Exception as e:
+        logger.error(f"璺緞瑙勫垝澶辫触: {str(e)}")
+        state["learning_path"] = {
+            "error": f"璺緞瑙勫垝澶辫触: {str(e)}",
+            "nodes": [],
+        }
+
+    return state
+
+
+def _build_fallback_learning_path(
+    target_knowledge_points: list[str],
+    course_code: str | None,
+) -> dict[str, Any]:
+    nodes = []
+    for index, point in enumerate(target_knowledge_points or ["core_topic"], start=1):
+        nodes.append(
+            {
+                "node_id": f"fallback_{index}",
+                "node_name": point,
+                "node_desc": f"Fallback path node for {point}",
+                "node_type": 1 if index == 1 else 2,
+                "difficulty_level": min(5, max(1, index + 1)),
+                "estimated_duration": 45,
+                "prerequisites": [] if index == 1 else [f"fallback_{index - 1}"],
+                "resources": [],
+                "completion_criteria": {"type": "manual_completion"},
+            }
+        )
+    return {
+        "path_name": "Personalized Learning Path",
+        "path_desc": f"Fallback path for {course_code or 'general_course'}",
+        "nodes": nodes,
+        "total_nodes": len(nodes),
+        "estimated_duration": sum(node.get("estimated_duration", 0) for node in nodes),
+        "difficulty_level": _calculate_overall_difficulty(nodes),
+        "knowledge_graph": {
+            "nodes": [
+                {
+                    "id": node["node_id"],
+                    "name": node["node_name"],
+                    "level": node["difficulty_level"],
+                    "prerequisites": node["prerequisites"],
+                }
+                for node in nodes
+            ],
+            "learning_order": [node["node_id"] for node in nodes],
+        },
+    }
+
+
+async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
+    """Timeout-safe runtime-logged override for monitoring."""
+    import asyncio
+
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    profile = state.get("profile", {})
+    course_code = state.get("course_code")
+    target_knowledge_points = state.get("target_knowledge_points", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not profile:
+        state["learning_path"] = {
+            "error": "missing user_id or profile",
+            "nodes": [],
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_planner_agent",
+            start_message="path_planner_agent started",
+            success_message="path_planner_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "course_code": course_code,
+                "target_knowledge_points": target_knowledge_points,
+            },
+            success_payload_factory=lambda: {
+                "node_count": len(state.get("learning_path", {}).get("nodes", [])),
+                "estimated_duration": state.get("learning_path", {}).get("estimated_duration"),
+            },
+            error_message="path_planner_agent failed",
+        ):
+            try:
+                knowledge_graph = await asyncio.wait_for(
+                    _analyze_knowledge_dependencies(target_knowledge_points, course_code),
+                    timeout=45,
+                )
+                path_structure = await asyncio.wait_for(
+                    _generate_path_structure(profile, knowledge_graph, course_code),
+                    timeout=45,
+                )
+                enriched_nodes = await asyncio.wait_for(
+                    _enrich_path_nodes(path_structure["nodes"], profile, course_code),
+                    timeout=30,
+                )
+                state["learning_path"] = {
+                    "path_name": path_structure.get("path_name", "Personalized Learning Path"),
+                    "path_desc": path_structure.get("path_desc", ""),
+                    "nodes": enriched_nodes,
+                    "total_nodes": len(enriched_nodes),
+                    "estimated_duration": sum(node.get("estimated_duration", 0) for node in enriched_nodes),
+                    "difficulty_level": _calculate_overall_difficulty(enriched_nodes),
+                    "knowledge_graph": knowledge_graph,
+                }
+            except TimeoutError:
+                state["learning_path"] = _build_fallback_learning_path(
+                    target_knowledge_points=target_knowledge_points,
+                    course_code=course_code,
+                )
+                state["learning_path"]["fallback_reason"] = "llm_timeout"
+
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_planner:generated_{len(state['learning_path'].get('nodes', []))}_nodes")
+            state["execution_trace"] = trace
+            logger.info(
+                "path planning completed",
+                user_id=user_id,
+                node_count=len(state["learning_path"].get("nodes", [])),
+                fallback_reason=state["learning_path"].get("fallback_reason"),
+            )
+    except Exception as exc:
+        logger.error("path planning failed", error=str(exc), user_id=user_id)
+        state["learning_path"] = {
+            "error": f"path planning failed: {str(exc)}",
+            "nodes": [],
+        }
+
     return state
 
 
@@ -415,3 +871,127 @@ def _calculate_overall_difficulty(nodes: List[Dict[str, Any]]) -> int:
     avg_difficulty = sum(difficulties) / len(difficulties)
     
     return round(avg_difficulty)
+
+
+def _build_fallback_learning_path(
+    target_knowledge_points: list[str],
+    course_code: str | None,
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    for index, point in enumerate(target_knowledge_points or ["core_topic"], start=1):
+        nodes.append(
+            {
+                "node_id": f"fallback_{index}",
+                "node_name": point,
+                "node_desc": f"Fallback path node for {point}",
+                "node_type": 1 if index == 1 else 2,
+                "difficulty_level": min(5, max(1, index + 1)),
+                "estimated_duration": 45,
+                "prerequisites": [] if index == 1 else [f"fallback_{index - 1}"],
+                "resources": [],
+                "completion_criteria": {"type": "manual_completion"},
+            }
+        )
+    return {
+        "path_name": "Personalized Learning Path",
+        "path_desc": f"Fallback path for {course_code or 'general_course'}",
+        "nodes": nodes,
+        "total_nodes": len(nodes),
+        "estimated_duration": sum(node.get("estimated_duration", 0) for node in nodes),
+        "difficulty_level": _calculate_overall_difficulty(nodes),
+        "knowledge_graph": {
+            "nodes": [
+                {
+                    "id": node["node_id"],
+                    "name": node["node_name"],
+                    "level": node["difficulty_level"],
+                    "prerequisites": node["prerequisites"],
+                }
+                for node in nodes
+            ],
+            "learning_order": [node["node_id"] for node in nodes],
+        },
+    }
+
+
+async def path_planner_node(state: LearningAgentState) -> LearningAgentState:
+    """Timeout-safe runtime-logged override for monitoring."""
+    import asyncio
+
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    user_id = state.get("user_id")
+    profile = state.get("profile", {})
+    course_code = state.get("course_code")
+    target_knowledge_points = state.get("target_knowledge_points", [])
+    runtime_logger = AgentRuntimeLoggingService()
+
+    if not user_id or not profile:
+        state["learning_path"] = {
+            "error": "missing user_id or profile",
+            "nodes": [],
+        }
+        return state
+
+    try:
+        async with runtime_logger.track(
+            agent_name="path_planner_agent",
+            start_message="path_planner_agent started",
+            success_message="path_planner_agent completed",
+            start_payload={
+                "user_id": user_id,
+                "course_code": course_code,
+                "target_knowledge_points": target_knowledge_points,
+            },
+            success_payload_factory=lambda: {
+                "node_count": len(state.get("learning_path", {}).get("nodes", [])),
+                "estimated_duration": state.get("learning_path", {}).get("estimated_duration"),
+            },
+            error_message="path_planner_agent failed",
+        ):
+            try:
+                knowledge_graph = await asyncio.wait_for(
+                    _analyze_knowledge_dependencies(target_knowledge_points, course_code),
+                    timeout=45,
+                )
+                path_structure = await asyncio.wait_for(
+                    _generate_path_structure(profile, knowledge_graph, course_code),
+                    timeout=45,
+                )
+                enriched_nodes = await asyncio.wait_for(
+                    _enrich_path_nodes(path_structure["nodes"], profile, course_code),
+                    timeout=30,
+                )
+                state["learning_path"] = {
+                    "path_name": path_structure.get("path_name", "Personalized Learning Path"),
+                    "path_desc": path_structure.get("path_desc", ""),
+                    "nodes": enriched_nodes,
+                    "total_nodes": len(enriched_nodes),
+                    "estimated_duration": sum(node.get("estimated_duration", 0) for node in enriched_nodes),
+                    "difficulty_level": _calculate_overall_difficulty(enriched_nodes),
+                    "knowledge_graph": knowledge_graph,
+                }
+            except TimeoutError:
+                state["learning_path"] = _build_fallback_learning_path(
+                    target_knowledge_points=target_knowledge_points,
+                    course_code=course_code,
+                )
+                state["learning_path"]["fallback_reason"] = "llm_timeout"
+
+            trace = state.get("execution_trace", [])
+            trace.append(f"path_planner:generated_{len(state['learning_path'].get('nodes', []))}_nodes")
+            state["execution_trace"] = trace
+            logger.info(
+                "path planning completed",
+                user_id=user_id,
+                node_count=len(state["learning_path"].get("nodes", [])),
+                fallback_reason=state["learning_path"].get("fallback_reason"),
+            )
+    except Exception as exc:
+        logger.error("path planning failed", error=str(exc), user_id=user_id)
+        state["learning_path"] = {
+            "error": f"path planning failed: {str(exc)}",
+            "nodes": [],
+        }
+
+    return state

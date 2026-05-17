@@ -1,14 +1,22 @@
 from collections import Counter
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.db.repositories.admin_repository import ReviewTaskRepository
 from app.db.session import async_session_factory
 from app.schemas.admin import ReviewTaskSummaryResponse
+from app.services.admin_demo_data import AdminDemoStore, should_use_admin_demo_data
 
 
 class ReviewTaskSummaryService:
     async def get_summary(self) -> ReviewTaskSummaryResponse:
-        async with async_session_factory() as session:
-            items, total = await ReviewTaskRepository().list_tasks(session)
+        try:
+            async with async_session_factory() as session:
+                items, total = await ReviewTaskRepository().list_tasks(session)
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.get_review_summary()
+            raise
 
         by_status = Counter(item.status for item in items)
         by_priority = Counter(item.priority for item in items)

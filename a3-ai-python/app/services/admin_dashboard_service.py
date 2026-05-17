@@ -1,3 +1,5 @@
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.db.repositories.admin_repository import (
     AdminUserOverviewRepository,
     AgentRuntimeRepository,
@@ -6,16 +8,22 @@ from app.db.repositories.admin_repository import (
 )
 from app.db.session import async_session_factory
 from app.schemas.admin import AdminDashboardSummaryResponse
+from app.services.admin_demo_data import AdminDemoStore, should_use_admin_demo_data
 from app.services.admin_service import AdminService
 
 
 class AdminDashboardService:
     async def get_summary(self) -> AdminDashboardSummaryResponse:
-        async with async_session_factory() as session:
-            overview_payload = await AdminUserOverviewRepository().list_user_overview(session)
-            review_items, _ = await ReviewTaskRepository().list_tasks(session, status="pending")
-            configs = await SystemConfigRepository().list_configs(session)
-            runtime_logs, _ = await AgentRuntimeRepository().list_logs(session)
+        try:
+            async with async_session_factory() as session:
+                overview_payload = await AdminUserOverviewRepository().list_user_overview(session)
+                review_items, _ = await ReviewTaskRepository().list_tasks(session, status="pending")
+                configs = await SystemConfigRepository().list_configs(session)
+                runtime_logs, _ = await AgentRuntimeRepository().list_logs(session)
+        except (SQLAlchemyError, OSError) as exc:
+            if should_use_admin_demo_data(exc):
+                return AdminDemoStore.get_dashboard_summary()
+            raise
 
         admin_service = AdminService()
         user_items = admin_service._build_admin_user_overview_items(overview_payload)

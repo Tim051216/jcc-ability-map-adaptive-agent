@@ -1,9 +1,10 @@
-"""
-题目生成智能体
-负责根据知识点和难度层级生成高质量的测评题目
-支持基础/进阶/拔高三层题目生成,并进行质量控制和难度评估
-"""
+"""Question generation agent."""
+
+from __future__ import annotations
+
+import asyncio
 import json
+import re
 from typing import Any
 
 from app.agents.state import LearningAgentState
@@ -11,10 +12,154 @@ from app.core.logging import logger
 from app.integrations.llm.client import get_llm_client
 
 
-class QuestionGeneratorAgent:
-    """题目生成智能体"""
+QUESTION_GENERATION_TIMEOUT_SECONDS = 18
 
-    def __init__(self):
+
+def _sanitize_text(text: str) -> str:
+    """Remove characters that frequently break parsing or console encoding."""
+    if not text:
+        return ""
+
+    sanitized_chars: list[str] = []
+    for char in text:
+        code = ord(char)
+        if char in "\n\r\t":
+            sanitized_chars.append(char)
+            continue
+        if code < 32:
+            continue
+        if 0xE000 <= code <= 0xF8FF:
+            continue
+        sanitized_chars.append(char)
+    return "".join(sanitized_chars)
+
+
+def _extract_json_array(text: str) -> str:
+    if "```json" in text:
+        return text.split("```json", 1)[1].split("```", 1)[0].strip()
+    if "```" in text:
+        fenced = text.split("```", 1)[1]
+        return fenced.split("```", 1)[0].strip()
+
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1 or end < start:
+        return ""
+    return text[start : end + 1]
+
+
+def _strip_json_comments(text: str) -> str:
+    return re.sub(r"//.*?$", "", text, flags=re.MULTILINE)
+
+
+def _normalize_options(question_type: int, options: Any) -> list[dict[str, str]]:
+    if question_type == 3 and not options:
+        return [{"key": "A", "value": "正确"}, {"key": "B", "value": "错误"}]
+
+    normalized: list[dict[str, str]] = []
+    if isinstance(options, list):
+        for index, option in enumerate(options):
+            key = chr(ord("A") + index)
+            value = ""
+            if isinstance(option, dict):
+                key = str(option.get("key") or key)
+                value = str(option.get("value") or "")
+            else:
+                value = str(option)
+            if value:
+                normalized.append({"key": key, "value": value})
+    return normalized
+
+
+def _build_fallback_question(
+    *,
+    knowledge_point: str,
+    difficulty_level: int,
+    question_type: int,
+    index: int,
+) -> dict[str, Any]:
+    if question_type == 1:
+        options = [
+            {"key": "A", "value": f"{knowledge_point}的核心概念"},
+            {"key": "B", "value": f"{knowledge_point}的无关概念"},
+            {"key": "C", "value": f"{knowledge_point}的错误示例"},
+            {"key": "D", "value": f"{knowledge_point}的边缘现象"},
+        ]
+        correct_answer = "A"
+    elif question_type == 2:
+        options = [
+            {"key": "A", "value": f"{knowledge_point}的定义"},
+            {"key": "B", "value": f"{knowledge_point}的应用场景"},
+            {"key": "C", "value": f"{knowledge_point}的常见误区"},
+            {"key": "D", "value": f"{knowledge_point}的实现方式"},
+        ]
+        correct_answer = "A,B,D"
+    elif question_type == 3:
+        options = [{"key": "A", "value": "正确"}, {"key": "B", "value": "错误"}]
+        correct_answer = "A"
+    else:
+        options = []
+        correct_answer = knowledge_point
+
+    content_prefix = {
+        1: "下列关于",
+        2: "关于",
+        3: "判断正误：",
+        4: "请填空：",
+        5: "请简述",
+        6: "请编写代码说明",
+    }.get(question_type, "请说明")
+
+    return {
+        "question_content": f"{content_prefix}{knowledge_point}的第{index}个基础问题。",
+        "question_options": options,
+        "correct_answer": correct_answer,
+        "answer_analysis": f"这道题围绕{knowledge_point}的核心概念设计，用于覆盖基础掌握情况。",
+        "knowledge_point": knowledge_point,
+        "difficulty_reasoning": f"该题按照难度级别{difficulty_level}生成。",
+        "question_type": question_type,
+        "difficulty_level": difficulty_level,
+        "quality_score": 0.6,
+    }
+
+
+def _is_question_relevant(question: dict[str, Any], knowledge_point: str) -> bool:
+    expected = knowledge_point.strip().lower()
+    if not expected:
+        return True
+
+    haystack = " ".join(
+        [
+            str(question.get("question_content", "")),
+            str(question.get("answer_analysis", "")),
+            str(question.get("difficulty_reasoning", "")),
+        ]
+    ).lower()
+    return expected in haystack
+
+
+def _distribute_question_counts(knowledge_points: list[str], total_count: int) -> list[tuple[str, int]]:
+    points = [point for point in knowledge_points if point]
+    if not points:
+        return []
+
+    requested = max(total_count, 1)
+    selected_points = points[:requested]
+    base = requested // len(selected_points)
+    remainder = requested % len(selected_points)
+
+    distribution: list[tuple[str, int]] = []
+    for index, point in enumerate(selected_points):
+        count = base + (1 if index < remainder else 0)
+        if count > 0:
+            distribution.append((point, count))
+    return distribution
+
+
+class QuestionGeneratorAgent:
+    """Generate evaluation questions with parsing and fallback safeguards."""
+
+    def __init__(self) -> None:
         self.llm_client = get_llm_client()
 
     async def generate_questions(
@@ -25,20 +170,7 @@ class QuestionGeneratorAgent:
         count: int = 1,
         course_context: str = "",
     ) -> list[dict[str, Any]]:
-        """
-        生成题目
-        
-        Args:
-            knowledge_point: 知识点
-            difficulty_level: 难度层级 (1-基础, 2-进阶, 3-拔高)
-            question_type: 题目类型 (1-单选, 2-多选, 3-判断, 4-填空, 5-简答, 6-编程)
-            count: 生成题目数量
-            course_context: 课程上下文信息
-            
-        Returns:
-            生成的题目列表
-        """
-        difficulty_map = {1: "基础", 2: "进阶", 3: "拔高"}
+        difficulty_map = {1: "基础", 2: "进阶", 3: "提高"}
         type_map = {
             1: "单选题",
             2: "多选题",
@@ -48,40 +180,76 @@ class QuestionGeneratorAgent:
             6: "编程题",
         }
 
-        difficulty_desc = difficulty_map.get(difficulty_level, "基础")
-        type_desc = type_map.get(question_type, "单选题")
-
         prompt = self._build_generation_prompt(
             knowledge_point=knowledge_point,
-            difficulty_desc=difficulty_desc,
-            type_desc=type_desc,
+            difficulty_desc=difficulty_map.get(difficulty_level, "基础"),
+            type_desc=type_map.get(question_type, "单选题"),
             count=count,
             course_context=course_context,
         )
 
         try:
-            response = await self.llm_client.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=2000,
+            response = await asyncio.wait_for(
+                self.llm_client.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=2000,
+                ),
+                timeout=QUESTION_GENERATION_TIMEOUT_SECONDS,
             )
+            raw_content = getattr(response, "content", "") or response.get("content", "")
+            questions = self._parse_questions(raw_content, question_type, difficulty_level)
+            questions = [question for question in questions if _is_question_relevant(question, knowledge_point)]
+            if not questions:
+                logger.warning(
+                    "question generation returned no relevant questions; using fallback",
+                    knowledge_point=knowledge_point,
+                    question_type=question_type,
+                    difficulty_level=difficulty_level,
+                    requested_count=count,
+                )
+                questions = [
+                    _build_fallback_question(
+                        knowledge_point=knowledge_point,
+                        difficulty_level=difficulty_level,
+                        question_type=question_type,
+                        index=index + 1,
+                    )
+                    for index in range(max(count, 1))
+                ]
+            else:
+                for question in questions:
+                    question["knowledge_point"] = knowledge_point
 
-            content = response.get("content", "")
-            questions = self._parse_questions(content, question_type, difficulty_level)
-
-            # 质量评估
             for question in questions:
                 question["quality_score"] = await self._assess_quality(question)
 
             logger.info(
-                f"生成 {len(questions)} 道题目: 知识点={knowledge_point}, 难度={difficulty_desc}, 类型={type_desc}"
+                "question generation completed",
+                count=len(questions),
+                knowledge_point=knowledge_point,
+                difficulty_level=difficulty_level,
+                question_type=question_type,
             )
-
             return questions
-
-        except Exception as e:
-            logger.error(f"题目生成失败: {e}")
-            return []
+        except Exception as exc:
+            logger.error(
+                "question generation failed; using fallback",
+                error=str(exc),
+                knowledge_point=knowledge_point,
+                question_type=question_type,
+                difficulty_level=difficulty_level,
+                timeout_seconds=QUESTION_GENERATION_TIMEOUT_SECONDS,
+            )
+            return [
+                _build_fallback_question(
+                    knowledge_point=knowledge_point,
+                    difficulty_level=difficulty_level,
+                    question_type=question_type,
+                    index=index + 1,
+                )
+                for index in range(max(count, 1))
+            ]
 
     def _build_generation_prompt(
         self,
@@ -91,150 +259,103 @@ class QuestionGeneratorAgent:
         count: int,
         course_context: str,
     ) -> str:
-        """构建题目生成提示词"""
-
-        difficulty_guidelines = {
-            "基础": """
-- 考查基本概念和定义
-- 题目直接明确,无需复杂推理
-- 答案在教材中可以直接找到
-- 适合初学者理解和掌握
-            """,
-            "进阶": """
-- 考查知识点的应用和理解
-- 需要一定的分析和推理能力
-- 可能涉及多个知识点的综合
-- 适合有一定基础的学习者
-            """,
-            "拔高": """
-- 考查深层次理解和创新应用
-- 需要较强的综合分析能力
-- 可能涉及实际问题的解决
-- 适合进阶学习者挑战
-            """,
-        }
-
-        type_guidelines = {
-            "单选题": "提供4个选项(A/B/C/D),只有一个正确答案",
-            "多选题": "提供4-5个选项,有2个或以上正确答案",
-            "判断题": "提供一个陈述,判断正确或错误",
-            "填空题": "在题目中留出空白,要求填入正确答案",
-            "简答题": "要求用简短文字回答问题,考查理解和表达能力",
-            "编程题": "要求编写代码解决问题,考查编程能力",
-        }
-
-        context_section = f"\n\n课程背景:\n{course_context}" if course_context else ""
-
-        prompt = f"""你是一位专业的教育测评专家,请根据以下要求生成高质量的测评题目。
+        context_section = f"\n课程背景:\n{course_context}" if course_context else ""
+        return f"""
+你是一位专业的教育测评专家，请根据以下要求生成高质量题目。
 
 知识点: {knowledge_point}
 难度层级: {difficulty_desc}
 题目类型: {type_desc}
-生成数量: {count} 道{context_section}
+生成数量: {count}{context_section}
 
-难度要求:
-{difficulty_guidelines.get(difficulty_desc, "")}
-
-题型要求:
-{type_guidelines.get(type_desc, "")}
-
-请生成 {count} 道符合要求的题目,并以 JSON 格式返回,格式如下:
-
-```json
+请直接返回 JSON 数组，不要输出额外说明。格式如下：
 [
   {{
     "question_content": "题目内容",
-    "question_options": [{{"key": "A", "value": "选项A"}}, {{"key": "B", "value": "选项B"}}, ...],  // 仅选择题和判断题需要
+    "question_options": [{{"key": "A", "value": "选项A"}}],
     "correct_answer": "正确答案",
-    "answer_analysis": "答案解析,说明为什么这是正确答案",
+    "answer_analysis": "答案解析",
     "knowledge_point": "{knowledge_point}",
     "difficulty_reasoning": "难度设计说明"
   }}
 ]
-```
-
-要求:
-1. 题目内容清晰准确,无歧义
-2. 选项设计合理,干扰项有一定迷惑性
-3. 答案解析详细,帮助学习者理解
-4. 严格符合指定的难度层级
-5. 题目具有教育价值和实用性
-"""
-
-        return prompt
+""".strip()
 
     def _parse_questions(
-        self, content: str, question_type: int, difficulty_level: int
+        self,
+        content: str,
+        question_type: int,
+        difficulty_level: int,
     ) -> list[dict[str, Any]]:
-        """解析 LLM 返回的题目内容"""
+        sanitized_content = _sanitize_text(content)
+        json_str = _extract_json_array(sanitized_content)
+        if not json_str:
+            logger.warning("question parsing found no json array")
+            return []
+
         try:
-            # 尝试提取 JSON 内容
-            start_idx = content.find("[")
-            end_idx = content.rfind("]") + 1
-
-            if start_idx == -1 or end_idx == 0:
-                logger.warning("未找到 JSON 格式的题目数据")
-                return []
-
-            json_str = content[start_idx:end_idx]
-            questions = json.loads(json_str)
-
-            # 补充字段
-            for question in questions:
-                question["question_type"] = question_type
-                question["difficulty_level"] = difficulty_level
-
-            return questions
-
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON 解析失败: {e}")
+            parsed = json.loads(_strip_json_comments(json_str))
+        except json.JSONDecodeError as exc:
+            logger.warning("question json parse failed", error=str(exc))
             return []
-        except Exception as e:
-            logger.error(f"题目解析失败: {e}")
+
+        if not isinstance(parsed, list):
+            logger.warning("question payload is not a list")
             return []
+
+        normalized_questions: list[dict[str, Any]] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+
+            knowledge_point = str(item.get("knowledge_point") or "").strip()
+            question = {
+                "question_content": str(item.get("question_content") or "").strip(),
+                "question_options": _normalize_options(question_type, item.get("question_options", [])),
+                "correct_answer": str(item.get("correct_answer") or "").strip(),
+                "answer_analysis": str(item.get("answer_analysis") or "").strip(),
+                "knowledge_point": knowledge_point,
+                "difficulty_reasoning": str(item.get("difficulty_reasoning") or "").strip(),
+                "question_type": question_type,
+                "difficulty_level": difficulty_level,
+            }
+
+            if not question["question_content"]:
+                continue
+            if question_type in {1, 2, 3} and not question["question_options"]:
+                continue
+            if not question["correct_answer"]:
+                continue
+
+            normalized_questions.append(question)
+
+        return normalized_questions
 
     async def _assess_quality(self, question: dict[str, Any]) -> float:
-        """
-        评估题目质量
-        
-        评估维度:
-        1. 题目清晰度 (0-0.3)
-        2. 选项合理性 (0-0.3)
-        3. 答案准确性 (0-0.2)
-        4. 解析完整性 (0-0.2)
-        
-        Returns:
-            质量分数 (0-1)
-        """
         score = 0.0
 
-        # 1. 题目清晰度
         content = question.get("question_content", "")
-        if len(content) >= 10 and len(content) <= 500:
+        if 10 <= len(content) <= 500:
             score += 0.3
-        elif len(content) > 0:
+        elif content:
             score += 0.15
 
-        # 2. 选项合理性 (仅适用于选择题)
         options = question.get("question_options", [])
-        if question.get("question_type") in [1, 2, 3]:  # 选择题和判断题
+        if question.get("question_type") in [1, 2, 3]:
             if len(options) >= 2:
                 score += 0.3
-            elif len(options) > 0:
+            elif options:
                 score += 0.15
         else:
-            score += 0.3  # 非选择题不考核此项
+            score += 0.3
 
-        # 3. 答案准确性
-        answer = question.get("correct_answer", "")
-        if len(answer) > 0:
+        if question.get("correct_answer"):
             score += 0.2
 
-        # 4. 解析完整性
         analysis = question.get("answer_analysis", "")
         if len(analysis) >= 20:
             score += 0.2
-        elif len(analysis) > 0:
+        elif analysis:
             score += 0.1
 
         return round(score, 2)
@@ -244,66 +365,53 @@ class QuestionGeneratorAgent:
         knowledge_points: list[str],
         course_context: str = "",
     ) -> dict[str, list[dict[str, Any]]]:
-        """
-        生成分层题目 (基础/进阶/拔高)
-        
-        Args:
-            knowledge_points: 知识点列表
-            course_context: 课程上下文
-            
-        Returns:
-            分层题目字典 {difficulty_level: [questions]}
-        """
         layered_questions = {"basic": [], "intermediate": [], "advanced": []}
 
-        for kp in knowledge_points:
-            # 基础层 - 单选题
-            basic_questions = await self.generate_questions(
-                knowledge_point=kp,
-                difficulty_level=1,
-                question_type=1,
-                count=2,
-                course_context=course_context,
+        for knowledge_point in knowledge_points:
+            layered_questions["basic"].extend(
+                await self.generate_questions(
+                    knowledge_point=knowledge_point,
+                    difficulty_level=1,
+                    question_type=1,
+                    count=2,
+                    course_context=course_context,
+                )
             )
-            layered_questions["basic"].extend(basic_questions)
-
-            # 进阶层 - 多选题或填空题
-            intermediate_questions = await self.generate_questions(
-                knowledge_point=kp,
-                difficulty_level=2,
-                question_type=2,
-                count=1,
-                course_context=course_context,
+            layered_questions["intermediate"].extend(
+                await self.generate_questions(
+                    knowledge_point=knowledge_point,
+                    difficulty_level=2,
+                    question_type=2,
+                    count=1,
+                    course_context=course_context,
+                )
             )
-            layered_questions["intermediate"].extend(intermediate_questions)
-
-            # 拔高层 - 简答题
-            advanced_questions = await self.generate_questions(
-                knowledge_point=kp,
-                difficulty_level=3,
-                question_type=5,
-                count=1,
-                course_context=course_context,
+            layered_questions["advanced"].extend(
+                await self.generate_questions(
+                    knowledge_point=knowledge_point,
+                    difficulty_level=3,
+                    question_type=5,
+                    count=1,
+                    course_context=course_context,
+                )
             )
-            layered_questions["advanced"].extend(advanced_questions)
 
         logger.info(
-            f"生成分层题目: 基础 {len(layered_questions['basic'])} 道, "
-            f"进阶 {len(layered_questions['intermediate'])} 道, "
-            f"拔高 {len(layered_questions['advanced'])} 道"
+            "layered question generation completed",
+            basic=len(layered_questions["basic"]),
+            intermediate=len(layered_questions["intermediate"]),
+            advanced=len(layered_questions["advanced"]),
         )
-
         return layered_questions
 
 
 async def question_generator_node(state: LearningAgentState) -> LearningAgentState:
-    """
-    题目生成节点
-    从状态中读取题目生成需求,调用智能体生成题目
-    """
-    agent = QuestionGeneratorAgent()
+    """Runtime-logged node wrapper for monitoring."""
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
 
-    # 从状态中获取参数
+    agent = QuestionGeneratorAgent()
+    runtime_logger = AgentRuntimeLoggingService()
+
     knowledge_points = state.get("knowledge_points", [])
     difficulty_level = state.get("difficulty_level", 1)
     question_type = state.get("question_type", 1)
@@ -312,40 +420,56 @@ async def question_generator_node(state: LearningAgentState) -> LearningAgentSta
     generate_layered = state.get("generate_layered", False)
 
     try:
-        if generate_layered:
-            # 生成分层题目
-            layered_questions = await agent.generate_layered_questions(
-                knowledge_points=knowledge_points,
-                course_context=course_context,
-            )
-            state["layered_questions"] = layered_questions
-            state["generated_questions"] = (
-                layered_questions["basic"]
-                + layered_questions["intermediate"]
-                + layered_questions["advanced"]
-            )
-        else:
-            # 生成指定难度的题目
-            questions = []
-            for kp in knowledge_points:
-                kp_questions = await agent.generate_questions(
-                    knowledge_point=kp,
-                    difficulty_level=difficulty_level,
-                    question_type=question_type,
-                    count=question_count // len(knowledge_points) or 1,
+        async with runtime_logger.track(
+            agent_name="question_generator_agent",
+            start_message="question_generator_agent started",
+            success_message="question_generator_agent completed",
+            start_payload={
+                "knowledge_points": knowledge_points,
+                "difficulty_level": difficulty_level,
+                "question_type": question_type,
+                "question_count": question_count,
+                "generate_layered": generate_layered,
+            },
+            success_payload_factory=lambda: {
+                "generated_count": len(state.get("generated_questions", [])),
+                "trace_size": len(state.get("execution_trace", [])),
+            },
+            error_message="question_generator_agent failed",
+        ):
+            if generate_layered:
+                layered_questions = await agent.generate_layered_questions(
+                    knowledge_points=knowledge_points,
                     course_context=course_context,
                 )
-                questions.extend(kp_questions)
+                state["layered_questions"] = layered_questions
+                state["generated_questions"] = (
+                    layered_questions["basic"]
+                    + layered_questions["intermediate"]
+                    + layered_questions["advanced"]
+                )
+            else:
+                tasks = [
+                    agent.generate_questions(
+                        knowledge_point=knowledge_point,
+                        difficulty_level=difficulty_level,
+                        question_type=question_type,
+                        count=assigned_count,
+                        course_context=course_context,
+                    )
+                    for knowledge_point, assigned_count in _distribute_question_counts(knowledge_points, question_count)
+                ]
+                question_batches = await asyncio.gather(*tasks) if tasks else []
+                questions: list[dict[str, Any]] = []
+                for batch in question_batches:
+                    questions.extend(batch)
+                state["generated_questions"] = questions
 
-            state["generated_questions"] = questions
-
-        # 更新执行轨迹
-        trace = state.get("execution_trace", [])
-        trace.append("question_generator")
-        state["execution_trace"] = trace
-
-    except Exception as e:
-        logger.error(f"题目生成节点执行失败: {e}")
-        state["error"] = str(e)
+            trace = state.get("execution_trace", [])
+            trace.append("question_generator")
+            state["execution_trace"] = trace
+    except Exception as exc:
+        logger.error("question generator node failed", error=str(exc))
+        state["error"] = str(exc)
 
     return state

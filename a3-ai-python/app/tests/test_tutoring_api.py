@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user_id, get_db_session
 from app.api.v1 import tutoring
 from app.schemas.tutoring import TutoringHistoryResponse
+from app.services.tutoring_task_service import TutoringTaskService
 from app.services.tutoring_service import TutoringService
 
 app = FastAPI()
@@ -235,6 +236,97 @@ def test_submit_question_returns_ids(monkeypatch: object) -> None:
     assert body["session_id"] == 8001
 
 
+def test_submit_tutoring_task_success(monkeypatch: object) -> None:
+    async def fake_submit_task(self, user_id: int, request: object) -> object:
+        assert user_id == 1001
+        assert request.question_text == "请解释过拟合"
+        return {
+            "task_id": 9001,
+            "status": "pending",
+            "question_id": 123,
+            "session_id": 456,
+            "poll_interval_ms": 2000,
+        }
+
+    monkeypatch.setattr(TutoringTaskService, "submit_task", fake_submit_task)
+
+    response = client.post(
+        "/api/v1/tutoring/tasks",
+        json={
+            "question_text": "请解释过拟合",
+            "question_images": [],
+            "course_id": 101,
+            "section_id": None,
+            "session_id": None,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["task_id"] == 9001
+
+
+def test_get_tutoring_task_status_success(monkeypatch: object) -> None:
+    async def fake_get_status(self, task_id: int) -> object:
+        assert task_id == 9001
+        return {
+            "task_id": 9001,
+            "status": "completed",
+            "question_id": 123,
+            "session_id": 456,
+            "result": {
+                "question_id": 123,
+                "session_id": 456,
+                "answer_id": 789,
+                "answer_text": "训练集表现远好于验证集时，常见于过拟合。",
+                "diagrams": [],
+                "videos": [],
+                "reference_sources": [],
+                "confidence_score": 88.5,
+                "generation_time": 1200,
+                "should_escalate": False,
+                "question_type": "概念理解",
+                "knowledge_points": ["过拟合"],
+            },
+            "error_message": None,
+        }
+
+    monkeypatch.setattr(TutoringTaskService, "get_task_status", fake_get_status)
+
+    response = client.get("/api/v1/tutoring/tasks/9001")
+    assert response.status_code == 200
+    assert response.json()["result"]["answer_id"] == 789
+
+
+def test_list_tutoring_tasks_success(monkeypatch: object) -> None:
+    async def fake_list_tasks(self, *, user_id: int | None = None, course_id: int | None = None, limit: int = 10) -> object:
+        assert user_id == 1001
+        assert course_id == 101
+        assert limit == 5
+        return {
+            "items": [
+                {
+                    "task_id": 9001,
+                    "user_id": 1001,
+                    "question_id": 123,
+                    "session_id": 456,
+                    "course_id": 101,
+                    "question_text": "请解释过拟合",
+                    "status": "completed",
+                    "answer_text": "训练集表现远好于验证集时，常见于过拟合。",
+                    "created_at": "2026-05-01T00:00:00",
+                    "updated_at": "2026-05-01T00:01:00",
+                }
+            ],
+            "total": 1,
+        }
+
+    monkeypatch.setattr(TutoringTaskService, "list_tasks", fake_list_tasks)
+
+    response = client.get("/api/v1/tutoring/tasks?course_id=101&limit=5")
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
 def test_get_answer_completed_includes_should_escalate(monkeypatch: object) -> None:
     class Q:
         user_id = 1001
@@ -358,6 +450,158 @@ def test_escalate(monkeypatch: object) -> None:
     body = response.json()
     assert body["status"] == "success"
     assert body["escalation_id"] == 7001
+
+
+def test_list_escalations(monkeypatch: object) -> None:
+    captured: dict = {}
+
+    async def fake_list(self, user_id: int, **kwargs: object) -> dict:
+        captured["user_id"] = user_id
+        captured.update(kwargs)
+        return {"total": 1, "page": 1, "page_size": 10, "items": []}
+
+    monkeypatch.setattr(TutoringService, "list_escalations", fake_list)
+
+    response = client.get("/api/v1/tutoring/escalations?course_id=9&escalation_status=1&assigned_expert_id=3001&page=1&page_size=10")
+    assert response.status_code == 200
+    assert captured["user_id"] == 1001
+    assert captured["course_id"] == 9
+    assert captured["escalation_status"] == 1
+    assert captured["assigned_expert_id"] == 3001
+
+
+def test_get_escalation_detail(monkeypatch: object) -> None:
+    class R:
+        id = 88
+        question_id = 1
+        escalation_reason = 3
+        session_id = 2
+        user_id = 1001
+        ai_confidence_score = None
+        escalation_status = 1
+        assigned_expert_id = 3001
+        assign_time = None
+        expert_answer_id = None
+        complete_time = None
+        response_time = None
+        expert_notes = None
+        feedback_to_ai = False
+        create_time = "2026-05-01T00:00:00"
+        update_time = "2026-05-01T00:00:00"
+        question_text = "如何理解过拟合"
+        question_images = ["https://example.com/q1.png"]
+        question_type = "概念理解"
+        knowledge_points = ["过拟合"]
+        latest_answer_id = 501
+        latest_answer_text = "可以从训练集和验证集表现差异判断。"
+        latest_answer_source = 0
+
+    async def fake_detail(self, escalation_id: int, user_id: int | None = None):
+        assert escalation_id == 88
+        assert user_id == 1001
+        return R()
+
+    monkeypatch.setattr(TutoringService, "get_escalation_detail", fake_detail)
+
+    response = client.get("/api/v1/tutoring/escalations/88")
+    assert response.status_code == 200
+    assert response.json()["id"] == 88
+    assert response.json()["question_text"] == "如何理解过拟合"
+
+
+def test_assign_escalation(monkeypatch: object) -> None:
+    async def fake_assign(self, request: object) -> dict:
+        assert request.escalation_id == 88
+        assert request.expert_id == 3001
+        return {"status": "success", "escalation_id": 88, "assigned_expert_id": 3001}
+
+    monkeypatch.setattr(TutoringService, "assign_escalation", fake_assign)
+
+    response = client.post(
+        "/api/v1/tutoring/escalations/assign",
+        json={"escalation_id": 88, "expert_id": 3001, "notes": "handle asap"},
+    )
+    assert response.status_code == 200
+    assert response.json()["assigned_expert_id"] == 3001
+
+
+def test_submit_expert_answer(monkeypatch: object) -> None:
+    async def fake_submit(self, request: object) -> dict:
+        assert request.escalation_id == 88
+        assert request.expert_id == 3001
+        assert request.answer_text == "人工补充说明"
+        return {"status": "success", "answer_id": 9001, "escalation_id": 88}
+
+    monkeypatch.setattr(TutoringService, "submit_expert_answer", fake_submit)
+
+    response = client.post(
+        "/api/v1/tutoring/escalations/answer",
+        json={
+            "escalation_id": 88,
+            "expert_id": 3001,
+            "answer_text": "人工补充说明",
+            "expert_notes": "已处理",
+            "feedback_to_ai": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["answer_id"] == 9001
+
+
+def test_admin_list_escalations(monkeypatch: object) -> None:
+    captured: dict = {}
+
+    async def fake_list(self, user_id: int | None = None, **kwargs: object) -> dict:
+        captured["user_id"] = user_id
+        captured.update(kwargs)
+        return {"total": 1, "page": 1, "page_size": 20, "items": []}
+
+    monkeypatch.setattr(TutoringService, "list_escalations", fake_list)
+
+    response = client.get("/api/v1/tutoring/admin/escalations?course_id=5&escalation_status=0")
+    assert response.status_code == 200
+    assert captured["user_id"] is None
+    assert captured["course_id"] == 5
+    assert captured["escalation_status"] == 0
+
+
+def test_admin_get_escalation_detail(monkeypatch: object) -> None:
+    class R:
+        id = 99
+        question_id = 2
+        escalation_reason = 1
+        session_id = 8
+        user_id = 1002
+        ai_confidence_score = 55
+        escalation_status = 0
+        assigned_expert_id = None
+        assign_time = None
+        expert_answer_id = None
+        complete_time = None
+        response_time = None
+        expert_notes = None
+        feedback_to_ai = False
+        create_time = "2026-05-01T00:00:00"
+        update_time = "2026-05-01T00:00:00"
+        question_text = "请帮我看这道题"
+        question_images = []
+        question_type = "解题方法"
+        knowledge_points = ["回归分析"]
+        latest_answer_id = 777
+        latest_answer_text = "先分析题干，再拆步骤。"
+        latest_answer_source = 1
+
+    async def fake_detail(self, escalation_id: int, user_id: int | None = None):
+        assert escalation_id == 99
+        assert user_id is None
+        return R()
+
+    monkeypatch.setattr(TutoringService, "get_escalation_detail", fake_detail)
+
+    response = client.get("/api/v1/tutoring/admin/escalations/99")
+    assert response.status_code == 200
+    assert response.json()["id"] == 99
+    assert response.json()["latest_answer_id"] == 777
 
 
 def test_get_answer_404_when_question_belongs_to_other_user(monkeypatch: object) -> None:

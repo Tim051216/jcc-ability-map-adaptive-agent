@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class AgentRuntimeLog(Base, TimestampMixin):
-    __tablename__ = "ai_agent_runtime_log"
+    __tablename__ = "agent_runtime_log"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     agent_name: Mapped[str] = mapped_column(String(128), index=True)

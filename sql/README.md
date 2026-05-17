@@ -13,33 +13,33 @@
 
 `scripts\init-mysql.ps1` 当前会导入：
 
-- `tj_auth.sql`
-- `tj_course.sql`
-- `tj_learning.sql`
-- `tj_media.sql`
-- `tj_message.sql`
-- `tj_pay.sql`
-- `tj_promotion.sql`
-- `tj_remark.sql`
-- `tj_search.sql`
-- `tj_trade.sql`
-- `tj_user.sql`
-- `a3_exam.sql`
+- `auth.sql`
+- `course.sql`
+- `learning.sql`
+- `media.sql`
+- `message.sql`
+- `pay.sql`
+- `promotion.sql`
+- `remark.sql`
+- `search.sql`
+- `trade.sql`
+- `user.sql`
+- `exam.sql`
 
 对应数据库：
 
-- `tj_auth`
-- `tj_course`
-- `tj_learning`
-- `tj_media`
-- `tj_message`
-- `tj_pay`
-- `tj_promotion`
-- `tj_remark`
-- `tj_search`
-- `tj_trade`
-- `tj_user`
-- `a3_exam`
+- `auth`
+- `course`
+- `learning`
+- `media`
+- `message`
+- `pay`
+- `promotion`
+- `remark`
+- `search`
+- `trade`
+- `user`
+- `exam`
 
 ## 3. 快速初始化
 
@@ -65,17 +65,17 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1 -DbHost 127.0.
 
 与学习路径/测评演示相关的补充文件主要包括：
 
-- `tj_learning_evaluation_demo.sql`
-- `tj_learning_evaluation_demo_ascii.sql`
-- `tj_learning_evaluation_init.sql`
-- `tj_learning_path.sql`
-- `tj_learning_profile.sql`
-- `tj_learning_resource.sql`
-- `tj_tutoring.sql`
+- `evaluation_demo.sql`
+- `evaluation_demo_ascii.sql`
+- `evaluation_init.sql`
+- `learning_path.sql`
+- `learning_profile.sql`
+- `learning_resource.sql`
+- `tutoring.sql`
 
 其中：
 
-- `scripts\start-learning-evaluation-local.ps1` 默认会导入 `tj_learning_evaluation_demo_ascii.sql`
+- `scripts\start-learning-evaluation-local.ps1` 默认会导入 `evaluation_demo_ascii.sql`
 - 该脚本适合用于补充测评、报告、错题演示数据
 
 ## 5. 辅助校验文件
@@ -93,5 +93,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1 -DbHost 127.0.
 ## 6. 当前注意事项
 
 - `scripts\init-mysql.ps1` 依赖本机可调用 `mysql` 命令
-- 当前仓库没有 `tj_data` 初始化脚本
-- `tj_learning.sql` 已整理为可直接导入版，不再依赖上游课件零散 SQL 手工拼接
+- 当前仓库没有 `data` 初始化脚本
+- `learning.sql` 已整理为可直接导入版，不再依赖上游课件零散 SQL 手工拼接

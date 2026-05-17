@@ -8,6 +8,7 @@ from app.schemas.chat import (
     ChatResponse,
     ChatTaskStatusResponse,
     ChatTaskSubmitResponse,
+    ChatTaskHistoryResponse,
     ChatTaskSummaryResponse,
     ChatTicketCreateRequest,
     ChatTicketListResponse,
@@ -61,6 +62,18 @@ async def get_chat_task_status(
     return task_status
 
 
+@router.get("/tasks", response_model=ChatTaskHistoryResponse)
+async def list_chat_tasks(
+    user_id: int | None = None,
+    course_id: int | None = None,
+    course_code: str | None = None,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db_session),
+) -> ChatTaskHistoryResponse:
+    service = ChatTaskService(db)
+    return await service.list_tasks(user_id=user_id, course_id=course_id, course_code=course_code, limit=limit)
+
+
 @router.post("/tickets", response_model=ChatTicketResponse)
 async def create_chat_ticket(request: ChatTicketCreateRequest) -> ChatTicketResponse:
     service = ChatTicketService()
@@ -70,10 +83,12 @@ async def create_chat_ticket(request: ChatTicketCreateRequest) -> ChatTicketResp
 @router.get("/tickets", response_model=ChatTicketListResponse)
 async def list_chat_tickets(
     user_id: int | None = None,
+    course_id: int | None = None,
+    course_code: str | None = None,
     status: str | None = None,
 ) -> ChatTicketListResponse:
     service = ChatTicketService()
-    return await service.list_tickets(user_id=user_id, status=status)
+    return await service.list_tickets(user_id=user_id, course_id=course_id, course_code=course_code, status=status)
 
 
 @router.get("/tickets/summary", response_model=ChatTicketSummaryResponse)

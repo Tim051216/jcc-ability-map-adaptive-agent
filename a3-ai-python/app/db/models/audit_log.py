@@ -5,7 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class AuditLog(Base, TimestampMixin):
-    __tablename__ = "ai_audit_log"
+    __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     trace_id: Mapped[str | None] = mapped_column(String(128), nullable=True)

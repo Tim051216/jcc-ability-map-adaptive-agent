@@ -12,18 +12,18 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $sqlDir = Join-Path $projectRoot "sql"
 
 $imports = @(
-    @{ Database = "tj_auth"; File = "tj_auth.sql" },
-    @{ Database = "tj_course"; File = "tj_course.sql" },
-    @{ Database = "tj_learning"; File = "tj_learning.sql" },
-    @{ Database = "tj_media"; File = "tj_media.sql" },
-    @{ Database = "tj_message"; File = "tj_message.sql" },
-    @{ Database = "tj_pay"; File = "tj_pay.sql" },
-    @{ Database = "tj_promotion"; File = "tj_promotion.sql" },
-    @{ Database = "tj_remark"; File = "tj_remark.sql" },
-    @{ Database = "tj_search"; File = "tj_search.sql" },
-    @{ Database = "tj_trade"; File = "tj_trade.sql" },
-    @{ Database = "tj_user"; File = "tj_user.sql" },
-    @{ Database = "a3_exam"; File = "a3_exam.sql" }
+    @{ Database = "tj_auth"; File = "auth.sql" },
+    @{ Database = "tj_course"; File = "course.sql" },
+    @{ Database = "tj_learning"; File = "learning.sql" },
+    @{ Database = "tj_media"; File = "media.sql" },
+    @{ Database = "tj_message"; File = "message.sql" },
+    @{ Database = "tj_pay"; File = "pay.sql" },
+    @{ Database = "tj_promotion"; File = "promotion.sql" },
+    @{ Database = "tj_remark"; File = "remark.sql" },
+    @{ Database = "tj_search"; File = "search.sql" },
+    @{ Database = "tj_trade"; File = "trade.sql" },
+    @{ Database = "tj_user"; File = "user.sql" },
+    @{ Database = "a3_exam"; File = "exam.sql" }
 )
 
 function Invoke-Mysql {

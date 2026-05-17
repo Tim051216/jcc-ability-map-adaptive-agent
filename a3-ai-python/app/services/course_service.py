@@ -1,10 +1,19 @@
+from __future__ import annotations
+
+from fastapi import HTTPException
+
+from app.integrations.java_clients.learning_client import LearningClient
+from app.integrations.java_clients.media_client import MediaClient
 from fastapi import HTTPException
 
 from app.schemas.course import (
+    CourseSectionPlayResponse,
     CourseCardResponse,
     CourseCategoryItem,
     CourseChapterResponse,
     CourseDetailResponse,
+    LearningProgressUpdateResponse,
+    LearningProgressUpdateRequest,
     CourseSearchResponse,
     CourseSectionResponse,
     CourseTeacherResponse,
@@ -13,6 +22,8 @@ from app.schemas.course import (
 
 
 class CourseService:
+    DEFAULT_USER_ID = 1001
+
     # 先用后端静态课程目录托起学生端主链路，后续再逐步切到真实课程中心。
     COURSE_CATEGORIES = [
         {"id": 1, "name": "人工智能", "children": [{"id": 11, "name": "机器学习"}, {"id": 12, "name": "大模型应用"}]},
@@ -285,6 +296,10 @@ class CourseService:
             "publish_order": 1,
         },
     ]
+
+    def __init__(self) -> None:
+        self.learning_client = LearningClient()
+        self.media_client = MediaClient()
     RECOMMEND_BUCKETS = {
         "free": [101, 302],
         "best": [101, 102, 201, 301],
@@ -375,22 +390,71 @@ class CourseService:
         course = self._get_course_or_404(course_id)
         return [{"id": chapter["id"], "index": chapter["index"], "name": chapter["name"]} for chapter in course["chapters"]]
 
-    async def get_learning_course_detail(self, course_id: int) -> LearningCourseDetailResponse:
+    async def get_learning_course_detail(self, course_id: int, user_id: int | None = None) -> LearningCourseDetailResponse:
         course = self._get_course_or_404(course_id)
         first_section = next(
             (section for chapter in course["chapters"] for section in chapter["sections"] if section["type"] in (2, 3)),
             None,
         )
+        effective_user_id = user_id or self.DEFAULT_USER_ID
+        learning_record = await self._get_learning_record(course_id, effective_user_id)
+        latest_section_id = learning_record.latest_section_id if learning_record and learning_record.latest_section_id else first_section["id"] if first_section else None
+        lesson_id = learning_record.lesson_id if learning_record and learning_record.lesson_id else course["id"] * 100
         return LearningCourseDetailResponse(
             id=course["id"],
             course_code=course["course_code"],
             name=course["name"],
             cover_url=course["cover_url"],
             teacher_name=course["teacher_name"],
-            lesson_id=course["id"] * 100,
-            latest_section_id=first_section["id"] if first_section else None,
+            lesson_id=lesson_id,
+            latest_section_id=latest_section_id,
             moment=120,
             chapters=[self._to_course_chapter(item) for item in course["chapters"]],
+        )
+
+    async def get_section_play_info(self, course_id: int, section_id: int, user_id: int | None = None) -> CourseSectionPlayResponse:
+        course = self._get_course_or_404(course_id)
+        self._get_section_or_404(course, section_id)
+        effective_user_id = user_id or self.DEFAULT_USER_ID
+        try:
+            payload = await self.media_client.get_play_signature(section_id=section_id, user_id=effective_user_id)
+        except Exception as exc:
+            return CourseSectionPlayResponse(
+                section_id=section_id,
+                play_enabled=False,
+                message=f"播放签名暂时不可用: {exc}",
+            )
+        return CourseSectionPlayResponse(
+            section_id=section_id,
+            play_enabled=bool(payload and payload.get("signature") and payload.get("fileId")),
+            file_id=payload.get("fileId") if payload else None,
+            signature=payload.get("signature") if payload else None,
+            message=None if payload else "未获取到播放签名",
+        )
+
+    async def update_learning_progress(
+        self,
+        course_id: int,
+        payload: LearningProgressUpdateRequest,
+        *,
+        user_id: int | None = None,
+    ) -> LearningProgressUpdateResponse:
+        course = self._get_course_or_404(course_id)
+        self._get_section_or_404(course, payload.section_id)
+        effective_user_id = user_id or self.DEFAULT_USER_ID
+        learning_record = await self._get_learning_record(course_id, effective_user_id)
+        lesson_id = payload.lesson_id or (learning_record.lesson_id if learning_record and learning_record.lesson_id else None)
+        if lesson_id is None:
+            raise HTTPException(status_code=404, detail="learning lesson not found")
+        await self.learning_client.update_learning_position(
+            lesson_id=lesson_id,
+            section_id=payload.section_id,
+            user_id=effective_user_id,
+        )
+        return LearningProgressUpdateResponse(
+            lessonId=lesson_id,
+            latestSectionId=payload.section_id,
+            recorded=True,
         )
 
     def _get_course_or_404(self, course_id: int) -> dict:
@@ -398,6 +462,20 @@ class CourseService:
             if item["id"] == course_id:
                 return item
         raise HTTPException(status_code=404, detail="course not found")
+
+    async def _get_learning_record(self, course_id: int, user_id: int):
+        try:
+            return await self.learning_client.get_learning_record_by_course(course_id, user_id=user_id)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _get_section_or_404(course: dict, section_id: int) -> dict:
+        for chapter in course["chapters"]:
+            for section in chapter["sections"]:
+                if section["id"] == section_id:
+                    return section
+        raise HTTPException(status_code=404, detail="section not found")
 
     @staticmethod
     def _to_course_card(course: dict) -> CourseCardResponse:
@@ -428,3 +506,78 @@ class CourseService:
             media_duration=total_duration,
             sections=sections,
         )
+
+
+SOFTWARE_ENGINEERING_4TH_COURSE = {
+    "id": 401,
+    "course_code": "software_engineering_4th",
+    "name": "软件工程与实践（第4版）",
+    "cover_url": "/src/assets/course-covers/course-cover-bootcamp.jpg",
+    "price": 0,
+    "sold": 2022,
+    "sections": 18,
+    "teacher": "贾铁军教学团队",
+    "teacher_name": "贾铁军教学团队",
+    "summary": "基于真实教材配套资料整理的课程，覆盖软件工程基础、需求、设计、实现、测试、项目管理与 WebApp 综合应用。",
+    "category_lv1": 2,
+    "category_lv2": 21,
+    "category_path": "后端开发/Java 微服务",
+    "valid_duration": 12,
+    "score": 50,
+    "introduce": "围绕《软件工程与实践（第4版）》真实教学资源构建，适合演示课程知识库、学习计划、资源生成与智能问答。",
+    "use_people": "适合软件工程课程学习者、课程资源整理者，以及需要做课程知识库接入与教学演示的团队成员。",
+    "detail": "内容覆盖教学大纲、进度计划、教案、PPT、实验课设参考资料与考核要求，已接入本地知识库目录 software_engineering_4th。",
+    "teachers": [
+        {
+            "id": 6,
+            "name": "贾铁军教学团队",
+            "role": "课程主讲",
+            "intro": "负责软件工程课程教学设计、教材组织、实验实践与课程资源建设。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        }
+    ],
+    "chapters": [
+        {
+            "id": 4011,
+            "index": "第一章",
+            "name": "软件工程基础",
+            "sections": [
+                {"id": 40111, "index": 1, "name": "软件危机与软件工程概念", "type": 2, "media_duration": 900, "trailer": True},
+                {"id": 40112, "index": 2, "name": "过程模型与基本原则", "type": 2, "media_duration": 960},
+            ],
+        },
+        {
+            "id": 4012,
+            "index": "第二章",
+            "name": "计划、需求与设计",
+            "sections": [
+                {"id": 40121, "index": 3, "name": "可行性分析与研发策划", "type": 2, "media_duration": 1080},
+                {"id": 40122, "index": 4, "name": "软件需求分析与总体设计", "type": 2, "media_duration": 1140},
+            ],
+        },
+        {
+            "id": 4013,
+            "index": "第三章",
+            "name": "实现、测试与管理",
+            "sections": [
+                {"id": 40131, "index": 5, "name": "面向对象开发与软件实现", "type": 2, "media_duration": 1200},
+                {"id": 40132, "index": 6, "name": "测试维护、项目管理与综合应用", "type": 2, "media_duration": 1260},
+            ],
+        },
+    ],
+    "publish_order": 6,
+}
+
+if not any(item.get("course_code") == SOFTWARE_ENGINEERING_4TH_COURSE["course_code"] for item in CourseService.COURSE_FIXTURES):
+    CourseService.COURSE_FIXTURES.insert(0, SOFTWARE_ENGINEERING_4TH_COURSE)
+
+if not any(item.get("id") == 4 for item in CourseService.COURSE_CATEGORIES):
+    CourseService.COURSE_CATEGORIES.append(
+        {"id": 4, "name": "软件工程", "children": [{"id": 41, "name": "课程实践"}]}
+    )
+
+for bucket_name in ("free", "best", "new"):
+    bucket = CourseService.RECOMMEND_BUCKETS.setdefault(bucket_name, [])
+    if SOFTWARE_ENGINEERING_4TH_COURSE["id"] not in bucket:
+        bucket.insert(0, SOFTWARE_ENGINEERING_4TH_COURSE["id"])

@@ -328,3 +328,52 @@ async def report_generator_node(state: LearningAgentState) -> LearningAgentState
         state["error"] = str(e)
 
     return state
+
+
+async def report_generator_node(state: LearningAgentState) -> LearningAgentState:
+    """Runtime-logged override for monitoring."""
+    from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
+
+    agent = ReportGeneratorAgent()
+    runtime_logger = AgentRuntimeLoggingService()
+
+    assessment_result = state.get("assessment_result", {})
+    grading_results = state.get("grading_results", [])
+    questions = state.get("questions", [])
+    user_profile = state.get("user_profile")
+
+    try:
+        async with runtime_logger.track(
+            agent_name="report_generator_agent",
+            start_message="report_generator_agent started",
+            success_message="report_generator_agent completed",
+            start_payload={
+                "question_count": len(questions),
+                "grading_count": len(grading_results),
+                "has_user_profile": bool(user_profile),
+                "assessment_keys": list(assessment_result.keys()),
+            },
+            success_payload_factory=lambda: {
+                "report_keys": list(state.get("evaluation_report", {}).keys()),
+                "trace_size": len(state.get("execution_trace", [])),
+            },
+            error_message="report_generator_agent failed",
+        ):
+            report = await agent.generate_report(
+                assessment_result=assessment_result,
+                grading_results=grading_results,
+                questions=questions,
+                user_profile=user_profile,
+            )
+
+            state["evaluation_report"] = report
+
+            trace = state.get("execution_trace", [])
+            trace.append("report_generator")
+            state["execution_trace"] = trace
+
+    except Exception as e:
+        logger.error(f"鎶ュ憡鐢熸垚鑺傜偣鎵ц澶辫触: {e}")
+        state["error"] = str(e)
+
+    return state
