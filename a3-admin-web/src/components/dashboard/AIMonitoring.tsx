@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { Activity, Boxes, ExternalLink, RefreshCcw, Search, Sparkles } from 'lucide-react';
 import {
   AgentRuntimeLog,
@@ -89,6 +89,93 @@ function getStatusBadgeClass(status: string) {
 
 function getCategoryLabel(category?: string | null) {
   return category || 'general';
+}
+
+function buildDegradedHint(log?: AgentRuntimeLog | null) {
+  if (!log || log.status.toLowerCase() !== 'degraded' || !log.payload) {
+    return '';
+  }
+
+  const fallbackCount = typeof log.payload.fallback_count === 'number' ? log.payload.fallback_count : 0;
+  const fallbackPoints = Array.isArray(log.payload.fallback_knowledge_points)
+    ? log.payload.fallback_knowledge_points.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+  const timeoutSeconds = typeof log.payload.timeout_seconds === 'number' ? log.payload.timeout_seconds : null;
+  const parts: string[] = [];
+
+  if (fallbackCount > 0) {
+    parts.push(`本次有 ${fallbackCount} 个知识点走了兜底题模板`);
+  }
+  if (fallbackPoints.length) {
+    parts.push(`涉及 ${fallbackPoints.join('、')}`);
+  }
+  if (timeoutSeconds) {
+    parts.push(`单点超时阈值 ${timeoutSeconds}s`);
+  }
+
+  return parts.join('，');
+}
+
+function formatPayloadValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return '暂无';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return '[]';
+    }
+    return value.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('、');
+  }
+  return JSON.stringify(value);
+}
+
+function getPayloadHighlights(log: AgentRuntimeLog) {
+  if (!log.payload) {
+    return [];
+  }
+
+  const highlightKeys = [
+    'fallback_count',
+    'fallback_knowledge_points',
+    'timeout_seconds',
+    'generated_count',
+    'question_count',
+    'knowledge_points',
+    'difficulty_level',
+    'question_type',
+    'error',
+  ] as const;
+
+  return highlightKeys
+    .filter((key) => key in log.payload!)
+    .map((key) => ({
+      key,
+      label:
+        key === 'fallback_count'
+          ? '兜底知识点数'
+          : key === 'fallback_knowledge_points'
+            ? '兜底知识点'
+            : key === 'timeout_seconds'
+              ? '超时阈值'
+              : key === 'generated_count'
+                ? '生成题数'
+                : key === 'question_count'
+                  ? '请求题数'
+                  : key === 'knowledge_points'
+                    ? '知识点'
+                    : key === 'difficulty_level'
+                      ? '难度级别'
+                      : key === 'question_type'
+                        ? '题型'
+                        : '错误原因',
+      value: formatPayloadValue(log.payload[key]),
+    }));
 }
 
 export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => void }) {
@@ -199,6 +286,11 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
   }, [filteredStatusItems]);
 
   const selectedItem = useMemo(() => statusItems.find((item) => item.agent_name === selectedAgent) ?? null, [selectedAgent, statusItems]);
+  const selectedLatestLog = useMemo(
+    () => (selectedItem ? logs.find((item) => item.agent_name === selectedItem.agent_name) ?? null : null),
+    [logs, selectedItem],
+  );
+  const degradedHint = useMemo(() => buildDegradedHint(selectedLatestLog), [selectedLatestLog]);
 
   const filteredLogs = useMemo(() => {
     if (!normalizedKeyword) {
@@ -371,7 +463,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="当前日志数" value={String(summary.total)} hint="导出当前筛选结果 CSV" onClick={() => openAppUrl(buildExportUrl(selectedAgent || undefined, levelFilter))} />
           <Metric label="错误日志" value={String(summary.error_count)} hint="打开当前筛选日志接口" onClick={() => openAppUrl(buildLogsUrl(selectedAgent || undefined, levelFilter))} />
-          <Metric label="异常 Agent" value={String(overview.warning + overview.danger)} hint="查看服务联调页" onClick={() => onNavigate('operations')} />
+          <Metric label="降级 Agent" value={String(summary.degraded_agent_count)} hint="优先排查成功但已降级的链路" onClick={() => onNavigate('operations')} />
           <Metric label="最近时间" value={formatDateTime(summary.latest_log_at)} hint="打开日志摘要接口" onClick={() => openAppUrl(buildSummaryUrl(levelFilter))} />
         </div>
       ) : null}
@@ -460,6 +552,14 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{selectedItem.latest_message ?? '暂无状态消息。'}</p>
               </div>
+              {selectedItem.latest_status.toLowerCase() === 'degraded' ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-800">本次运行已降级</p>
+                  <p className="mt-2 text-sm leading-6 text-amber-700">
+                    {degradedHint || '当前链路已成功返回，但最近一次运行使用了兜底或降级策略。'}
+                  </p>
+                </div>
+              ) : null}
               <div className="grid gap-3">
                 <MiniInfo label="更新时间" value={formatDateTime(selectedItem.updated_at)} />
                 <MiniInfo label="状态来源" value={selectedItem.status_source === 'runtime' ? '运行时已上报' : '仅代码注册'} />
@@ -505,6 +605,21 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                   <span>状态 {item.status}</span>
                   {item.payload ? <span>附带 payload</span> : null}
                 </div>
+                {item.payload ? (
+                  <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-white/80 p-3">
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {getPayloadHighlights(item).map((entry) => (
+                        <div key={`${item.log_id}-${entry.key}`} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                          <p className="text-[11px] font-medium text-slate-400">{entry.label}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-700">{entry.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] leading-6 text-slate-600">
+                      {JSON.stringify(item.payload, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
               </button>
             ))}
             {!filteredLogs.length ? <EmptyState label="没有匹配的日志结果。" /> : null}

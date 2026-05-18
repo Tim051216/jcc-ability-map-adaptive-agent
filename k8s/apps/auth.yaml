@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-auth-service
+  namespace: a3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: a3-auth-service
+  template:
+    metadata:
+      labels:
+        app: a3-auth-service
+    spec:
+      containers:
+        - name: auth
+          image: ghcr.io/your-org/a3-auth-service:latest
+          ports:
+            - containerPort: 8081
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MYSQL_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MYSQL_PASSWORD
+            - name: AUTH_KEYSTORE_ALIAS
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: AUTH_KEYSTORE_ALIAS
+            - name: AUTH_KEYSTORE_LOCATION
+              value: file:/app/secrets/tjxt.jks
+            - name: AUTH_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: AUTH_KEYSTORE_PASSWORD
+            - name: AUTH_KEYSTORE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: AUTH_KEYSTORE_SECRET
+          volumeMounts:
+            - name: keystore
+              mountPath: /app/secrets
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 40
+            periodSeconds: 20
+      volumes:
+        - name: keystore
+          secret:
+            secretName: a3-auth-keystore
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a3-auth-service
+  namespace: a3
+spec:
+  selector:
+    app: a3-auth-service
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081

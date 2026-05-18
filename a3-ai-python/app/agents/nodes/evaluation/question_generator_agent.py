@@ -120,6 +120,7 @@ def _build_fallback_question(
         "question_type": question_type,
         "difficulty_level": difficulty_level,
         "quality_score": 0.6,
+        "_fallback_used": True,
     }
 
 
@@ -433,8 +434,17 @@ async def question_generator_node(state: LearningAgentState) -> LearningAgentSta
             },
             success_payload_factory=lambda: {
                 "generated_count": len(state.get("generated_questions", [])),
+                "fallback_count": state.get("fallback_count", 0),
+                "fallback_knowledge_points": state.get("fallback_knowledge_points", []),
+                "timeout_seconds": QUESTION_GENERATION_TIMEOUT_SECONDS,
                 "trace_size": len(state.get("execution_trace", [])),
             },
+            success_status_factory=lambda: "degraded" if state.get("fallback_count", 0) else "ok",
+            success_message_factory=lambda: (
+                "question_generator_agent completed with fallback"
+                if state.get("fallback_count", 0)
+                else "question_generator_agent completed"
+            ),
             error_message="question_generator_agent failed",
         ):
             if generate_layered:
@@ -442,12 +452,25 @@ async def question_generator_node(state: LearningAgentState) -> LearningAgentSta
                     knowledge_points=knowledge_points,
                     course_context=course_context,
                 )
+                fallback_knowledge_points = sorted(
+                    {
+                        str(question.get("knowledge_point") or "").strip()
+                        for questions in layered_questions.values()
+                        for question in questions
+                        if question.get("_fallback_used")
+                    }
+                )
+                for questions in layered_questions.values():
+                    for question in questions:
+                        question.pop("_fallback_used", None)
                 state["layered_questions"] = layered_questions
                 state["generated_questions"] = (
                     layered_questions["basic"]
                     + layered_questions["intermediate"]
                     + layered_questions["advanced"]
                 )
+                state["fallback_knowledge_points"] = fallback_knowledge_points
+                state["fallback_count"] = len(fallback_knowledge_points)
             else:
                 tasks = [
                     agent.generate_questions(
@@ -461,9 +484,21 @@ async def question_generator_node(state: LearningAgentState) -> LearningAgentSta
                 ]
                 question_batches = await asyncio.gather(*tasks) if tasks else []
                 questions: list[dict[str, Any]] = []
+                fallback_knowledge_points: list[str] = []
                 for batch in question_batches:
+                    fallback_points = [
+                        str(question.get("knowledge_point") or "").strip()
+                        for question in batch
+                        if question.get("_fallback_used")
+                    ]
+                    if fallback_points:
+                        fallback_knowledge_points.append(fallback_points[0])
+                    for question in batch:
+                        question.pop("_fallback_used", None)
                     questions.extend(batch)
                 state["generated_questions"] = questions
+                state["fallback_knowledge_points"] = fallback_knowledge_points
+                state["fallback_count"] = len(fallback_knowledge_points)
 
             trace = state.get("execution_trace", [])
             trace.append("question_generator")

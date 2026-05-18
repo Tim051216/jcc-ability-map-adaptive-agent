@@ -702,15 +702,16 @@ function NotificationsPanel({
 
       <div className="grid gap-4">
         {filteredItems.map((item) => (
-          <NotificationCard
-            key={item.notification_id}
-            item={item}
-            busy={busyId === item.notification_id}
-            onNavigate={onNavigate}
-            onMarkRead={(notificationId) => void handleAction(notificationId, 'read')}
-            onResolve={(notificationId) => void handleAction(notificationId, 'resolve')}
-            onReopen={(notificationId) => void handleAction(notificationId, 'reopen')}
-          />
+          <div key={item.notification_id}>
+            <NotificationCard
+              item={item}
+              busy={busyId === item.notification_id}
+              onNavigate={onNavigate}
+              onMarkRead={(notificationId) => void handleAction(notificationId, 'read')}
+              onResolve={(notificationId) => void handleAction(notificationId, 'resolve')}
+              onReopen={(notificationId) => void handleAction(notificationId, 'reopen')}
+            />
+          </div>
         ))}
       </div>
 

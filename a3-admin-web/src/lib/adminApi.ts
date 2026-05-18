@@ -242,7 +242,8 @@ export interface DeploymentRecord {
   note: string | null;
   summary: string | null;
   rolled_back_from: string | null;
-  health_checks: DeploymentHealthCheck[];
+  linked_config_keys?: string[];
+  health_checks?: DeploymentHealthCheck[];
   created_at: string | null;
   updated_at: string | null;
 }

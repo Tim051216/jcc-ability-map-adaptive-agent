@@ -7,7 +7,7 @@
 前置条件：`Node.js 18+`
 
 1. 安装依赖：`npm install`
-2. 如需覆盖 AI 服务地址，可在环境文件中设置 `VITE_AI_BASE_URL`
+2. 默认会连接 `http://127.0.0.1:18080/api/v1`。如需覆盖 AI 服务地址，可在环境文件中设置 `VITE_AI_BASE_URL`
 3. 启动开发环境：`npm run dev`
 
 默认开发地址：`http://localhost:3002`

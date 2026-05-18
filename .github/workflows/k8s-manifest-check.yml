@@ -1,0 +1,43 @@
+name: K8s Manifest Check
+
+on:
+  pull_request:
+    paths:
+      - "k8s/**"
+      - ".github/workflows/k8s-manifest-check.yml"
+      - ".github/workflows/build-and-push-images.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/**"
+
+jobs:
+  check-kustomize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.34.1
+
+      - name: Render base
+        run: kubectl kustomize k8s > /tmp/k8s-base.yaml
+
+      - name: Render prod overlay
+        run: kubectl kustomize k8s/overlays/prod > /tmp/k8s-prod.yaml
+
+      - name: Validate YAML syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          for path in [Path("/tmp/k8s-base.yaml"), Path("/tmp/k8s-prod.yaml")]:
+              with path.open("r", encoding="utf-8") as f:
+                  list(yaml.safe_load_all(f))
+              print(f"ok: {path}")
+          PY

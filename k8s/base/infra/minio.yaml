@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: a3-minio-pvc
+  namespace: a3
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-minio
+  namespace: a3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: a3-minio
+  template:
+    metadata:
+      labels:
+        app: a3-minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-02-07T23-21-09Z
+          args:
+            - server
+            - /data
+            - --console-address
+            - :9001
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MINIO_SECRET_KEY
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: a3-minio-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a3-minio
+  namespace: a3
+spec:
+  selector:
+    app: a3-minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001

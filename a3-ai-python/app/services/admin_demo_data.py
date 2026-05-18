@@ -205,6 +205,7 @@ class AdminDemoStore:
             "note": "发布新的检索与规划参数",
             "summary": "已完成热更新，未发现新的高优先级异常。",
             "rolled_back_from": None,
+            "linked_config_keys": ["planner_daily_task_limit", "rag_top_k"],
             "health_checks": [
                 {"name": "API 健康检查", "status": "ok", "detail": "18080 /health 返回 200"},
                 {"name": "LLM 连通性", "status": "ok", "detail": "模型 ping 正常"},
@@ -492,6 +493,7 @@ class AdminDemoStore:
             "note": note,
             "summary": f"{target} 已部署到 {version}，当前健康检查通过。",
             "rolled_back_from": None,
+            "linked_config_keys": ["planner_daily_task_limit", "rag_top_k"],
             "health_checks": [
                 {"name": "API 健康检查", "status": "ok", "detail": "主服务已重新加载并可访问"},
                 {"name": "Agent 运行时", "status": "ok", "detail": "关键智能体状态已恢复上报"},
@@ -535,6 +537,7 @@ class AdminDemoStore:
             "note": note or f"回滚 {source['version']}",
             "summary": f"已从 {source['version']} 回滚到上一稳定版本。",
             "rolled_back_from": source["version"],
+            "linked_config_keys": deepcopy(source.get("linked_config_keys", ["planner_daily_task_limit", "rag_top_k"])),
             "health_checks": [
                 {"name": "回滚后 API 检查", "status": "ok", "detail": "核心接口恢复正常"},
                 {"name": "回滚后链路检查", "status": "ok", "detail": "规划评测链路时延回落"},
@@ -606,6 +609,31 @@ class AdminDemoStore:
             return state
         state = json.loads(cls._STATE_FILE.read_text(encoding="utf-8"))
         state.setdefault("deployments", deepcopy(cls._DEFAULT_DEPLOYMENTS))
+        if not any(item.get("status") == "failed" for item in state["deployments"]):
+            state["deployments"].append(
+                {
+                    "deployment_id": "deploy-20260515-rollback-risk",
+                    "target": "ai-runtime",
+                    "version": "v2026.05.15-hotfix",
+                    "status": "failed",
+                    "operator": "admin-demo",
+                    "note": "演示失败部署告警",
+                    "summary": "该版本发布后检索时延和评测错误率异常升高，已阻断继续放量。",
+                    "rolled_back_from": None,
+                    "linked_config_keys": ["rag_top_k"],
+                    "health_checks": [
+                        {"name": "API 健康检查", "status": "ok", "detail": "基础接口可访问"},
+                        {"name": "RAG 检索抽样", "status": "failed", "detail": "P95 时延超出阈值 38%"},
+                        {"name": "评测链路检查", "status": "failed", "detail": "评测错误率超过告警线"},
+                    ],
+                    "created_at": "2026-05-15T09:20:00+00:00",
+                    "updated_at": "2026-05-15T09:26:00+00:00",
+                }
+            )
+        for item in state["deployments"]:
+            item.setdefault("rolled_back_from", None)
+            item.setdefault("linked_config_keys", ["planner_daily_task_limit", "rag_top_k"])
+            item.setdefault("health_checks", [])
         return state
 
     @classmethod

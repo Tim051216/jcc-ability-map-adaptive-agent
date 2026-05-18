@@ -10,7 +10,7 @@ const LearningPath = lazy(() => import("./pages/LearningPath").then((module) => 
 const CourseLearning = lazy(() => import("./pages/CourseLearning").then((module) => ({ default: module.CourseLearning })));
 const ResourceCenter = lazy(() => import("./pages/ResourceCenter").then((module) => ({ default: module.ResourceCenter })));
 const ResourceSourcePreview = lazy(() => import("./pages/ResourceSourcePreview.tsx").then((module) => ({ default: module.ResourceSourcePreview })));
-const Collection = lazy(() => import("./pages/Collection").then((module) => ({ default: module.Collection })));
+const Collection = lazy(() => import("./pages/Collection.tsx").then((module) => ({ default: module.Collection })));
 const Evaluation = lazy(() => import("./pages/Evaluation").then((module) => ({ default: module.Evaluation })));
 const AITutor = lazy(() => import("./pages/AITutor").then((module) => ({ default: module.AITutor })));
 const StudyReport = lazy(() => import("./pages/StudyReport").then((module) => ({ default: module.StudyReport })));
@@ -27,6 +27,7 @@ function RouteLoadingFallback() {
 
 function AppContent() {
   const location = useLocation();
+  const showFooterAiCard = location.pathname === "/";
   const currentNavItem =
     navItems.find((item) => item.path === location.pathname || (item.path !== "/" && location.pathname.startsWith(`${item.path}/`))) || navItems[0];
   const headerTitle = location.pathname === "/learn" ? "课程学习" : currentNavItem.path === "/" ? "A3 学习工作台" : currentNavItem.name;
@@ -55,7 +56,7 @@ function AppContent() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(18,208,157,0.18),_transparent_32%),radial-gradient(circle_at_80%_20%,_rgba(255,255,255,0.08),_transparent_22%)]" />
 
         <div className="relative mx-auto max-w-[1240px] px-6 pb-10 md:px-10">
-          <div className="grid gap-8 lg:grid-cols-[1.4fr_0.9fr_0.9fr_1.1fr]">
+          <div className={showFooterAiCard ? "grid gap-8 lg:grid-cols-[1.4fr_0.9fr_0.9fr_1.1fr]" : "grid gap-8 lg:grid-cols-[1.5fr_1fr_1fr]"}>
             <section className="rounded-[32px] border border-white/10 bg-white/5 p-8 shadow-[0_18px_45px_rgba(0,0,0,0.16)] backdrop-blur-sm">
               <Link to="/" className="group inline-flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-sm font-black text-white shadow-lg transition-transform group-hover:rotate-6">
@@ -107,7 +108,7 @@ function AppContent() {
                   <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
                   学习路径
                 </Link>
-                <Link to="/resources" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
+                <Link to="/resources?courseId=401" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
                   资源中心
                 </Link>
@@ -140,6 +141,7 @@ function AppContent() {
               </div>
             </section>
 
+            {showFooterAiCard ? (
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-7 backdrop-blur-sm">
               <div className="flex items-center gap-2 text-primary">
                 <Sparkles className="h-4 w-4" />
@@ -170,6 +172,7 @@ function AppContent() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </section>
+            ) : null}
           </div>
 
           <div className="mt-12 flex flex-col gap-5 border-t border-white/8 pt-6 text-xs text-white/40 md:flex-row md:items-center md:justify-between">

@@ -816,6 +816,8 @@ class AdminService:
             return "学习路径已生成，并同步到今日任务编排。"
         if agent_name == "evaluator_agent":
             return "阶段测评生成耗时偏高，已切换到降级模板输出。"
+        if agent_name == "question_generator_agent" and "fallback" in message.lower():
+            return "题目生成已完成，但本次部分知识点走了兜底题模板。"
         return message
 
     @staticmethod

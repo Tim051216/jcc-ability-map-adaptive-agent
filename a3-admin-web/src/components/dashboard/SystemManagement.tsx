@@ -20,10 +20,10 @@ import {
   getDeployments,
   getHealth,
   getLlmPing,
-  rollbackDeployment,
   getSystemConfigHistory,
   getSystemConfigs,
   HealthPayload,
+  rollbackDeployment,
   SystemConfigHistoryItem,
   SystemConfigHistorySummary,
   SystemConfigItem,
@@ -31,8 +31,8 @@ import {
   triggerDeployment,
   updateSystemConfig,
 } from '@/src/lib/adminApi';
-import { formatDateTime } from '@/src/lib/formatters';
 import { ErrorPanel, LoadingPanel, ReachableBadge } from '@/src/components/shared/AsyncState';
+import { formatDateTime } from '@/src/lib/formatters';
 import { ViewType } from '@/src/types';
 
 function openAppUrl(path: string) {
@@ -45,15 +45,15 @@ function getConfigMeta(configKey: string) {
       return {
         title: '每日任务拆分上限',
         summary: '控制学习规划器一天最多拆出多少个任务。',
-        impact: '改大后任务会更细、更多；改小后任务会更少、更粗。',
-        example: '现在是 5，表示一天最多拆成 5 个学习任务。',
+        impact: '值越大，规划更细但链路更长；值越小，任务更粗但响应更快。',
+        example: '当前值为 5，表示一天最多拆出 5 个学习任务。',
       };
     case 'rag_top_k':
       return {
         title: '知识检索候选数',
-        summary: '控制 RAG 检索时最多给模型多少个知识片段。',
-        impact: '改大后召回更多但噪声也更高；改小后更聚焦，但可能漏信息。',
-        example: '现在是 8，表示每次检索最多取 8 个候选知识片段。',
+        summary: '控制 RAG 检索时最多返回多少个候选知识片段。',
+        impact: '值越大，召回更充分但噪声更高；值越小，更聚焦但可能漏信息。',
+        example: '当前值为 8，表示每次检索最多返回 8 个候选片段。',
       };
     default:
       return {
@@ -85,6 +85,23 @@ function getDeploymentTone(status: string) {
   return 'border-amber-200 bg-amber-50 text-amber-700';
 }
 
+function getStatusLabel(status: string) {
+  switch (status) {
+    case 'success':
+      return '成功';
+    case 'failed':
+      return '失败';
+    case 'warning':
+      return '告警';
+    case 'degraded':
+      return '降级';
+    case 'ok':
+      return '正常';
+    default:
+      return status;
+  }
+}
+
 export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) => void }) {
   const [configSummary, setConfigSummary] = useState<SystemConfigSummary | null>(null);
   const [historySummary, setHistorySummary] = useState<SystemConfigHistorySummary | null>(null);
@@ -104,10 +121,11 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
   const [draftDescription, setDraftDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [deployTarget, setDeployTarget] = useState('ai-runtime');
-  const [deployVersion, setDeployVersion] = useState('v2026.05.17-1');
+  const [deployVersion, setDeployVersion] = useState('v2026.05.18-1');
   const [deployNote, setDeployNote] = useState('发布新的检索与规划参数');
   const [deploying, setDeploying] = useState(false);
   const [rollingBackId, setRollingBackId] = useState('');
+  const [rollbackNote, setRollbackNote] = useState('回滚到上一稳定版本');
 
   const loadData = async (nextSensitiveOnly = sensitiveOnly) => {
     setLoading(true);
@@ -141,7 +159,6 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
       setLlm(llmValue);
       setAiOps(aiOpsValue);
       setDeployments(deploymentValues);
-
       setSelectedKey((current) => {
         if (current && configsValue.some((item) => item.config_key === current)) {
           return current;
@@ -201,7 +218,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
       return;
     }
     if (!draftValue.trim()) {
-      setActionError('请输入新的配置值后再保存。');
+      setActionError('请先填写新的配置值。');
       setActionSuccess('');
       return;
     }
@@ -211,7 +228,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
     setActionSuccess('');
     try {
       const updated = await updateSystemConfig(selectedConfig.config_key, draftValue, draftDescription || null);
-      setActionSuccess(`已更新“${getConfigMeta(updated.config_key).title}”，页面数据也已经同步刷新。`);
+      setActionSuccess(`已更新“${getConfigMeta(updated.config_key).title}”，页面数据已同步刷新。`);
       await loadData(sensitiveOnly);
       setSelectedKey(updated.config_key);
     } catch (err) {
@@ -227,16 +244,17 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
       setActionSuccess('');
       return;
     }
-    const confirmed = window.confirm(`确认要部署到 ${deployTarget}，版本 ${deployVersion} 吗？`);
+    const confirmed = window.confirm(`确认部署 ${deployTarget}，版本 ${deployVersion} 吗？`);
     if (!confirmed) {
       return;
     }
+
     setDeploying(true);
     setActionError('');
     setActionSuccess('');
     try {
       const result = await triggerDeployment(deployTarget, deployVersion, deployNote);
-      setActionSuccess(`已发起部署：${result.target} -> ${result.version}，当前状态 ${result.status}。`);
+      setActionSuccess(`已发起部署：${result.target} -> ${result.version}，当前状态为 ${getStatusLabel(result.status)}。`);
       await loadData(sensitiveOnly);
     } catch (err) {
       setActionError(describeError(err));
@@ -250,11 +268,12 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
     if (!confirmed) {
       return;
     }
+
     setRollingBackId(deployment.deployment_id);
     setActionError('');
     setActionSuccess('');
     try {
-      const result = await rollbackDeployment(deployment.deployment_id, `从 ${deployment.version} 回滚`);
+      const result = await rollbackDeployment(deployment.deployment_id, rollbackNote || `从 ${deployment.version} 回滚`);
       setActionSuccess(`已完成回滚：${deployment.version} -> ${result.version}。`);
       await loadData(sensitiveOnly);
     } catch (err) {
@@ -266,11 +285,12 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
 
   return (
     <div className="mx-auto flex max-w-[1480px] flex-col gap-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">系统管理</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            这里不只管配置，还开始承担 AI 运维：看异常智能体、看慢链路、看参数效果，以及发起部署。
+      <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 text-white shadow-sm md:flex-row md:items-end md:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-200">System Console</p>
+          <h1 className="mt-2 text-3xl font-bold">系统管理</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            这一页负责把配置管理、AI 运维、部署与回滚放到同一个工作台里。先判断哪里有风险，再决定改参数、发版本还是回滚。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -278,37 +298,37 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
             type="button"
             onClick={() => void handleToggleSensitive()}
             className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-              sensitiveOnly ? 'bg-amber-100 text-amber-700' : 'border border-border bg-white text-slate-700 hover:bg-slate-50'
+              sensitiveOnly ? 'bg-amber-300 text-slate-900' : 'border border-white/20 bg-white/10 text-white hover:bg-white/15'
             }`}
           >
-            {sensitiveOnly ? '当前只看敏感配置' : '只看敏感配置'}
+            {sensitiveOnly ? '当前仅看敏感配置' : '只看敏感配置'}
           </button>
           <button
             type="button"
             onClick={() => void loadData()}
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-medium text-white transition hover:bg-white/15"
           >
             <RefreshCcw className="h-4 w-4" />
-            刷新
+            刷新数据
           </button>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
         {health ? <ReachableBadge label="AI 后端" status={health.status} /> : null}
-        {llm ? <ReachableBadge label="LLM" status={llm.status} /> : null}
+        {llm ? <ReachableBadge label="LLM 网关" status={llm.status} /> : null}
       </div>
 
-      {loading ? <LoadingPanel title="加载系统管理数据" /> : null}
+      {loading ? <LoadingPanel title="正在加载系统管理数据" /> : null}
       {!loading && error ? <ErrorPanel title="系统管理数据加载失败" detail={error} /> : null}
 
       {!loading && !error ? (
         <>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-            <MetricCard label="配置总数" value={String(configSummary?.total ?? 0)} hint="当前系统里有多少个可管理配置" />
-            <MetricCard label="敏感配置" value={String(configSummary?.sensitive_count ?? 0)} hint="这类配置改动前建议先确认环境和权限" tone="warning" />
-            <MetricCard label="异常智能体" value={String(aiOps?.abnormal_agents.length ?? 0)} hint="当前处于告警、降级或异常状态的智能体数量" />
-            <MetricCard label="慢链路" value={String(aiOps?.slow_chains.length ?? 0)} hint="当前需要重点盯的模型链路数量" />
+            <MetricCard label="配置总数" value={String(configSummary?.total ?? 0)} hint="当前系统内可管理的配置项数量" />
+            <MetricCard label="敏感配置" value={String(configSummary?.sensitive_count ?? 0)} hint="涉及密钥、令牌或重要运行参数的配置" tone="warning" />
+            <MetricCard label="异常智能体" value={String(aiOps?.abnormal_agents.length ?? 0)} hint="处于告警、降级或异常状态的智能体数量" />
+            <MetricCard label="慢链路" value={String(aiOps?.slow_chains.length ?? 0)} hint="当前需要重点盯防的链路数量" />
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -317,14 +337,14 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                 <TimerReset className="h-5 w-5 text-sky-600" />
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">AI 运维总览</h2>
-                  <p className="mt-1 text-xs text-slate-500">先判断哪里有问题：是智能体异常，还是某条链路明显变慢。</p>
+                  <p className="mt-1 text-xs text-slate-500">先判断是智能体异常，还是链路性能退化，再决定后续动作。</p>
                 </div>
               </div>
               <div className="mt-5 grid gap-3">
                 {(aiOps?.abnormal_agents ?? []).map((agent) => (
                   <div key={agent.agent_name} className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
                     <p className="text-sm font-semibold text-rose-900">{agent.display_name ?? agent.agent_name}</p>
-                    <p className="mt-1 text-xs text-rose-700">{agent.latest_message ?? '暂无异常说明'}</p>
+                    <p className="mt-1 text-xs text-rose-700">{agent.latest_message ?? '暂无异常说明。'}</p>
                   </div>
                 ))}
                 {!(aiOps?.abnormal_agents.length ?? 0) ? <EmptyState label="当前没有异常智能体。" /> : null}
@@ -335,14 +355,14 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">慢链路与耗时</h2>
-                  <p className="mt-1 text-xs text-slate-500">这里回答两个问题：哪条链路慢，慢在哪一组智能体。</p>
+                  <p className="mt-1 text-xs text-slate-500">这里回答两个问题：哪条链路慢，以及慢在哪一组智能体。</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => onNavigate('monitoring')}
                   className="text-sm font-semibold text-slate-500 transition hover:text-slate-900"
                 >
-                  去 AI 监控
+                  前往 AI 监控
                 </button>
               </div>
               <div className="mt-5 grid gap-3">
@@ -353,7 +373,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                         <p className="text-sm font-semibold text-slate-900">{chain.label}</p>
                         <p className="mt-1 text-xs text-slate-600">涉及智能体：{chain.related_agents.join(' / ')}</p>
                       </div>
-                      <span className="text-xs font-semibold text-slate-500">{chain.status}</span>
+                      <span className="text-xs font-semibold text-slate-500">{getStatusLabel(chain.status)}</span>
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
                       <MiniMetric label="平均耗时" value={`${chain.avg_latency_ms} ms`} />
@@ -370,10 +390,10 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
             <section className="rounded-2xl border border-border bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <KeyRound className="h-5 w-5 text-accent" />
+                  <KeyRound className="h-5 w-5 text-sky-600" />
                   <div>
                     <h2 className="text-lg font-semibold text-slate-900">配置列表</h2>
-                    <p className="mt-1 text-xs text-slate-500">左边先看中文解释，右边再编辑。参数改动会影响检索、规划等 AI 链路。</p>
+                    <p className="mt-1 text-xs text-slate-500">先看参数中文解释，再决定是否编辑，避免只盯英文配置名。</p>
                   </div>
                 </div>
                 <button
@@ -418,7 +438,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                     </button>
                   );
                 })}
-                {!configs.length ? <EmptyState label="当前筛选下没有配置项。" /> : null}
+                {!configs.length ? <EmptyState label="当前筛选下没有可编辑的配置项。" /> : null}
               </div>
             </section>
 
@@ -427,7 +447,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                 <ServerCrash className="h-5 w-5 text-slate-700" />
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">配置编辑</h2>
-                  <p className="mt-1 text-xs text-slate-500">不只改值，还告诉你“改大/改小会影响什么”，避免盲改。</p>
+                  <p className="mt-1 text-xs text-slate-500">不只改值，也解释改大改小分别会影响什么。</p>
                 </div>
               </div>
 
@@ -460,7 +480,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                     <input
                       value={draftDescription}
                       onChange={(event) => setDraftDescription(event.target.value)}
-                      placeholder="这次为什么要改，留给后面的人看"
+                      placeholder="说明为什么修改，方便后续回看"
                       className="h-11 rounded-xl border border-border bg-white px-3 text-sm text-slate-900"
                     />
                   </label>
@@ -487,13 +507,13 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                       onClick={() => openAppUrl(`/api/v1/admin/configs/history?config_key=${encodeURIComponent(selectedConfig.config_key)}`)}
                       className="rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
-                      查看这个配置的历史
+                      查看该配置的历史
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="mt-5">
-                  <EmptyState label="先从左边选一个配置项，这里再看它的解释和编辑入口。" />
+                  <EmptyState label="先从左侧选择一个配置项，再查看解释和编辑入口。" />
                 </div>
               )}
             </section>
@@ -546,8 +566,8 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
               <div className="flex items-center gap-3">
                 <Rocket className="h-5 w-5 text-slate-700" />
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">部署功能</h2>
-                  <p className="mt-1 text-xs text-slate-500">改完参数后，可以直接从 admin 端发起一次部署，并查看部署记录。</p>
+                  <h2 className="text-lg font-semibold text-slate-900">部署控制台</h2>
+                  <p className="mt-1 text-xs text-slate-500">参数确认后，可以直接发起部署，并预设回滚原因。</p>
                 </div>
               </div>
 
@@ -577,6 +597,15 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                     className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm text-slate-900"
                   />
                 </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-500">回滚原因预设</span>
+                  <input
+                    value={rollbackNote}
+                    onChange={(event) => setRollbackNote(event.target.value)}
+                    placeholder="如果需要回滚，这里先写好原因"
+                    className="h-11 rounded-xl border border-border bg-white px-3 text-sm text-slate-900"
+                  />
+                </label>
                 <button
                   type="button"
                   onClick={() => void handleDeploy()}
@@ -588,7 +617,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                 </button>
 
                 {aiOps?.latest_deployment ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">最近一次部署</p>
@@ -597,20 +626,21 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                         </p>
                       </div>
                       <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getDeploymentTone(aiOps.latest_deployment.status)}`}>
-                        {aiOps.latest_deployment.status}
+                        {getStatusLabel(aiOps.latest_deployment.status)}
                       </span>
                     </div>
                     <p className="mt-3 text-sm text-slate-600">{aiOps.latest_deployment.summary ?? '暂无部署说明。'}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(aiOps.latest_deployment.linked_config_keys ?? []).map((key) => (
+                        <span key={key} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                          关联参数：{key}
+                        </span>
+                      ))}
+                    </div>
                     <div className="mt-3 grid gap-2">
-                      {aiOps.latest_deployment.health_checks.map((check) => (
-                        <div key={check.name} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-sm font-medium text-slate-900">{check.name}</span>
-                            <span className={`text-xs font-semibold ${check.status === 'ok' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                              {check.status}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">{check.detail}</p>
+                      {(aiOps.latest_deployment.health_checks ?? []).map((check) => (
+                        <div key={check.name}>
+                          <HealthCheckCard name={check.name} status={check.status} detail={check.detail} />
                         </div>
                       ))}
                     </div>
@@ -625,28 +655,28 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">历史摘要</h2>
-                  <p className="mt-1 text-xs text-slate-500">用来快速判断最近都在改哪类配置，适合先做整体巡检。</p>
+                  <p className="mt-1 text-xs text-slate-500">用来判断最近都在改哪一类配置，适合做整体巡检。</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => onNavigate('operations')}
                   className="text-sm font-semibold text-slate-500 transition hover:text-slate-900"
                 >
-                  去服务联调
+                  前往服务联调
                 </button>
               </div>
               <div className="mt-5 space-y-3">
                 <InfoRow label="历史记录总数" value={String(historySummary?.total ?? 0)} />
                 <InfoRow label="最近变更时间" value={formatDateTime(historySummary?.latest_created_at)} />
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">按配置前缀看分布</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">按配置前缀分布</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {prefixEntries.map(([key, value]) => (
                       <span key={key} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                         {key} {value}
                       </span>
                     ))}
-                    {!prefixEntries.length ? <span className="text-sm text-slate-500">暂无摘要</span> : null}
+                    {!prefixEntries.length ? <span className="text-sm text-slate-500">暂无摘要。</span> : null}
                   </div>
                 </div>
               </div>
@@ -656,7 +686,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">部署记录</h2>
-                  <p className="mt-1 text-xs text-slate-500">这里保存每次发布的目标、版本和结果，便于回看“什么时候发了什么”。</p>
+                  <p className="mt-1 text-xs text-slate-500">保留每次发布的版本、结果、健康检查和回滚入口。</p>
                 </div>
                 <button
                   type="button"
@@ -667,7 +697,28 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                   <ExternalLink className="h-4 w-4" />
                 </button>
               </div>
-              <div className="mt-5 space-y-3">
+              <div className="mt-5 space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-sm font-semibold text-slate-900">部署时间线</p>
+                  <div className="mt-4 space-y-4">
+                    {deployments.slice(0, 5).map((item, index) => (
+                      <div key={`timeline-${item.deployment_id}`} className="grid grid-cols-[18px_1fr] gap-3">
+                        <div className="flex flex-col items-center">
+                          <span className={`h-3 w-3 rounded-full ${item.status === 'failed' ? 'bg-rose-500' : item.rolled_back_from ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                          {index < Math.min(deployments.length, 5) - 1 ? <span className="mt-1 h-full w-px bg-slate-300" /> : null}
+                        </div>
+                        <div className="pb-2">
+                          <p className="text-sm font-medium text-slate-900">{item.version}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDateTime(item.created_at)} · {getStatusLabel(item.status)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">{item.summary ?? item.note ?? '暂无说明。'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {deployments.slice(0, 6).map((item) => (
                   <div key={item.deployment_id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
@@ -678,22 +729,22 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                         </p>
                       </div>
                       <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getDeploymentTone(item.status)}`}>
-                        {item.status}
+                        {getStatusLabel(item.status)}
                       </span>
                     </div>
                     <p className="mt-3 text-sm text-slate-600">{item.summary ?? item.note ?? '暂无说明。'}</p>
-                    {item.rolled_back_from ? (
-                      <p className="mt-2 text-xs text-amber-600">回滚来源版本：{item.rolled_back_from}</p>
-                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(item.linked_config_keys ?? []).map((key) => (
+                        <span key={key} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                          {key}
+                        </span>
+                      ))}
+                    </div>
+                    {item.rolled_back_from ? <p className="mt-2 text-xs text-amber-600">回滚来源版本：{item.rolled_back_from}</p> : null}
                     <div className="mt-3 grid gap-2">
-                      {item.health_checks.slice(0, 2).map((check) => (
-                        <div key={check.name} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-slate-800">{check.name}</span>
-                            <span className={`text-[11px] font-semibold ${check.status === 'ok' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                              {check.status}
-                            </span>
-                          </div>
+                      {(item.health_checks ?? []).slice(0, 2).map((check) => (
+                        <div key={check.name}>
+                          <HealthCheckCard name={check.name} status={check.status} detail={check.detail} compact />
                         </div>
                       ))}
                     </div>
@@ -719,7 +770,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">配置变更记录</h2>
-                <p className="mt-1 text-xs text-slate-500">这里展示后端返回的真实历史。你可以把它理解成“这个参数之前都怎么改过”。</p>
+                <p className="mt-1 text-xs text-slate-500">展示真实的配置历史，方便回看这个参数之前怎么改过。</p>
               </div>
               <button
                 type="button"
@@ -744,7 +795,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                     </div>
                     <span className="text-xs text-slate-400">{formatDateTime(item.created_at)}</span>
                   </div>
-                  <p className="mt-3 text-sm text-slate-600">{item.value ?? '这条记录没有直接值，可以往下看 payload。'}</p>
+                  <p className="mt-3 text-sm text-slate-600">{item.value ?? '该记录没有直接值，可以继续查看 payload。'}</p>
                   {item.payload ? (
                     <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-900/95 p-3 text-xs text-slate-100">
                       {JSON.stringify(item.payload, null, 2)}
@@ -785,7 +836,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
       <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-semibold text-slate-900">{value}</span>
+      <span className="text-right text-sm font-semibold text-slate-900">{value}</span>
     </div>
   );
 }
@@ -811,8 +862,7 @@ function CompareBar({
   tone: 'muted' | 'good' | 'bad';
 }) {
   const width = maxValue > 0 ? `${Math.max(12, Math.round((value / maxValue) * 100))}%` : '12%';
-  const barClass =
-    tone === 'good' ? 'bg-emerald-500' : tone === 'bad' ? 'bg-rose-500' : 'bg-slate-400';
+  const barClass = tone === 'good' ? 'bg-emerald-500' : tone === 'bad' ? 'bg-rose-500' : 'bg-slate-400';
 
   return (
     <div className="grid gap-1">
@@ -823,6 +873,35 @@ function CompareBar({
       <div className="h-2 rounded-full bg-slate-200">
         <div className={`h-2 rounded-full ${barClass}`} style={{ width }} />
       </div>
+    </div>
+  );
+}
+
+function HealthCheckCard({
+  name,
+  status,
+  detail,
+  compact = false,
+}: {
+  name: string;
+  status: string;
+  detail: string;
+  compact?: boolean;
+}) {
+  const palette =
+    status === 'failed'
+      ? 'border-rose-200 bg-rose-50 text-rose-700'
+      : status === 'ok'
+        ? 'border-slate-200 bg-white text-slate-700'
+        : 'border-amber-200 bg-amber-50 text-amber-700';
+
+  return (
+    <div className={`rounded-lg border px-3 py-3 ${palette}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'}`}>{name}</span>
+        <span className={`font-semibold ${compact ? 'text-[11px]' : 'text-xs'}`}>{getStatusLabel(status)}</span>
+      </div>
+      <p className={`mt-1 ${compact ? 'text-[11px]' : 'text-xs'}`}>{detail}</p>
     </div>
   );
 }

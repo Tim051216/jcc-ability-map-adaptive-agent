@@ -1,4 +1,4 @@
-const AI_BASE_URL = (import.meta.env.VITE_AI_BASE_URL || "http://127.0.0.1:18081/api/v1").replace(/\/$/, "");
+const AI_BASE_URL = (import.meta.env.VITE_AI_BASE_URL || "http://127.0.0.1:18080/api/v1").replace(/\/$/, "");
 const AI_ORIGIN = AI_BASE_URL.replace(/\/api\/v1$/, "");
 const DEMO_AUTHORIZATION = "Bearer student-demo";
 
@@ -106,6 +106,23 @@ export interface LearningNoteSummary {
   isPrivate: boolean;
   isGathered: boolean;
   createTime: string;
+}
+
+export interface LearningReplySummary {
+  id: number;
+  questionId: number;
+  answerId?: number | null;
+  targetReplyId?: number | null;
+  targetUserId?: number | null;
+  targetUserName?: string;
+  userId: number;
+  userName: string;
+  userIcon: string;
+  content: string;
+  createTime: string;
+  liked?: boolean;
+  likedTimes?: number;
+  replyTimes?: number;
 }
 
 export interface LearningPageListResponse<T> {
@@ -447,6 +464,75 @@ export const studentApi = {
       params.set("sectionId", String(sectionId));
     }
     return request<LearningPageListResponse<LearningNoteSummary>>(`/learning/notes/page?${params.toString()}`);
+  },
+  listLearningReplies(questionId?: number, answerId?: number) {
+    const params = new URLSearchParams({
+      pageNo: "1",
+      pageSize: "20",
+    });
+    if (questionId) {
+      params.set("questionId", String(questionId));
+    }
+    if (answerId) {
+      params.set("answerId", String(answerId));
+    }
+    return request<LearningPageListResponse<LearningReplySummary>>(`/learning/replies/page?${params.toString()}`);
+  },
+  createLearningQuestion(payload: {
+    courseId: number;
+    chapterId: number;
+    sectionId: number;
+    title: string;
+    description: string;
+    anonymity?: boolean;
+  }) {
+    return requestJson<LearningQuestionSummary>("/learning/questions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createLearningReply(payload: {
+    questionId: number;
+    answerId?: number;
+    targetReplyId?: number;
+    targetUserId?: number;
+    content: string;
+    anonymity?: boolean;
+  }) {
+    return requestJson<LearningReplySummary>("/learning/replies", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createLearningNote(payload: {
+    courseId: number;
+    chapterId: number;
+    sectionId: number;
+    content: string;
+    noteMoment?: number;
+    isPrivate?: boolean;
+  }) {
+    return requestJson<LearningNoteSummary>("/learning/notes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateLearningNote(noteId: number, payload: { id: number; content: string; isPrivate?: boolean }) {
+    return requestJson<LearningNoteSummary>(`/learning/notes/${noteId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  gatherLearningNote(noteId: number) {
+    return requestJson<LearningNoteSummary>(`/learning/notes/gathers/${noteId}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  ungatherLearningNote(noteId: number) {
+    return requestJson<LearningNoteSummary>(`/learning/notes/gathers/${noteId}`, {
+      method: "DELETE",
+    });
   },
   getLatestLearningPlan(userId: number, courseId: number) {
     return request<LearningPlanResponse>(`/plan/latest?user_id=${userId}&course_id=${courseId}`);

@@ -1,6 +1,7 @@
 import asyncio
 import re
 
+from app.core.config import settings
 from app.rag.retrieve.vector_store import MilvusVectorStore
 from app.schemas.common import Citation, KnowledgeHit
 from app.schemas.rag import RagSearchRequest, RagSearchResponse
@@ -75,6 +76,14 @@ class RagService:
         return ranked
 
     async def search(self, request: RagSearchRequest) -> RagSearchResponse:
+        if not settings.milvus_enabled:
+            return RagSearchResponse(
+                query=request.query,
+                course_code=request.course_code,
+                hits=[],
+                citations=[],
+            )
+
         query_vector = await self.embedding_service.embed_text(request.query)
         try:
             hits = await asyncio.wait_for(

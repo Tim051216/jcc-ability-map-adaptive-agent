@@ -12,22 +12,21 @@ $envFile = Join-Path $aiRoot ".env"
 $libreOfficeProgram = "C:\Program Files\LibreOffice\program"
 
 if (-not (Test-Path $aiRoot)) {
-    throw "未找到 a3-ai-python 目录: $aiRoot"
+    throw "Cannot find AI service directory: $aiRoot"
 }
 
 if (-not (Test-Path $venvPython)) {
-    throw "未找到项目虚拟环境 Python: $venvPython。请先在 a3-ai-python 下执行 D:\Python\python.exe -m venv .venv 并安装依赖。"
+    throw "Cannot find project virtualenv Python: $venvPython. Create .venv inside a3-ai-python first."
 }
 
 if (-not (Test-Path $envFile)) {
-    throw "未找到环境配置文件: $envFile。请先从 .env.example 复制生成 .env。"
+    throw "Cannot find env file: $envFile. Copy .env.example to .env first."
 }
 
-Write-Host "启动 a3-ai-python 本地服务..."
-Write-Host "工作目录: $aiRoot"
-Write-Host "Python 环境: $venvPython"
-Write-Host "服务地址: http://127.0.0.1:18080"
-Write-Host "提示: 请不要直接使用系统 python、uvicorn 或 Anaconda 环境启动。"
+Write-Host "Starting a3-ai-python local service..."
+Write-Host "Working directory: $aiRoot"
+Write-Host "Python runtime   : $venvPython"
+Write-Host "Service URL      : http://127.0.0.1:18080"
 
 Push-Location $aiRoot
 try {
@@ -36,7 +35,7 @@ try {
     }
 
     if (-not $SkipMigrations) {
-        Write-Host "执行数据库迁移..."
+        Write-Host "Running Alembic migrations..."
         & $venvPython -m alembic upgrade head
     }
 

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-learning-service
+  namespace: a3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: a3-learning-service
+  template:
+    metadata:
+      labels:
+        app: a3-learning-service
+    spec:
+      containers:
+        - name: learning
+          image: ghcr.io/your-org/a3-learning-service:latest
+          ports:
+            - containerPort: 8090
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MYSQL_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MYSQL_PASSWORD
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: RABBITMQ_USERNAME
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: RABBITMQ_PASSWORD
+          readinessProbe:
+            tcpSocket:
+              port: 8090
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8090
+            initialDelaySeconds: 40
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a3-learning-service
+  namespace: a3
+spec:
+  selector:
+    app: a3-learning-service
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090

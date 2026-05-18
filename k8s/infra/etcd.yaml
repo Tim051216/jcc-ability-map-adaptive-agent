@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: a3-etcd-pvc
+  namespace: a3
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-etcd
+  namespace: a3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: a3-etcd
+  template:
+    metadata:
+      labels:
+        app: a3-etcd
+    spec:
+      containers:
+        - name: etcd
+          image: quay.io/coreos/etcd:v3.5.18
+          args:
+            - /usr/local/bin/etcd
+            - --advertise-client-urls=http://a3-etcd:2379
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --data-dir=/etcd
+          ports:
+            - containerPort: 2379
+          env:
+            - name: ETCD_AUTO_COMPACTION_MODE
+              value: revision
+            - name: ETCD_AUTO_COMPACTION_RETENTION
+              value: "1000"
+            - name: ETCD_QUOTA_BACKEND_BYTES
+              value: "4294967296"
+            - name: ETCD_SNAPSHOT_COUNT
+              value: "50000"
+          volumeMounts:
+            - name: etcd-data
+              mountPath: /etcd
+      volumes:
+        - name: etcd-data
+          persistentVolumeClaim:
+            claimName: a3-etcd-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a3-etcd
+  namespace: a3
+spec:
+  selector:
+    app: a3-etcd
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379

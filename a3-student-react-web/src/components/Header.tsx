@@ -32,7 +32,7 @@ const learningDirections = [
     title: "前端工程实践",
     description: "适合查看资源生成与项目实训型学习路径",
     icon: Code2,
-    href: "/resources?courseId=201",
+    href: "/resources?courseId=401",
   },
   {
     title: "数据分析基础",
@@ -58,9 +58,13 @@ export function Header({ title }: { title: string }) {
   const location = useLocation();
   const isResourceSection = location.pathname === "/resources" || location.pathname.startsWith("/resources/");
   const [isDirectionOpen, setIsDirectionOpen] = useState(false);
+  const [avatarBroken, setAvatarBroken] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>({ left: 16, top: 60, width: 360 });
   const directionButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const avatarSrc = avatarBroken
+    ? "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2310b981'/%3E%3Cstop offset='100%25' stop-color='%23059669'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='96' height='96' rx='48' fill='url(%23g)'/%3E%3Ctext x='48' y='57' text-anchor='middle' font-size='32' font-family='Arial, sans-serif' font-weight='700' fill='white'%3ESE%3C/text%3E%3C/svg%3E"
+    : "https://lh3.googleusercontent.com/a/ACg8ocJX59OOnL4vA3vD0_Wp1Xk6X-_Gq79yZ5YmO3P-P1oI=s96-c";
 
   useLayoutEffect(() => {
     if (!isDirectionOpen || !directionButtonRef.current) {
@@ -193,7 +197,8 @@ export function Header({ title }: { title: string }) {
               <img
                 alt="User"
                 className="h-10 w-10 rounded-full border-2 border-primary/20 object-cover p-0.5 shadow-sm transition-all group-hover:border-primary"
-                src="https://lh3.googleusercontent.com/a/ACg8ocJX59OOnL4vA3vD0_Wp1Xk6X-_Gq79yZ5YmO3P-P1oI=s96-c"
+                src={avatarSrc}
+                onError={() => setAvatarBroken(true)}
               />
             </div>
           </div>
@@ -239,7 +244,7 @@ export function Header({ title }: { title: string }) {
             <div className="mx-1 h-6 w-px shrink-0 bg-outline-variant/60 lg:mx-2" />
 
             <div className="flex items-center gap-4 overflow-x-auto no-scrollbar overflow-y-hidden lg:gap-6">
-              <Link to="/resources" className={cn("flex items-center gap-1.5 whitespace-nowrap text-[14px] font-bold transition-colors hover:text-primary", isResourceSection ? "text-primary" : "text-on-surface-variant")}>
+              <Link to="/resources?courseId=401" className={cn("flex items-center gap-1.5 whitespace-nowrap text-[14px] font-bold transition-colors hover:text-primary", isResourceSection ? "text-primary" : "text-on-surface-variant")}>
                 <BookOpen className="h-4 w-4 opacity-50" />
                 资源中心
               </Link>

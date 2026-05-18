@@ -154,6 +154,7 @@ async def seed_data() -> None:
         await session.execute(delete(EvaluationPaper))
         await session.execute(delete(ResourceFavoriteHistory))
         await session.execute(delete(ResourceFavorite))
+        await session.execute(delete(ResourceSourceFile))
         await session.execute(delete(GeneratedResource))
         await session.execute(delete(EvaluationRecord))
         await session.execute(delete(ProfileHistoryModel))

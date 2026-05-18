@@ -1,0 +1,11 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+
+logging:
+  level:
+    com.cnsoftbei.a3: debug

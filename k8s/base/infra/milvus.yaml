@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: a3-milvus-pvc
+  namespace: a3
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-milvus
+  namespace: a3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: a3-milvus
+  template:
+    metadata:
+      labels:
+        app: a3-milvus
+    spec:
+      containers:
+        - name: milvus
+          image: milvusdb/milvus:v2.4.11
+          args:
+            - milvus
+            - run
+            - standalone
+          ports:
+            - containerPort: 19530
+            - containerPort: 9091
+          env:
+            - name: ETCD_ENDPOINTS
+              value: a3-etcd:2379
+            - name: MINIO_ADDRESS
+              value: a3-minio:9000
+          volumeMounts:
+            - name: milvus-data
+              mountPath: /var/lib/milvus
+      volumes:
+        - name: milvus-data
+          persistentVolumeClaim:
+            claimName: a3-milvus-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a3-milvus
+  namespace: a3
+spec:
+  selector:
+    app: a3-milvus
+  ports:
+    - name: grpc
+      port: 19530
+      targetPort: 19530
+    - name: metrics
+      port: 9091
+      targetPort: 9091

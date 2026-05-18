@@ -1,12 +1,7 @@
 from minio import Minio
 
-from app.core.config import settings
+from app.integrations.storage.object_storage_client import build_object_storage_client
 
 
 def build_minio_client() -> Minio:
-    return Minio(
-        settings.minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
-        secure=settings.minio_secure,
-    )
+    return build_object_storage_client()

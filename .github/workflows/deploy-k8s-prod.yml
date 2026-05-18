@@ -1,0 +1,112 @@
+name: Deploy K8s Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to deploy, for example sha-abc1234 or v1.0.0
+        required: true
+        default: latest
+      namespace:
+        description: Kubernetes namespace
+        required: true
+        default: a3
+      ingress_host:
+        description: Production ingress host
+        required: true
+        default: a3.example.com
+      dry_run:
+        description: Render manifests only without applying
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.34.1
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Prepare deploy overlay
+        shell: bash
+        run: |
+          rm -rf /tmp/a3-k8s-deploy
+          cp -R k8s /tmp/a3-k8s-deploy
+          python - <<'PY'
+          from pathlib import Path
+
+          image_tag = "${{ inputs.image_tag }}"
+          namespace = "${{ inputs.namespace }}"
+          ingress_host = "${{ inputs.ingress_host }}"
+          image_namespace = "${{ env.IMAGE_NAMESPACE }}"
+          overlay_path = Path("/tmp/a3-k8s-deploy/overlays/prod/kustomization.yaml")
+          patch_path = Path("/tmp/a3-k8s-deploy/overlays/prod/patch-ingress.yaml")
+
+          text = overlay_path.read_text(encoding="utf-8")
+          text = text.replace("namespace: a3", f"namespace: {namespace}", 1)
+          text = text.replace("ghcr.io/your-org/a3-auth-service", f"ghcr.io/{image_namespace}/a3-auth-service")
+          text = text.replace("ghcr.io/your-org/a3-learning-service", f"ghcr.io/{image_namespace}/a3-learning-service")
+          text = text.replace("ghcr.io/your-org/a3-ai-python", f"ghcr.io/{image_namespace}/a3-ai-python")
+          text = text.replace("ghcr.io/your-org/a3-gateway", f"ghcr.io/{image_namespace}/a3-gateway")
+          text = text.replace("ghcr.io/your-org/a3-student-web", f"ghcr.io/{image_namespace}/a3-student-web")
+          text = text.replace("newTag: latest", f"newTag: {image_tag}")
+          overlay_path.write_text(text, encoding="utf-8")
+
+          patch_text = patch_path.read_text(encoding="utf-8")
+          patch_text = patch_text.replace("namespace: a3", f"namespace: {namespace}", 1)
+          patch_text = patch_text.replace("host: a3.example.com", f"host: {ingress_host}")
+          patch_path.write_text(patch_text, encoding="utf-8")
+          PY
+
+      - name: Render manifests
+        run: kubectl kustomize /tmp/a3-k8s-deploy/overlays/prod > /tmp/a3-k8s-rendered.yaml
+
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-k8s-manifests-${{ inputs.image_tag }}
+          path: /tmp/a3-k8s-rendered.yaml
+
+      - name: Dry run summary
+        if: inputs.dry_run == 'true'
+        run: |
+          echo "Dry run enabled."
+          echo "Rendered overlay for namespace=${{ inputs.namespace }}, host=${{ inputs.ingress_host }}, tag=${{ inputs.image_tag }}."
+
+      - name: Apply manifests
+        if: inputs.dry_run != 'true'
+        run: kubectl apply -k /tmp/a3-k8s-deploy/overlays/prod
+
+      - name: Show rollout status
+        if: inputs.dry_run != 'true'
+        run: |
+          kubectl -n "${{ inputs.namespace }}" rollout status deploy/a3-auth-service --timeout=180s
+          kubectl -n "${{ inputs.namespace }}" rollout status deploy/a3-learning-service --timeout=180s
+          kubectl -n "${{ inputs.namespace }}" rollout status deploy/a3-ai-python --timeout=180s
+          kubectl -n "${{ inputs.namespace }}" rollout status deploy/a3-gateway --timeout=180s
+          kubectl -n "${{ inputs.namespace }}" rollout status deploy/a3-student-web --timeout=180s

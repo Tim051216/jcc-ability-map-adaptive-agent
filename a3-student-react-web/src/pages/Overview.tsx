@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BookOpen, Calendar, GraduationCap, History, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Calendar, GraduationCap, History, Sparkles, Users } from "lucide-react";
 import { motion } from "motion/react";
+import { CourseCoverImage } from "../components/CourseCoverImage";
 import {
   studentApi,
-  resolveCourseCoverUrl,
   type CourseCard,
   type CourseCategory,
   type LearningCourseDetail,
@@ -29,6 +29,7 @@ export function Overview() {
   const [freeCourses, setFreeCourses] = useState<CourseCard[]>([]);
   const [bestCourses, setBestCourses] = useState<CourseCard[]>([]);
   const [currentCourse, setCurrentCourse] = useState<LearningCourseDetail | null>(null);
+  const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,7 +78,17 @@ export function Overview() {
     };
   }, []);
 
-  const heroCourse = freeCourses[0] || bestCourses[0] || null;
+  const heroSlides = useMemo(() => {
+    const courseMap = new Map<number, CourseCard>();
+    [...freeCourses, ...bestCourses].forEach((course) => {
+      if (!courseMap.has(course.id)) {
+        courseMap.set(course.id, course);
+      }
+    });
+    return Array.from(courseMap.values()).slice(0, 5);
+  }, [freeCourses, bestCourses]);
+
+  const heroCourse = heroSlides[activeHeroIndex] || heroSlides[0] || null;
   const featuredCourses = bestCourses;
   const primaryCategory = categories[0] || null;
   const latestSection = currentCourse?.chapters
@@ -92,9 +103,40 @@ export function Overview() {
   }, [currentCourse, latestSection, totalSections]);
   const continueLearningHref = currentCourse
     ? `/learn?courseId=${currentCourse.id}${currentCourse.latest_section_id ? `&sectionId=${currentCourse.latest_section_id}` : ""}`
-    : heroCourse
+      : heroCourse
       ? `/learn?courseId=${heroCourse.id}`
       : "/learn";
+
+  useEffect(() => {
+    if (!heroSlides.length) {
+      return;
+    }
+    setActiveHeroIndex((current) => (current >= heroSlides.length ? 0 : current));
+  }, [heroSlides]);
+
+  useEffect(() => {
+    if (heroSlides.length <= 1) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setActiveHeroIndex((current) => (current + 1) % heroSlides.length);
+    }, 4200);
+    return () => window.clearInterval(timer);
+  }, [heroSlides.length]);
+
+  const goToPrevHero = () => {
+    if (!heroSlides.length) {
+      return;
+    }
+    setActiveHeroIndex((current) => (current - 1 + heroSlides.length) % heroSlides.length);
+  };
+
+  const goToNextHero = () => {
+    if (!heroSlides.length) {
+      return;
+    }
+    setActiveHeroIndex((current) => (current + 1) % heroSlides.length);
+  };
 
   return (
     <div className="pb-20">
@@ -129,8 +171,44 @@ export function Overview() {
 
             <div className="col-span-12 lg:col-span-9">
               <div className="relative h-[520px] overflow-hidden">
-                <img src={resolveCourseCoverUrl(heroCourse.cover_url)} alt={heroCourse.name} className="h-full w-full object-cover" />
+                {heroSlides.map((course, index) => (
+                  <motion.div
+                    key={course.id}
+                    className="absolute inset-0"
+                    initial={false}
+                    animate={{
+                      opacity: index === activeHeroIndex ? 1 : 0,
+                      scale: index === activeHeroIndex ? 1 : 1.04,
+                    }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                  >
+                    <CourseCoverImage
+                      coverUrl={course.cover_url}
+                      title={course.name}
+                      category={course.category_path}
+                      className="h-full w-full object-cover"
+                    />
+                  </motion.div>
+                ))}
                 <div className="absolute inset-0 bg-gradient-to-r from-[#07111dcc] via-[#0f2432c2] to-[#00c17b66]" />
+                {heroSlides.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={goToPrevHero}
+                      className="absolute left-5 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/20 text-white backdrop-blur transition hover:bg-black/35"
+                    >
+                      <ArrowLeft className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToNextHero}
+                      className="absolute right-5 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/20 text-white backdrop-blur transition hover:bg-black/35"
+                    >
+                      <ArrowRight className="h-5 w-5" />
+                    </button>
+                  </>
+                ) : null}
                 <div className="absolute inset-0 flex flex-col justify-center px-8 md:px-12 lg:px-16">
                   <div className="mb-5 flex flex-wrap gap-2">
                     <span className="rounded-full border border-white/25 bg-white/15 px-3 py-1 text-xs font-bold text-white backdrop-blur">
@@ -177,6 +255,40 @@ export function Overview() {
                       <div className="mt-2 text-sm font-semibold text-white">先看路径，再进资源中心</div>
                     </div>
                   </div>
+
+                  {heroSlides.length > 1 ? (
+                    <div className="mt-8 flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        {heroSlides.map((course, index) => (
+                          <button
+                            key={course.id}
+                            type="button"
+                            onClick={() => setActiveHeroIndex(index)}
+                            className={`h-2.5 rounded-full transition-all ${
+                              index === activeHeroIndex ? "w-10 bg-white" : "w-2.5 bg-white/45 hover:bg-white/70"
+                            }`}
+                            aria-label={`切换到 ${course.name}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="hidden flex-wrap gap-2 md:flex">
+                        {heroSlides.map((course, index) => (
+                          <button
+                            key={`${course.id}-chip`}
+                            type="button"
+                            onClick={() => setActiveHeroIndex(index)}
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur transition ${
+                              index === activeHeroIndex
+                                ? "border-white/30 bg-white/20 text-white"
+                                : "border-white/15 bg-black/15 text-white/75 hover:bg-white/10"
+                            }`}
+                          >
+                            {course.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -199,9 +311,10 @@ export function Overview() {
               <section className="overflow-hidden rounded-[28px] border border-outline-variant/50 bg-white p-8 shadow-sm">
                 <div className="flex flex-col gap-8 xl:flex-row xl:items-center">
                   <div className="flex items-center gap-5 xl:w-[360px]">
-                    <img
-                      src={resolveCourseCoverUrl(currentCourse?.cover_url || heroCourse.cover_url)}
-                      alt={currentCourse?.name || heroCourse.name}
+                    <CourseCoverImage
+                      coverUrl={currentCourse?.cover_url || heroCourse.cover_url}
+                      title={currentCourse?.name || heroCourse.name}
+                      category={heroCourse.category_path}
                       className="h-24 w-36 rounded-2xl object-cover shadow-md"
                     />
                     <div>
@@ -251,7 +364,12 @@ export function Overview() {
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   {freeCourses.map((course) => (
                     <article key={course.id} className="overflow-hidden rounded-2xl border border-outline-variant/60 bg-white shadow-sm transition-shadow hover:shadow-lg">
-                      <img src={resolveCourseCoverUrl(course.cover_url)} alt={course.name} className="h-52 w-full object-cover" />
+                      <CourseCoverImage
+                        coverUrl={course.cover_url}
+                        title={course.name}
+                        category={course.category_path}
+                        className="h-52 w-full object-cover"
+                      />
                       <div className="p-6">
                         <div className="mb-3 flex items-center justify-between text-xs font-bold">
                           <span className="rounded-full bg-primary/10 px-3 py-1 text-primary">{course.category_path}</span>
@@ -287,9 +405,10 @@ export function Overview() {
                   {featuredCourses.map((course) => (
                     <article key={course.id} className="group overflow-hidden rounded-2xl border border-outline-variant/60 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
                       <div className="relative h-44 overflow-hidden">
-                        <img
-                          src={resolveCourseCoverUrl(course.cover_url)}
-                          alt={course.name}
+                        <CourseCoverImage
+                          coverUrl={course.cover_url}
+                          title={course.name}
+                          category={course.category_path}
                           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                         />
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4">

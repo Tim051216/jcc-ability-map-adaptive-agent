@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-auth-service
+  namespace: a3
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: auth
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-learning-service
+  namespace: a3
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: learning
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 300m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-ai-python
+  namespace: a3
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: ai
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 300m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-gateway
+  namespace: a3
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: gateway
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-student-web
+  namespace: a3
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: student-web
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

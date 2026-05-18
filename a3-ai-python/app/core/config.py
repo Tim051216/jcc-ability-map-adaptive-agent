@@ -17,9 +17,10 @@ class Settings(BaseSettings):
     celery_broker_url: str = Field(alias="CELERY_BROKER_URL")
     celery_result_backend: str = Field(alias="CELERY_RESULT_BACKEND")
 
-    milvus_host: str = Field(alias="MILVUS_HOST")
-    milvus_port: int = Field(alias="MILVUS_PORT")
-    milvus_collection_prefix: str = Field(alias="MILVUS_COLLECTION_PREFIX")
+    milvus_enabled: bool = Field(default=True, alias="MILVUS_ENABLED")
+    milvus_host: str = Field(default="127.0.0.1", alias="MILVUS_HOST")
+    milvus_port: int = Field(default=19530, alias="MILVUS_PORT")
+    milvus_collection_prefix: str = Field(default="a3_learning", alias="MILVUS_COLLECTION_PREFIX")
     milvus_dimension: int = Field(default=1024, alias="MILVUS_DIMENSION")
 
     minio_endpoint: str = Field(alias="MINIO_ENDPOINT")
@@ -31,6 +32,12 @@ class Settings(BaseSettings):
     # 未配置时使用 presigned GET（默认 7 天），便于私有桶内网访问
     minio_public_base_url: str | None = Field(default=None, alias="MINIO_PUBLIC_BASE_URL")
     object_storage_provider: str = Field(default="s3-compatible", alias="OBJECT_STORAGE_PROVIDER")
+    object_storage_endpoint: str | None = Field(default=None, alias="OBJECT_STORAGE_ENDPOINT")
+    object_storage_access_key: str | None = Field(default=None, alias="OBJECT_STORAGE_ACCESS_KEY")
+    object_storage_secret_key: str | None = Field(default=None, alias="OBJECT_STORAGE_SECRET_KEY")
+    object_storage_secure: bool | None = Field(default=None, alias="OBJECT_STORAGE_SECURE")
+    object_storage_region: str | None = Field(default=None, alias="OBJECT_STORAGE_REGION")
+    object_storage_virtual_hosted_style: bool | None = Field(default=None, alias="OBJECT_STORAGE_VIRTUAL_HOSTED_STYLE")
     object_storage_bucket: str | None = Field(default=None, alias="OBJECT_STORAGE_BUCKET")
     object_storage_public_base_url: str | None = Field(default=None, alias="OBJECT_STORAGE_PUBLIC_BASE_URL")
     object_storage_presign_days: int = Field(default=7, alias="OBJECT_STORAGE_PRESIGN_DAYS")
@@ -59,6 +66,22 @@ class Settings(BaseSettings):
 
 settings = Settings()  # type: ignore[call-arg]
 
+if settings.object_storage_endpoint is None:
+    settings.object_storage_endpoint = settings.minio_endpoint
+if settings.object_storage_access_key is None:
+    settings.object_storage_access_key = settings.minio_access_key
+if settings.object_storage_secret_key is None:
+    settings.object_storage_secret_key = settings.minio_secret_key
+if settings.object_storage_secure is None:
+    settings.object_storage_secure = settings.minio_secure
+if settings.object_storage_region is None:
+    endpoint = (settings.object_storage_endpoint or "").lower()
+    if endpoint.endswith(".aliyuncs.com"):
+        settings.object_storage_region = endpoint.split(".", 1)[0]
+if settings.object_storage_virtual_hosted_style is None:
+    endpoint = (settings.object_storage_endpoint or "").lower()
+    provider = (settings.object_storage_provider or "").lower()
+    settings.object_storage_virtual_hosted_style = "aliyuncs.com" in endpoint or "oss" in provider
 if settings.object_storage_bucket is None:
     settings.object_storage_bucket = settings.minio_bucket
 if settings.object_storage_public_base_url is None:

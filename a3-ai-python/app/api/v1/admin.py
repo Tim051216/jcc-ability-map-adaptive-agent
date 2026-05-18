@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.core.config import settings
 from app.rag.ingest.pipelines import KnowledgeIngestPipeline
 from app.schemas.admin import (
     AIOpsOverviewResponse,
@@ -133,6 +134,8 @@ async def get_admin_overview() -> dict:
 
 @router.post("/knowledge/{course_code}/ingest")
 async def ingest_knowledge(course_code: str) -> dict:
+    if not settings.milvus_enabled:
+        raise HTTPException(status_code=503, detail="Milvus is disabled in this deployment.")
     pipeline = KnowledgeIngestPipeline()
     return await pipeline.run(course_code)
 

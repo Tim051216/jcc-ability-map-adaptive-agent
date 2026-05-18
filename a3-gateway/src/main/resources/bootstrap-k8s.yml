@@ -1,0 +1,43 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+    gateway:
+      routes:
+        - id: as
+          uri: http://a3-auth-service:8081
+          predicates:
+            - Path=/as/**
+        - id: ai-api
+          order: -100
+          uri: http://a3-ai-python:18080
+          predicates:
+            - Path=/ai/api/**
+        - id: ai
+          order: -90
+          uri: http://a3-ai-python:18080
+          predicates:
+            - Path=/ai/**
+          filters:
+            - PrefixPath=/api
+        - id: ls
+          uri: http://a3-learning-service:8090
+          predicates:
+            - Path=/ls/**
+        - id: us
+          uri: http://a3-user-service:8082
+          predicates:
+            - Path=/us/**
+        - id: cs
+          uri: http://a3-course-service:8086
+          predicates:
+            - Path=/cs/**
+      default-filters:
+        - StripPrefix=1
+
+logging:
+  level:
+    com.cnsoftbei.a3: debug

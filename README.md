@@ -53,12 +53,18 @@
 
 1. 启动依赖容器：`docker compose -f .\docker-compose.local.yml up -d`
 2. 初始化 MySQL：`powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1`
-3. 启动 Java 学习服务：`.\mvnw.cmd -f .\a3-learning\pom.xml -DskipTests spring-boot:run "-Dspring-boot.run.profiles=local"`
-4. 启动 Java 网关：`powershell -ExecutionPolicy Bypass -File .\scripts\start-gateway-local.ps1`
-5. 启动 Python AI 服务：`powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1`
-6. 启动学生端/管理端前端
+3. 可选：补充本地演示数据：`powershell -ExecutionPolicy Bypass -File .\scripts\init-local-demo-data.ps1`
+4. 启动 Java 学习服务：`.\mvnw.cmd -f .\a3-learning\pom.xml -DskipTests spring-boot:run "-Dspring-boot.run.profiles=local"`
+5. 启动 Java 网关：`powershell -ExecutionPolicy Bypass -File .\scripts\start-gateway-local.ps1`
+6. 启动 Python AI 服务：`powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1`
+7. 启动学生端/管理端前端
 
 完整步骤见 [LOCAL_SETUP.md](/F:/A3-cnsoftbei/a3-learning-agent-system/LOCAL_SETUP.md)。
+
+## Kubernetes 预备
+
+仓库已补充一套最小可演进的 k8s 清单，见 [k8s/README.md](/F:/A3-cnsoftbei/a3-learning-agent-system/k8s/README.md)。
+这套配置用于给后续上线做准备，当前覆盖核心依赖和 `auth / learning / ai / gateway / student-web` 主链路，并已补上 `kustomize` 分层、GitHub Actions 镜像构建流程，以及手动触发的 k8s prod 部署 workflow。
 
 ## 本地默认端口
 

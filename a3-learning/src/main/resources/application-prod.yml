@@ -1,0 +1,61 @@
+a3:
+  evaluation-ai:
+    base-url: ${EVALUATION_AI_BASE_URL:http://a3-ai-python:18080}
+    profile-forward-enabled: true
+  redisson:
+    enabled: false
+  mq:
+    listeners:
+      enabled: false
+  xxl-job:
+    enabled: false
+
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+    discovery:
+      client:
+        simple:
+          instances:
+            user-service:
+              - uri: ${USER_SERVICE_BASE_URL:http://a3-user-service:8082}
+            course-service:
+              - uri: ${COURSE_SERVICE_BASE_URL:http://a3-course-service:8086}
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:tj_learning}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+  redis:
+    host: ${REDIS_HOST}
+    port: ${REDIS_PORT:6379}
+    database: ${REDIS_DATABASE:0}
+    timeout: 10s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    dynamic: false
+    listener:
+      simple:
+        auto-startup: false
+        missing-queues-fatal: false
+      direct:
+        auto-startup: false
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+mybatis-plus:
+  configuration:
+    default-enum-type-handler: com.baomidou.mybatisplus.core.handlers.MybatisEnumTypeHandler
+  global-config:
+    field-strategy: 0
+    db-config:
+      logic-delete-field: deleted
+      id-type: assign_id

@@ -80,6 +80,12 @@ class ResourceSourceFileService:
         source_file = await self._load_source_file(file_id)
         file_path = self._require_source_path(source_file)
 
+        if self._storage.is_enabled():
+            try:
+                return RedirectResponse(url=self._build_source_storage_url(source_file))
+            except Exception:
+                pass
+
         disposition = "inline" if source_file.is_inline_previewable else "attachment"
         headers = {
             "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(file_path.name)}",

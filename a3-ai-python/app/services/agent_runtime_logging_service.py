@@ -72,6 +72,8 @@ class AgentRuntimeLoggingService:
         success_message: str,
         start_payload: dict[str, Any] | None = None,
         success_payload_factory: Callable[[], dict[str, Any] | None] | None = None,
+        success_status_factory: Callable[[], str] | None = None,
+        success_message_factory: Callable[[], str] | None = None,
         error_message: str | None = None,
     ):
         await self.log(
@@ -94,10 +96,12 @@ class AgentRuntimeLoggingService:
             raise
         else:
             success_payload = success_payload_factory() if success_payload_factory else start_payload
+            success_status = success_status_factory() if success_status_factory else "ok"
+            resolved_success_message = success_message_factory() if success_message_factory else success_message
             await self.log(
                 agent_name=agent_name,
-                status="ok",
+                status=success_status,
                 level="info",
-                message=success_message,
+                message=resolved_success_message,
                 payload=success_payload,
             )

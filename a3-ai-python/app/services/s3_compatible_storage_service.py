@@ -7,12 +7,12 @@ from pathlib import Path
 from minio.error import S3Error
 
 from app.core.config import settings
-from app.integrations.storage.minio_client import build_minio_client
+from app.integrations.storage.object_storage_client import build_object_storage_client
 
 
 class S3CompatibleStorageService:
     def __init__(self) -> None:
-        self._client = build_minio_client()
+        self._client = build_object_storage_client()
         self._bucket = settings.object_storage_bucket
         self._public_base_url = settings.object_storage_public_base_url
 

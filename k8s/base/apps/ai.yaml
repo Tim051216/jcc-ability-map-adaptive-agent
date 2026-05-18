@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a3-ai-python
+  namespace: a3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: a3-ai-python
+  template:
+    metadata:
+      labels:
+        app: a3-ai-python
+    spec:
+      containers:
+        - name: ai
+          image: ghcr.io/your-org/a3-ai-python:latest
+          ports:
+            - containerPort: 18080
+          env:
+            - name: APP_ENV
+              value: k8s
+            - name: POSTGRES_DSN
+              value: postgresql+asyncpg://$(POSTGRES_USERNAME):$(POSTGRES_PASSWORD)@a3-postgres:5432/a3_ai
+            - name: REDIS_DSN
+              value: redis://a3-redis:6379/0
+            - name: CELERY_BROKER_URL
+              value: redis://a3-redis:6379/1
+            - name: CELERY_RESULT_BACKEND
+              value: redis://a3-redis:6379/2
+            - name: MILVUS_HOST
+              value: a3-milvus
+            - name: MILVUS_PORT
+              value: "19530"
+            - name: MILVUS_COLLECTION_PREFIX
+              value: a3_learning
+            - name: MINIO_ENDPOINT
+              value: a3-minio:9000
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MINIO_SECRET_KEY
+            - name: MINIO_SECURE
+              value: "false"
+            - name: MINIO_BUCKET
+              value: learning-assets
+            - name: OBJECT_STORAGE_PROVIDER
+              value: s3-compatible
+            - name: OBJECT_STORAGE_ENDPOINT
+              value: a3-minio:9000
+            - name: OBJECT_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: OBJECT_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: MINIO_SECRET_KEY
+            - name: OBJECT_STORAGE_SECURE
+              value: "false"
+            - name: OBJECT_STORAGE_BUCKET
+              value: learning-assets
+            - name: RESOURCE_SOURCE_FILE_STORAGE_ENABLED
+              value: "false"
+            - name: JAVA_GATEWAY_BASE_URL
+              value: http://a3-gateway:10010
+            - name: JAVA_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: JAVA_INTERNAL_TOKEN
+            - name: LLM_PROVIDER
+              value: xfyun
+            - name: LLM_MODEL
+              value: mock-model
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: LLM_API_KEY
+            - name: LLM_BASE_URL
+              value: https://example.com
+            - name: EMBEDDING_PROVIDER
+              value: openai_compat
+            - name: EMBEDDING_MODEL
+              value: text-embedding-3-small
+            - name: EMBEDDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: EMBEDDING_API_KEY
+            - name: EMBEDDING_BASE_URL
+              value: https://example.com
+            - name: POSTGRES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: POSTGRES_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: a3-app-secrets
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 18080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 18080
+            initialDelaySeconds: 40
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a3-ai-python
+  namespace: a3
+spec:
+  selector:
+    app: a3-ai-python
+  ports:
+    - name: http
+      port: 18080
+      targetPort: 18080

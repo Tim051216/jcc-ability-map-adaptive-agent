@@ -302,6 +302,7 @@ class DeploymentRecordResponse(BaseModel):
     note: str | None = None
     summary: str | None = None
     rolled_back_from: str | None = None
+    linked_config_keys: list[str] = Field(default_factory=list)
     health_checks: list[DeploymentHealthCheckResponse] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None

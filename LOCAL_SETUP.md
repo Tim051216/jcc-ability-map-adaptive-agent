@@ -52,6 +52,12 @@ docker compose -f .\docker-compose.local.yml up -d
 powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1
 ```
 
+如需补充学生端/AI 联调演示数据，可继续执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\init-local-demo-data.ps1
+```
+
 如果要连接自有 MySQL：
 
 ```powershell
@@ -179,6 +185,7 @@ npm run dev
 ## 9. 可用脚本
 
 - [scripts/init-mysql.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/init-mysql.ps1)：初始化 MySQL
+- [scripts/init-local-demo-data.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/init-local-demo-data.ps1)：补充本地联调演示数据
 - [scripts/start-ai-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/start-ai-local.ps1)：使用项目 `.venv` 启动本地 AI 服务
 - [scripts/start-gateway-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/start-gateway-local.ps1)：启动本地网关
 - [scripts/start-learning-evaluation-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/start-learning-evaluation-local.ps1)：导入测评演示数据并重启学习服务

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import { pdfjs, Document, Page } from "react-pdf";
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileText, PlayCircle } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 import { studentApi, type ResourceCard, type ResourceSourceFileRef } from "../lib/studentApi";
 import { cn } from "../lib/utils";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -11,6 +12,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.m
 
 const DEFAULT_COURSE_ID = 101;
 const UNCATEGORIZED_LABEL = "Uncategorized";
+
+type ResourcePreviewRouteState = {
+  initialResource?: ResourceCard | null;
+  initialFileId?: number | null;
+};
 
 function getCourseIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -151,6 +157,7 @@ function VideoPreview({ file }: { file: ResourceSourceFileRef }) {
 
 function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
   const previewPath = file.preview_url || file.open_url;
+  const previewUrl = studentApi.buildResourceSourceFileUrl(previewPath);
   const openUrl = studentApi.buildResourceSourceFileOpenUrl(file.open_url);
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
@@ -158,6 +165,7 @@ function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
   const [containerWidth, setContainerWidth] = useState(960);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const requiresProtectedFetch = !previewPath.startsWith("http://") && !previewPath.startsWith("https://");
 
   useEffect(() => {
     setPageNumber(1);
@@ -170,7 +178,10 @@ function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
     let cancelled = false;
 
     setPdfBlobUrl(null);
-    setPdfError(null);
+
+    if (!requiresProtectedFetch) {
+      return;
+    }
 
     void studentApi
       .fetchResourceFileBlob(previewPath)
@@ -196,7 +207,7 @@ function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
         URL.revokeObjectURL(revokedUrl);
       }
     };
-  }, [previewPath]);
+  }, [previewPath, requiresProtectedFetch]);
 
   useEffect(() => {
     const element = hostRef.current;
@@ -253,7 +264,14 @@ function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
 
       <div ref={hostRef} className="min-h-[78vh] rounded-[24px] bg-[#dde5ee] p-4">
         <Document
-          file={pdfBlobUrl}
+          file={
+            requiresProtectedFetch
+              ? pdfBlobUrl
+              : {
+                  url: previewUrl,
+                  httpHeaders: (studentApi.buildResourceFileFetchInit(previewPath).headers || {}) as Record<string, string>,
+                }
+          }
           loading={<div className="flex min-h-[72vh] items-center justify-center rounded-[20px] bg-white text-sm text-on-surface-variant">Loading PDF...</div>}
           onLoadSuccess={({ numPages: loadedPages }) => {
             setNumPages(loadedPages);
@@ -288,11 +306,15 @@ function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
 }
 
 export function ResourceSourcePreview() {
+  const location = useLocation();
+  const routeState = (location.state || {}) as ResourcePreviewRouteState;
+  const hasInitialSourceFiles = (routeState.initialResource?.source_files?.length || 0) > 0;
   const courseId = useMemo(() => getCourseIdFromUrl(), []);
   const resourceId = useMemo(() => getResourceIdFromUrl(), []);
-  const [selectedFileId, setSelectedFileId] = useState<number | null>(() => getSourceFileIdFromUrl());
-  const [resource, setResource] = useState<ResourceCard | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedFileId, setSelectedFileId] = useState<number | null>(() => getSourceFileIdFromUrl() || routeState.initialFileId || null);
+  const [resource, setResource] = useState<ResourceCard | null>(routeState.initialResource || null);
+  const [loading, setLoading] = useState(!hasInitialSourceFiles);
+  const [detailReady, setDetailReady] = useState(hasInitialSourceFiles);
   const [error, setError] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [textLoading, setTextLoading] = useState(false);
@@ -311,11 +333,13 @@ export function ResourceSourcePreview() {
     if (!resourceId) {
       setError("Missing resource id.");
       setLoading(false);
+      setDetailReady(true);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    setLoading(!hasInitialSourceFiles);
+    setDetailReady(hasInitialSourceFiles);
     setError(null);
 
     void studentApi
@@ -325,7 +349,8 @@ export function ResourceSourcePreview() {
           return;
         }
         setResource(detail);
-        const fallbackFileId = getSourceFileIdFromUrl() || detail.source_files?.[0]?.file_id || null;
+        setDetailReady(true);
+        const fallbackFileId = getSourceFileIdFromUrl() || routeState.initialFileId || detail.source_files?.[0]?.file_id || null;
         setSelectedFileId(fallbackFileId);
         if (fallbackFileId) {
           setSourceFileIdInUrl(fallbackFileId);
@@ -335,6 +360,7 @@ export function ResourceSourcePreview() {
         if (cancelled) {
           return;
         }
+        setDetailReady(true);
         setError(loadError instanceof Error ? loadError.message : "Failed to load resource preview.");
       })
       .finally(() => {
@@ -346,7 +372,7 @@ export function ResourceSourcePreview() {
     return () => {
       cancelled = true;
     };
-  }, [resourceId]);
+  }, [hasInitialSourceFiles, resourceId, routeState.initialFileId]);
 
   const selectedFile = resource?.source_files?.find((item) => item.file_id === selectedFileId) || resource?.source_files?.[0] || null;
 
@@ -501,6 +527,7 @@ export function ResourceSourcePreview() {
   }
 
   const backUrl = `/resources?courseId=${courseId}${resourceId ? `&resourceId=${resourceId}` : ""}`;
+  const isHydratingSourceFiles = !!resource && !detailReady && !(resource.source_files?.length);
 
   if (loading) {
     return (
@@ -521,10 +548,10 @@ export function ResourceSourcePreview() {
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 px-6 pb-16 pt-5 md:px-10">
       <section className="rounded-[36px] border border-outline-variant/40 bg-white px-8 py-7 shadow-sm">
-        <a href={backUrl} className="inline-flex items-center gap-2 text-sm font-bold text-primary transition-colors hover:text-primary/80">
+        <Link to={backUrl} className="inline-flex items-center gap-2 text-sm font-bold text-primary transition-colors hover:text-primary/80">
           <ArrowLeft className="h-4 w-4" />
           Back to Resource Center
-        </a>
+        </Link>
         <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-xs font-black uppercase tracking-[0.2em] text-primary">Source File Preview</div>
@@ -533,7 +560,7 @@ export function ResourceSourcePreview() {
           </div>
           <div className="rounded-2xl bg-surface-variant/25 px-4 py-3 text-right">
             <div className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Files</div>
-            <div className="mt-1 text-2xl font-bold text-on-surface">{resource.source_file_count || resource.source_files?.length || 0}</div>
+            <div className="mt-1 text-2xl font-bold text-on-surface">{resource.source_file_count || resource.source_files?.length || (isHydratingSourceFiles ? "..." : 0)}</div>
           </div>
         </div>
       </section>
@@ -552,7 +579,11 @@ export function ResourceSourcePreview() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {groupedFiles.map((group) => {
+              {isHydratingSourceFiles ? (
+                <div className="rounded-2xl border border-outline-variant/35 bg-surface-variant/10 px-4 py-5 text-sm text-on-surface-variant">
+                  Loading source file list...
+                </div>
+              ) : groupedFiles.map((group) => {
                 const expanded = expandedGroups[group.category] ?? false;
                 return (
                   <div key={group.category} className="rounded-2xl border border-outline-variant/35 bg-surface-variant/10">
@@ -623,6 +654,10 @@ export function ResourceSourcePreview() {
                   {renderPreview(selectedFile)}
                 </div>
               </>
+            ) : isHydratingSourceFiles ? (
+              <div className="rounded-[28px] border border-outline-variant/35 bg-white px-6 py-10 text-center text-sm text-on-surface-variant">
+                Loading file preview...
+              </div>
             ) : (
               <div className="rounded-[28px] border border-dashed border-outline-variant/50 bg-white px-6 py-10 text-center text-sm text-on-surface-variant">
                 No previewable source file is available for this resource.

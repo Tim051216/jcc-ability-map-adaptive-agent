@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: a3
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/your-org/a3-auth-service
+    newName: ghcr.io/your-org/a3-auth-service
+    newTag: latest
+  - name: ghcr.io/your-org/a3-learning-service
+    newName: ghcr.io/your-org/a3-learning-service
+    newTag: latest
+  - name: ghcr.io/your-org/a3-ai-python
+    newName: ghcr.io/your-org/a3-ai-python
+    newTag: latest
+  - name: ghcr.io/your-org/a3-gateway
+    newName: ghcr.io/your-org/a3-gateway
+    newTag: latest
+  - name: ghcr.io/your-org/a3-student-web
+    newName: ghcr.io/your-org/a3-student-web
+    newTag: latest
+
+patches:
+  - path: patch-apps.yaml
+  - path: patch-ingress.yaml

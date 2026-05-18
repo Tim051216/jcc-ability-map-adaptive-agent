@@ -44,19 +44,19 @@ a3:
     file: TENCENT
     media: TENCENT
   tencent:
-    appId: 1312394356
-    secretId: AKIDDG3arrZ0B42sXzEOM8h182jDVbVDiAPS
-    secretKey: uc7RaXIqDPOAk9MAnAG5duvf8LHvIODl
+    appId: ${TENCENT_VOD_APP_ID:replace-me}
+    secretId: ${TENCENT_VOD_SECRET_ID:replace-me}
+    secretKey: ${TENCENT_VOD_SECRET_KEY:replace-me}
     vod:
       enable: true
       vodValidSeconds: 7776000
       region: "ap-shanghai"
       procedure: "wisehub-base"
-      urlKey: "HZFlxjPYoOm5AfShupOx"
-      pfcg: "basicDrmPreset"
+      urlKey: ${TENCENT_VOD_URL_KEY:replace-me}
+      pfcg: ${TENCENT_VOD_DRM_PRESET:basicDrmPreset}
     cos:
       enable: true
       region: "ap-shanghai"
-      bucket: wisehub
+      bucket: ${TENCENT_COS_BUCKET:replace-me}
       multipartUploadThreshold: 5242880 # 5mb，触发分片上传的阈值
       minimumUploadPartSize: 1048576 # 1mb，分片的最小大小

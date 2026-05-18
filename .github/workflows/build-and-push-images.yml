@@ -1,0 +1,174 @@
+name: Build And Push Images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  build-java-jars:
+    name: Build Java Jars
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: maven
+
+      - name: Build auth, learning, and gateway jars
+        run: ./mvnw -B -pl a3-auth/a3-auth-service,a3-learning,a3-gateway -am -DskipTests package
+
+      - name: Upload auth jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: a3-auth-service-jar
+          path: a3-auth/a3-auth-service/target/a3-auth-service.jar
+
+      - name: Upload learning jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: a3-learning-jar
+          path: a3-learning/target/*.jar
+
+      - name: Upload gateway jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: a3-gateway-jar
+          path: a3-gateway/target/a3-gateway.jar
+
+  build-images:
+    name: Build ${{ matrix.image_name }}
+    runs-on: ubuntu-latest
+    needs: build-java-jars
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: a3-auth-service
+            artifact_name: a3-auth-service-jar
+            artifact_path: a3-auth-service.jar
+            context_dir: .docker/auth
+            dockerfile: .docker/auth/Dockerfile
+            kind: java
+          - image_name: a3-learning-service
+            artifact_name: a3-learning-jar
+            artifact_path: a3-learning.jar
+            context_dir: .docker/learning
+            dockerfile: .docker/learning/Dockerfile
+            kind: java
+          - image_name: a3-gateway
+            artifact_name: a3-gateway-jar
+            artifact_path: a3-gateway.jar
+            context_dir: .docker/gateway
+            dockerfile: .docker/gateway/Dockerfile
+            kind: java
+          - image_name: a3-ai-python
+            context_dir: a3-ai-python
+            dockerfile: a3-ai-python/Dockerfile
+            kind: direct
+          - image_name: a3-student-web
+            context_dir: a3-student-react-web
+            dockerfile: a3-student-react-web/Dockerfile
+            kind: direct
+            build_args: VITE_AI_BASE_URL=${{ vars.VITE_AI_BASE_URL || '/ai/api/v1' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download jar artifact
+        if: matrix.kind == 'java'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.context_dir }}
+
+      - name: Prepare java image context
+        if: matrix.kind == 'java'
+        shell: bash
+        run: |
+          mkdir -p "${{ matrix.context_dir }}"
+          cp Dockerfile "${{ matrix.context_dir }}/Dockerfile"
+          if [ "${{ matrix.image_name }}" = "a3-learning-service" ]; then
+            JAR_FILE=$(find "${{ matrix.context_dir }}" -maxdepth 1 -name "*.jar" ! -name "*.original" | head -n 1)
+            cp "$JAR_FILE" "${{ matrix.context_dir }}/app.jar"
+          else
+            cp "${{ matrix.context_dir }}/${{ matrix.artifact_path }}" "${{ matrix.context_dir }}/app.jar"
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image_name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context_dir }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.build_args || '' }}
+
+  render-k8s-summary:
+    name: Render K8s Summary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.34.1
+
+      - name: Render base kustomization
+        run: kubectl kustomize k8s > /tmp/k8s-base.yaml
+
+      - name: Render prod overlay
+        run: kubectl kustomize k8s/overlays/prod > /tmp/k8s-prod.yaml
+
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-k8s-manifests
+          path: |
+            /tmp/k8s-base.yaml
+            /tmp/k8s-prod.yaml
