@@ -1,430 +1,301 @@
-import React, { useEffect, useMemo, useState } from "react";
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React from "react";
 import {
-  Activity,
-  ArrowUpRight,
   Award,
+  BarChart,
+  BookOpen,
+  Bot,
   Calendar,
+  CheckCircle2,
   ChevronRight,
-  Download,
-  Share2,
+  Clock3,
+  Flame,
   Sparkles,
-  Target,
-  TrendingUp,
-  Trophy,
-  Zap,
+  TrendingUp
 } from "lucide-react";
-import { motion } from "motion/react";
-import { cn } from "../lib/utils";
-import {
-  studentApi,
-  type EvaluationHistoryItem,
-  type EvaluationPaperSummaryResponse,
-  type EvaluationTrendResponse,
-  type ProfileSummaryResponse,
-  type ResourceFavoriteSummaryResponse,
-} from "../lib/studentApi";
+import { METRIC_SCORE } from "../constants";
 
-const DEFAULT_USER_ID = 1001;
-const DEFAULT_COURSE_ID = 101;
+const weeklyStudy = [
+  { day: "周一", hrs: 2.2, focus: "回顾" },
+  { day: "周二", hrs: 4.5, focus: "阅读" },
+  { day: "周三", hrs: 3.1, focus: "练习" },
+  { day: "周四", hrs: 5.6, focus: "精听" },
+  { day: "周五", hrs: 4.0, focus: "诊断" },
+  { day: "周六", hrs: 6.8, focus: "冲刺" },
+  { day: "周日", hrs: 5.2, focus: "巩固" }
+];
 
-function getCourseIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return Number(params.get("courseId") || DEFAULT_COURSE_ID);
-}
-
-function formatDateLabel(value?: string | null) {
-  if (!value) {
-    return "暂无记录";
+const summaryCards = [
+  {
+    title: "本周有效学习时长",
+    value: `${METRIC_SCORE.studyTime} 小时`,
+    note: METRIC_SCORE.studyTimeChange,
+    hint: "覆盖视频精听、讲义研读与沙箱代码重构",
+    icon: Clock3,
+    accent: "from-[#ff8a65] to-[#fb7299]"
+  },
+  {
+    title: "课程大纲达成进度",
+    value: `${METRIC_SCORE.completedCount} / ${METRIC_SCORE.totalCount}`,
+    note: "已达成 80.0% 目标",
+    hint: "核心路径已完成大部分里程碑解锁",
+    icon: BookOpen,
+    accent: "from-[#1697a6] to-[#0f6c7b]"
+  },
+  {
+    title: "导师互动诊断",
+    value: "18 次",
+    note: "较上月 +24%",
+    hint: "围绕图表实现、React 状态治理与性能调优展开",
+    icon: Bot,
+    accent: "from-[#ffb74d] to-[#ff8f00]"
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
+];
+
+const diagnosisFeed = [
+  {
+    title: "文献与资料审阅",
+    desc: "成功下载并精读 3 份资料包，覆盖梯度推导、React 上下文优化与演示代码。",
+    tone: "text-emerald-600"
+  },
+  {
+    title: "视频课程完成率",
+    desc: "《现代化 React 指标调优》系列课程已完整学习，关键章节均完成随堂标注。",
+    tone: "text-sky-600"
+  },
+  {
+    title: "实践沙箱表现",
+    desc: "在性能调优沙箱中多次完成纠错闭环，说明你已具备较强的问题定位能力。",
+    tone: "text-amber-600"
   }
-  return date.toLocaleDateString();
-}
+];
 
-function formatResourceType(type: string) {
-  const map: Record<string, string> = {
-    lecture_note: "课堂笔记",
-    lecture_notes: "课堂笔记",
-    mind_map: "思维导图",
-    quiz_set: "练习题",
-    practice_set: "练习题",
-    extended_reading: "拓展阅读",
-    coding_lab: "编码实验",
-    case_study: "案例分析",
-  };
-  return map[type] || type;
-}
+const recommendations = [
+  "下周优先进入进阶评估，验证复杂状态治理与图表表达能力。",
+  "保持周末高强度学习节奏，同时把周一至周三的时长再拉高 15% 左右。",
+  "继续结合 AI 导师问答，把“学过”转化为“能讲清、能实现、能优化”。"
+];
 
-function buildScoreSeries(history: EvaluationHistoryItem[]) {
-  return [...history]
-    .reverse()
-    .map((item, index) => ({
-      name: `第 ${index + 1} 次`,
-      score: item.overall_score,
-      date: formatDateLabel(item.created_at),
-    }));
-}
-
-function buildKnowledgeDistribution(summary: EvaluationPaperSummaryResponse | null) {
-  return Object.entries(summary?.by_knowledge_point || {}).map(([name, value], index) => ({
-    name,
-    value,
-    color: ["#004ac6", "#006c49", "#784b00", "#ba1a1a", "#5c2d91", "#0f766e"][index % 6],
-  }));
-}
-
-function translateCurrentStage(value?: string | null) {
-  if (!value) {
-    return "暂无阶段信息";
-  }
-
-  const map: Record<string, string> = {
-    "Master the A3 intelligent learning workflow": "掌握 A3 智能学习工作流",
-    "Master the A3 intelligent learning workflow basics": "掌握 A3 智能学习工作流基础",
-    "No active stage yet": "暂无阶段信息",
-  };
-
-  return map[value] || value;
-}
-
-export function StudyReport() {
-  const courseId = useMemo(() => getCourseIdFromUrl(), []);
-  const [history, setHistory] = useState<EvaluationHistoryItem[]>([]);
-  const [trend, setTrend] = useState<EvaluationTrendResponse | null>(null);
-  const [paperSummary, setPaperSummary] = useState<EvaluationPaperSummaryResponse | null>(null);
-  const [profileSummary, setProfileSummary] = useState<ProfileSummaryResponse | null>(null);
-  const [favoriteSummary, setFavoriteSummary] = useState<ResourceFavoriteSummaryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadReport() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const historyResponse = await studentApi.getEvaluationHistory(DEFAULT_USER_ID, courseId).catch(() => ({ items: [], total: 0 }));
-        const courseCode = historyResponse.items[0]?.course_code || "ml_intro";
-
-        const [trendResponse, paperSummaryResponse, profileResponse, favoriteResponse] = await Promise.all([
-          studentApi.getEvaluationTrend(DEFAULT_USER_ID, courseId).catch(() => null),
-          studentApi.getEvaluationPaperSummary(DEFAULT_USER_ID, courseCode).catch(() => null),
-          studentApi.getProfileSummary(DEFAULT_USER_ID).catch(() => null),
-          studentApi.getFavoriteSummary(DEFAULT_USER_ID).catch(() => null),
-        ]);
-
-        if (cancelled) {
-          return;
-        }
-
-        setHistory(historyResponse.items);
-        setTrend(trendResponse);
-        setPaperSummary(paperSummaryResponse);
-        setProfileSummary(profileResponse);
-        setFavoriteSummary(favoriteResponse);
-      } catch (loadError) {
-        if (!cancelled) {
-          const message = loadError instanceof Error ? loadError.message : "学习报告加载失败";
-          setError(message);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadReport();
-    return () => {
-      cancelled = true;
-    };
-  }, [courseId]);
-
-  const latestRecord = history[0] || null;
-  const scoreSeries = buildScoreSeries(history);
-  const knowledgeDistribution = buildKnowledgeDistribution(paperSummary);
-  const strongestKnowledge = knowledgeDistribution[0]?.name || "等待试卷数据";
-  const improvement = trend?.improvement ?? 0;
+export default function StudyReport() {
+  const maxHours = Math.max(...weeklyStudy.map((item) => item.hrs));
+  const totalHours = weeklyStudy.reduce((sum, item) => sum + item.hrs, 0);
+  const averageHours = (totalHours / weeklyStudy.length).toFixed(1);
+  const bestDay = weeklyStudy.reduce((best, item) => (item.hrs > best.hrs ? item : best), weeklyStudy[0]);
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <section className="rounded-[28px] border border-outline-variant/50 bg-white p-8 shadow-sm md:p-10">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-primary">
-              <Activity className="h-4 w-4" />
-              学习结果总览
+    <div className="space-y-6 select-none" id="study-report-workspace">
+      <section className="relative overflow-hidden rounded-[32px] border border-[#dce7ea] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(244,247,249,0.9)_40%,_rgba(219,240,238,0.9)_100%)] p-6 shadow-[0_20px_60px_rgba(15,46,57,0.08)] lg:p-8">
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(251,114,153,0.12),transparent_32%,rgba(15,108,123,0.12)_75%,rgba(255,183,77,0.12))]" />
+        <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#fb7299]/10 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-[#1697a6]/10 blur-3xl" />
+
+        <div className="relative grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#0f6c7b] backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" />
+                Weekly Learning Intelligence Report
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-[#171c22] px-3 py-1 text-[11px] font-bold text-white">
+                <Calendar className="h-3.5 w-3.5 text-[#ffb74d]" />
+                统计周期 10月18日 - 10月25日
+              </span>
             </div>
-            <h2 className="mt-3 text-4xl font-black tracking-tight text-on-surface">一页看懂你最近学得怎么样</h2>
-            <p className="mt-4 text-lg leading-8 text-on-surface-variant">
-              这里把测评分数、知识点分布、画像变化和收藏资料汇总到一起，帮你快速判断“哪里学得不错、哪里还要补”。
-            </p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl bg-surface-variant/25 p-4">
-                <div className="text-[11px] font-bold text-primary">先看什么</div>
-                <div className="mt-2 text-sm text-on-surface">先看最近分数和进步趋势</div>
+
+            <div className="space-y-3">
+              <h1 className="max-w-3xl text-3xl font-extrabold tracking-tight text-[#171c22] lg:text-5xl">
+                个人综合学术研学报告
+              </h1>
+              <p className="max-w-3xl text-sm leading-7 text-[#415058] lg:text-base">
+                这是一份由学习路径、课程精听、资源研读、自测表现与 AI 导师互动共同生成的周报。
+                它不只记录你学了多久，更强调你在本周的学习密度、完成质量与下一步跃迁空间。
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6c7b83]">学习总量</p>
+                <p className="mt-2 text-2xl font-extrabold text-[#171c22]">{totalHours.toFixed(1)}h</p>
+                <p className="mt-1 text-xs text-[#5a6970]">本周累计投入，整体节奏稳定上扬</p>
               </div>
-              <div className="rounded-2xl bg-surface-variant/25 p-4">
-                <div className="text-[11px] font-bold text-primary">再看什么</div>
-                <div className="mt-2 text-sm text-on-surface">看知识点分布找到短板</div>
+              <div className="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6c7b83]">单日峰值</p>
+                <p className="mt-2 text-2xl font-extrabold text-[#171c22]">{bestDay.hrs}h</p>
+                <p className="mt-1 text-xs text-[#5a6970]">{bestDay.day} 学习强度最高，进入冲刺状态</p>
               </div>
-              <div className="rounded-2xl bg-surface-variant/25 p-4">
-                <div className="text-[11px] font-bold text-primary">最后做什么</div>
-                <div className="mt-2 text-sm text-on-surface">按页面底部建议回去补练</div>
+              <div className="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6c7b83]">日均时长</p>
+                <p className="mt-2 text-2xl font-extrabold text-[#171c22]">{averageHours}h</p>
+                <p className="mt-1 text-xs text-[#5a6970]">已接近目标线，周中仍有提升空间</p>
               </div>
             </div>
           </div>
-          <div className="flex gap-4">
-            <button className="flex items-center gap-2 rounded-xl border border-outline-variant bg-white px-6 py-3 text-sm font-bold text-on-surface shadow-sm transition-all hover:bg-surface-container-low">
-              <Share2 className="h-4 w-4" />
-              分享结果
-            </button>
-            <button className="flex items-center gap-2 rounded-xl bg-on-surface px-8 py-3 text-sm font-bold text-white shadow-xl transition-all hover:opacity-90 active:scale-95">
-              <Download className="h-4 w-4" />
-              导出摘要
-            </button>
+
+          <div className="rounded-[28px] border border-white/80 bg-[#171c22] p-5 text-white shadow-[0_24px_50px_rgba(23,28,34,0.18)]">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/60">综合诊断评分</p>
+                <p className="mt-3 text-6xl font-extrabold leading-none">{METRIC_SCORE.overallScore}</p>
+              </div>
+              <div className="rounded-2xl bg-white/10 p-3">
+                <Award className="h-8 w-8 text-[#ffb74d]" />
+              </div>
+            </div>
+
+            <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#ffb74d_0%,#fb7299_55%,#4dd0e1_100%)]"
+                style={{ width: `${METRIC_SCORE.overallScore}%` }}
+              />
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <div className="flex items-start gap-3 rounded-2xl bg-white/6 p-3">
+                <Flame className="mt-0.5 h-4.5 w-4.5 text-[#ff8a65]" />
+                <p className="text-sm leading-6 text-white/86">
+                  你的理论掌握与实践修正能力均处于高水平，尤其在复杂问题排错上表现突出。
+                </p>
+              </div>
+              <div className="flex items-start gap-3 rounded-2xl bg-white/6 p-3">
+                <TrendingUp className="mt-0.5 h-4.5 w-4.5 text-[#4dd0e1]" />
+                <p className="text-sm leading-6 text-white/86">
+                  当前状态适合进入更高难度的阶段性评估，把“会做”进一步提升为“会优化、会表达”。
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {error ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-700">{error}</div> : null}
-
-      <div className="grid grid-cols-12 gap-8">
-        <section className="col-span-12 overflow-hidden rounded-3xl border border-outline-variant bg-white p-10 shadow-sm lg:col-span-8">
-          <div className="mb-12 flex items-start justify-between gap-6">
-            <div>
-              <h3 className="text-2xl font-black text-on-surface">最近成绩变化</h3>
-              <p className="mt-2 text-sm text-on-surface-variant">先看分数是上升还是下降，这能最快判断最近这段学习有没有效果。</p>
-            </div>
-            <div className="rounded-xl border border-secondary/10 bg-secondary/5 px-4 py-2">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-secondary" />
-                <span className="text-xs font-bold text-secondary">本轮变化 {improvement >= 0 ? `+${improvement}` : improvement}</span>
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        {summaryCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article
+              key={card.title}
+              className="group overflow-hidden rounded-[28px] border border-[#dde7ea] bg-white p-5 shadow-[0_16px_40px_rgba(23,28,34,0.05)] transition-transform duration-300 hover:-translate-y-1"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#73838a]">{card.title}</p>
+                  <p className="mt-4 text-3xl font-extrabold text-[#171c22]">{card.value}</p>
+                  <p className="mt-2 text-sm font-bold text-[#0f6c7b]">{card.note}</p>
+                </div>
+                <div className={`rounded-2xl bg-gradient-to-br p-3 text-white shadow-lg ${card.accent}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
               </div>
+
+              <div className="mt-5 flex items-center justify-between border-t border-[#edf2f4] pt-4">
+                <p className="max-w-[85%] text-sm leading-6 text-[#5a6970]">{card.hint}</p>
+                <ChevronRight className="h-4.5 w-4.5 text-[#b7c4c8] transition-transform duration-300 group-hover:translate-x-1" />
+              </div>
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
+        <article className="overflow-hidden rounded-[32px] border border-[#dde7ea] bg-white shadow-[0_16px_50px_rgba(23,28,34,0.05)]">
+          <div className="flex flex-col gap-4 border-b border-[#edf2f4] px-6 py-6 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">Study Rhythm</p>
+              <h2 className="mt-2 flex items-center gap-2 text-xl font-extrabold text-[#171c22]">
+                <BarChart className="h-5 w-5 text-[#fb7299]" />
+                周学习时长趋势
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[#5a6970]">
+                从周四开始进入高效区间，周末形成明显峰值，说明你的深度学习更适合集中式推进。
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[#f4f8f8] px-4 py-3 text-sm font-semibold text-[#0f6c7b]">
+              目标标线：4.0 小时 / 日
             </div>
           </div>
 
-          {scoreSeries.length ? (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                {scoreSeries.map((item, index) => (
-                  <div key={`${item.name}-${index}`} className="rounded-2xl bg-surface-container-low p-5">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">{item.name}</div>
-                    <div className="mt-2 text-3xl font-black text-primary">{item.score}</div>
-                    <div className="mt-1 text-xs text-on-surface-variant">{item.date}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-2xl bg-surface-container-low p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <span className="text-sm font-bold text-on-surface">趋势变化</span>
-                  <span className="text-xs text-on-surface-variant">当前掌握度：{trend?.latest_mastery_level || "--"}</span>
-                </div>
-                <div className="flex items-end gap-4">
-                  {scoreSeries.map((item, index) => (
-                    <div key={`${item.name}-bar-${index}`} className="flex flex-1 flex-col items-center gap-3">
-                      <div className="flex h-44 w-full items-end rounded-2xl bg-white px-3 pb-3">
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: `${Math.max(12, item.score)}%` }}
-                          transition={{ duration: 0.8, delay: index * 0.08 }}
-                          className="w-full rounded-xl bg-gradient-to-t from-primary to-secondary"
-                        />
+          <div className="px-4 pb-5 pt-6 md:px-6">
+            <div className="rounded-[28px] bg-[linear-gradient(180deg,#f8fbfb_0%,#f3f7f8_100%)] p-4 md:p-6">
+              <div className="grid h-[320px] grid-cols-7 items-end gap-3 md:gap-4">
+                {weeklyStudy.map((item) => {
+                  const ratio = item.hrs / maxHours;
+                  const isPeak = item.day === bestDay.day;
+                  return (
+                    <div key={item.day} className="flex h-full flex-col justify-end">
+                      <div className="mb-3 text-center">
+                        <p className={`text-sm font-extrabold ${isPeak ? "text-[#171c22]" : "text-[#49585f]"}`}>{item.hrs}h</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b989d]">{item.focus}</p>
                       </div>
-                      <div className="text-center">
-                        <div className="text-xs font-bold text-on-surface">{item.score}</div>
-                        <div className="text-[10px] text-on-surface-variant">{item.date}</div>
+
+                      <div className="relative flex-1 rounded-[22px] bg-white/80 p-2 shadow-[inset_0_0_0_1px_rgba(220,231,234,0.9)]">
+                        <div className="absolute inset-x-2 top-[26%] border-t border-dashed border-[#d8e2e6]" />
+                        <div className="absolute inset-x-2 top-[52%] border-t border-dashed border-[#d8e2e6]" />
+                        <div className="absolute inset-x-2 top-[78%] border-t border-dashed border-[#d8e2e6]" />
+                        <div className="flex h-full items-end">
+                          <div
+                            className={`w-full rounded-[18px] bg-gradient-to-t transition-all duration-500 ${
+                              isPeak
+                                ? "from-[#ff8a65] via-[#fb7299] to-[#ffc371]"
+                                : "from-[#0f6c7b] via-[#1697a6] to-[#70d6df]"
+                            }`}
+                            style={{ height: `${Math.max(22, ratio * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-center">
+                        <p className="text-sm font-bold text-[#171c22]">{item.day}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-outline-variant px-6 py-12 text-center text-sm text-on-surface-variant">
-              当前还没有可展示的测评记录，先去做一份测评，报告才会更有参考价值。
-            </div>
-          )}
-        </section>
-
-        <div className="col-span-12 space-y-8 lg:col-span-4">
-          <div className="group relative flex h-[300px] flex-col justify-between overflow-hidden rounded-3xl bg-primary p-8 text-white shadow-xl shadow-primary/20">
-            <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10 blur-3xl transition-transform group-hover:scale-150" />
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">画像完整度</span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <h4 className="text-6xl font-black">{profileSummary?.completeness ?? 0}</h4>
-                <span className="text-xl font-bold opacity-60">%</span>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-white/20">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.max(8, profileSummary?.completeness ?? 0)}%` }}
-                  transition={{ duration: 1 }}
-                  className="h-full bg-white"
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span>{translateCurrentStage(profileSummary?.current_stage)}</span>
-                <span className="flex items-center gap-1">
-                  <ArrowUpRight className="h-3 w-3" />
-                  当前阶段
-                </span>
+                  );
+                })}
               </div>
             </div>
           </div>
+        </article>
 
-          <div className="flex h-[calc(100%-340px)] flex-col rounded-3xl border border-outline-variant bg-white p-8 shadow-sm">
-            <div className="mb-6 flex items-start justify-between">
-              <h3 className="text-xl font-bold text-on-surface">最适合你的学习方式</h3>
-              <Sparkles className="h-6 w-6 text-tertiary" />
-            </div>
-            <div className="flex flex-1 flex-col justify-center text-center">
-              <div className="mb-6 flex items-center justify-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full border-8 border-tertiary/10 border-t-tertiary">
-                  <span className="text-3xl font-black text-tertiary">{trend?.best_score ?? "--"}</span>
-                </div>
-              </div>
-              <p className="text-sm font-bold text-on-surface">{profileSummary?.recommended_learning_style || "当前还没有学习方式建议。"}</p>
-              <p className="mt-2 text-xs text-on-surface-variant">这里会结合你的最近成绩和画像结果，告诉你更适合怎么学。</p>
-            </div>
-          </div>
-        </div>
+        <aside className="space-y-6">
+          <article className="rounded-[32px] border border-[#dde7ea] bg-white p-6 shadow-[0_16px_40px_rgba(23,28,34,0.05)]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">Diagnostic Feed</p>
+            <h2 className="mt-2 text-xl font-extrabold text-[#171c22]">学习表现切面</h2>
 
-        <section className="col-span-12 rounded-3xl border border-outline-variant bg-white p-8 shadow-sm lg:col-span-4">
-          <h3 className="mb-8 text-xl font-bold text-on-surface">哪里掌握得多，哪里还要补</h3>
-          <div className="space-y-8">
-            {knowledgeDistribution.length ? (
-              knowledgeDistribution.map((item) => (
-                <div key={item.name} className="space-y-3">
-                  <div className="flex items-end justify-between">
-                    <span className="text-sm font-bold text-on-surface">{item.name}</span>
-                    <span className="text-sm font-black italic" style={{ color: item.color }}>
-                      {item.value}
-                    </span>
-                  </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-container">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(100, item.value * 16)}%` }}
-                      transition={{ duration: 1.2, ease: "easeOut" }}
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: item.color }}
-                    />
+            <div className="mt-5 space-y-4">
+              {diagnosisFeed.map((item) => (
+                <div key={item.title} className="rounded-2xl bg-[#f7fafb] p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className={`mt-0.5 h-5 w-5 shrink-0 ${item.tone}`} />
+                    <div>
+                      <p className="font-bold text-[#171c22]">{item.title}</p>
+                      <p className="mt-1 text-sm leading-6 text-[#5a6970]">{item.desc}</p>
+                    </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="text-sm text-on-surface-variant">当前还没有试卷知识点数据，做完测评后这里会告诉你强弱分布。</div>
-            )}
-          </div>
-
-          <div className="mt-12 rounded-2xl border border-outline-variant/30 bg-surface-container-low p-6">
-            <p className="text-xs leading-relaxed text-on-surface-variant">
-              <span className="mr-1 font-bold text-primary">当前重点：</span>
-              {strongestKnowledge}
-            </p>
-          </div>
-        </section>
-
-        <section className="col-span-12 rounded-3xl border border-outline-variant bg-white p-8 shadow-sm lg:col-span-8">
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Trophy className="h-6 w-6 text-tertiary" />
-              <h3 className="text-xl font-bold text-on-surface">最近最值得关注的 4 个信号</h3>
+              ))}
             </div>
-            <button className="text-xs font-bold text-primary hover:underline">查看全部指标</button>
-          </div>
+          </article>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {[
-              {
-                title: "最近一次测评",
-                desc: latestRecord?.report_summary || "当前还没有测评记录。",
-                meta: latestRecord ? `${latestRecord.overall_score} 分` : "等待中",
-                icon: Zap,
-                color: "primary",
-              },
-              {
-                title: "收藏资料",
-                desc: `你现在一共收藏了 ${favoriteSummary?.total ?? 0} 条资料。`,
-                meta: Object.keys(favoriteSummary?.by_type || {}).map(formatResourceType).join(" / ") || "暂无收藏",
-                icon: Award,
-                color: "secondary",
-              },
-              {
-                title: "画像标签",
-                desc: profileSummary?.tags.join(" / ") || "当前还没有画像标签。",
-                meta: `${profileSummary?.tags.length ?? 0} 个标签`,
-                icon: Target,
-                color: "tertiary",
-              },
-              {
-                title: "试卷情况",
-                desc: `当前共有 ${paperSummary?.total ?? 0} 份试卷、${paperSummary?.total_questions ?? 0} 道已跟踪题目。`,
-                meta: paperSummary?.latest_paper_at ? formatDateLabel(paperSummary.latest_paper_at) : "暂无试卷",
-                icon: Activity,
-                color: "primary",
-              },
-            ].map((item) => (
-              <div key={item.title} className="group flex cursor-default gap-4 rounded-2xl border border-outline-variant/20 bg-surface-container-low p-5 transition-all hover:border-primary/30">
-                <div
-                  className={cn(
-                    "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform group-hover:scale-110",
-                    item.color === "primary" ? "bg-primary text-white" : item.color === "secondary" ? "bg-secondary text-white" : "bg-tertiary text-white",
-                  )}
-                >
-                  <item.icon className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="flex items-start justify-between gap-4">
-                    <h4 className="font-bold text-on-surface">{item.title}</h4>
-                    <span className="text-[10px] font-bold text-on-surface-variant opacity-50">{item.meta}</span>
-                  </div>
-                  <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="relative mt-12 flex flex-col items-center justify-between gap-8 overflow-hidden rounded-[2.5rem] bg-on-surface p-10 text-white md:flex-row">
-            <div className="absolute inset-0 bg-primary/20 opacity-30 blur-[100px]" />
-            <div className="relative z-10 flex items-center gap-8">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl">
-                <Sparkles className="h-8 w-8 text-primary" />
-              </div>
-              <div>
-                <h5 className="mb-2 text-2xl font-black">接下来最值得补的地方</h5>
-                <p className="max-w-sm text-sm opacity-70">
-                  {trend?.focus_knowledge_points.length
-                    ? `建议你下一步重点关注：${trend.focus_knowledge_points.join("、")}。`
-                    : "当后续产生更多测评数据后，这里会自动告诉你下一步最该补哪部分。"}
-                </p>
-              </div>
+          <article className="overflow-hidden rounded-[32px] border border-[#172127] bg-[#171c22] text-white shadow-[0_16px_50px_rgba(23,28,34,0.14)]">
+            <div className="border-b border-white/10 px-6 py-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/55">Recommendation</p>
+              <h2 className="mt-2 text-xl font-extrabold">下周行动建议</h2>
             </div>
-            <a
-              href={`/evaluation?courseId=${courseId}`}
-              className="relative z-10 flex items-center gap-3 rounded-xl bg-primary px-10 py-4 text-sm font-black text-white shadow-2xl transition-all hover:scale-105 active:scale-95"
-            >
-              去做下一次测评
-              <ChevronRight className="h-4 w-4" />
-            </a>
-          </div>
-        </section>
-      </div>
 
-      {loading ? (
-        <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-          <Calendar className="h-4 w-4" />
-          正在加载学习结果...
-        </div>
-      ) : null}
+            <div className="space-y-3 px-6 py-5">
+              {recommendations.map((item) => (
+                <div key={item} className="flex items-start gap-3 rounded-2xl bg-white/6 p-4">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ffb74d] text-xs font-extrabold text-[#171c22]">
+                    +
+                  </span>
+                  <p className="text-sm leading-6 text-white/88">{item}</p>
+                </div>
+              ))}
+            </div>
+          </article>
+        </aside>
+      </section>
     </div>
   );
 }

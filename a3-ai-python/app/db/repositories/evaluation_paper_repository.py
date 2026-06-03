@@ -1,10 +1,24 @@
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.evaluation_paper import EvaluationAnswer, EvaluationPaper
 
 
 class EvaluationPaperRepository:
+    @staticmethod
+    async def _realign_answer_sequence(session: AsyncSession) -> None:
+        await session.execute(
+            text(
+                """
+                SELECT setval(
+                    pg_get_serial_sequence('evaluation_answer', 'id'),
+                    COALESCE((SELECT MAX(id) FROM evaluation_answer), 0) + 1,
+                    false
+                )
+                """
+            )
+        )
+
     async def list_papers_by_user(
         self,
         session: AsyncSession,
@@ -48,10 +62,15 @@ class EvaluationPaperRepository:
     async def get_paper(self, session: AsyncSession, paper_id: int) -> EvaluationPaper | None:
         return await session.get(EvaluationPaper, paper_id)
 
+    async def get_next_answer_id(self, session: AsyncSession) -> int:
+        result = await session.execute(select(func.coalesce(func.max(EvaluationAnswer.id), 0) + 1))
+        return int(result.scalar_one())
+
     async def create_answer(
         self,
         session: AsyncSession,
         *,
+        answer_id: int | None = None,
         paper_id: int,
         user_id: int,
         question_id: str,
@@ -66,6 +85,7 @@ class EvaluationPaperRepository:
         updated_at: str,
     ) -> EvaluationAnswer:
         answer = EvaluationAnswer(
+            id=answer_id,
             paper_id=paper_id,
             user_id=user_id,
             question_id=question_id,

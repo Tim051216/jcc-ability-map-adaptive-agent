@@ -3,6 +3,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+import re
 import secrets
 import time
 from datetime import datetime
@@ -26,17 +28,18 @@ from app.schemas.tutoring import (
     EscalationRecordCreate,
     ExpertAnswerSubmitRequest,
     ExpertAssignmentRequest,
+    TutoringAnswerResponse,
     TutoringHistoryItem,
     TutoringHistoryQuery,
     TutoringHistoryResponse,
     TutoringQuestionCreate,
     TutoringQuestionResponse,
-    TutoringAnswerResponse,
 )
 from app.services.profile_service import ProfileService
 from app.services.tutoring_sensitive import assert_tutoring_text_allowed
 
 EmitFn = Callable[[dict[str, Any]], Awaitable[None]]
+PERSONA_PREFIX_RE = r"^\[(haibara|usagi)\]\s*"
 
 
 def _inclusive_end_calendar_day(dt: datetime) -> datetime:
@@ -75,9 +78,36 @@ class TutoringService:
                 "profile_tags": list(prof.profile_tags or []),
                 "recommended_resource_types": list(prof.recommended_resource_types or []),
             }
-        except Exception as e:
+        except TimeoutError:
+            logger.warning("tutoring.profile_load_timeout", user_id=user_id)
+            return None
+        except (Exception, OSError) as e:
             logger.warning("tutoring.profile_load_failed", user_id=user_id, error=str(e))
             return None
+
+    @staticmethod
+    def _normalize_persona(raw: Any) -> str | None:
+        persona = str(raw or "").strip().lower()
+        if persona in {"haibara", "usagi"}:
+            return persona
+        return None
+
+    @classmethod
+    def _compose_storage_question_text(cls, text: str, persona: str | None) -> str:
+        normalized_persona = cls._normalize_persona(persona)
+        if not normalized_persona:
+            return text
+        return f"[{normalized_persona}] {text}"
+
+    @classmethod
+    def _extract_persona_and_clean_text(cls, text: str) -> tuple[str | None, str]:
+        stripped = str(text or "").strip()
+        match = re.match(PERSONA_PREFIX_RE, stripped, flags=re.IGNORECASE)
+        if not match:
+            return None, stripped
+        persona = cls._normalize_persona(match.group(1))
+        cleaned = re.sub(PERSONA_PREFIX_RE, "", stripped, count=1, flags=re.IGNORECASE).strip()
+        return persona, cleaned
 
     async def _get_question(self, question_id: int) -> TutoringQuestion | None:
         stmt = select(TutoringQuestion).where(TutoringQuestion.id == question_id)
@@ -125,7 +155,7 @@ class TutoringService:
         return result.scalar_one_or_none() is not None
 
     def _validate_question_text(self, text: str) -> str:
-        stripped = (text or "").strip()
+        stripped = str(text or "").strip()
         if not stripped:
             raise ValueError("问题内容不能为空")
         if len(stripped) > 20000:
@@ -135,6 +165,7 @@ class TutoringService:
 
     async def submit_question(self, user_id: int, request: TutoringQuestionCreate) -> dict[str, Any]:
         text = self._validate_question_text(request.question_text)
+        storage_text = self._compose_storage_question_text(text, request.persona)
         now = datetime.now()
 
         session_row: TutoringSession
@@ -159,6 +190,7 @@ class TutoringService:
                 update_time=now,
             )
             self.db.add(session_row)
+            # Ensure the new session row exists before creating a question that references it.
             await self.db.flush()
 
         qid = self._generate_id()
@@ -168,7 +200,7 @@ class TutoringService:
             user_id=user_id,
             course_id=request.course_id,
             section_id=request.section_id,
-            question_text=text,
+            question_text=storage_text,
             question_images=request.question_images,
             question_type=None,
             knowledge_points=None,
@@ -292,14 +324,20 @@ class TutoringService:
                 }
 
         coordinator = TutoringCoordinator()
-        user_profile = await self._load_user_profile(user_id)
+        try:
+            user_profile = await asyncio.wait_for(self._load_user_profile(user_id), timeout=1.2)
+        except TimeoutError:
+            logger.warning("tutoring.profile_load_skipped", user_id=user_id)
+            user_profile = None
 
         try:
+            persona, clean_question_text = self._extract_persona_and_clean_text(question.question_text)
             result = await coordinator.run(
-                question_text=question.question_text,
+                question_text=clean_question_text,
                 question_images=question.question_images,
                 course_id=question.course_id,
                 user_profile=user_profile,
+                persona=persona,
                 on_event=on_event,
             )
         except Exception as e:
@@ -330,9 +368,7 @@ class TutoringService:
                     TutoringAnswer.answer_text.ilike(kw),
                 )
             )
-            filters.append(
-                or_(TutoringQuestion.question_text.ilike(kw), answer_hits)
-            )
+            filters.append(or_(TutoringQuestion.question_text.ilike(kw), answer_hits))
 
         base_where = and_(*filters)
 
@@ -377,6 +413,9 @@ class TutoringService:
         for q in questions:
             ans = latest_answers_by_question_id.get(q.id)
             fav = q.id in favorited_question_ids
+            persona, cleaned_question_text = self._extract_persona_and_clean_text(q.question_text)
+            setattr(q, "question_text", cleaned_question_text)
+            setattr(q, "persona", persona)
             items.append(
                 TutoringHistoryItem(
                     question=TutoringQuestionResponse.model_validate(q),

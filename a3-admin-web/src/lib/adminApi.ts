@@ -13,7 +13,7 @@ export class ApiError extends Error {
 export function describeError(error: unknown) {
   if (error instanceof ApiError) {
     if (error.detail.includes("ConnectionRefusedError")) {
-      return "后端服务已连通，但数据库连接被拒绝。请先启动数据库或检查 a3-ai-python 的连接配置。";
+      return "后端服务已连通，但数据库连接被拒绝。请先启动数据库，或检查 a3-ai-python 的连接配置。";
     }
 
     return error.detail || error.message;
@@ -254,6 +254,52 @@ export interface AIOpsOverview {
   parameters: AIOpsParameter[];
   experiments: AIOpsExperiment[];
   latest_deployment: DeploymentRecord | null;
+}
+
+export interface MCPToolStat {
+  tool_name: string;
+  display_name: string;
+  call_count: number;
+  error_count: number;
+  avg_latency_ms: number;
+}
+
+export interface MCPServerStatus {
+  server_id: string;
+  display_name: string;
+  transport: string;
+  status: string;
+  endpoint?: string | null;
+  connected_clients: number;
+  error_rate: number;
+  avg_latency_ms: number;
+  latest_error?: string | null;
+  updated_at?: string | null;
+  tools: MCPToolStat[];
+}
+
+export interface MCPSessionItem {
+  session_id: string;
+  server_id: string;
+  client_name: string;
+  status: string;
+  tool_name?: string | null;
+  duration_ms: number;
+  started_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface MCPOverview {
+  total_servers: number;
+  healthy_servers: number;
+  warning_servers: number;
+  error_servers: number;
+  total_tool_calls: number;
+  error_tool_calls: number;
+  avg_latency_ms: number;
+  latest_updated_at?: string | null;
+  servers: MCPServerStatus[];
+  sessions: MCPSessionItem[];
 }
 
 export interface SystemConfigSummary {
@@ -576,6 +622,10 @@ export function getAgentRuntimeSummary(agentName?: string, level?: string) {
 
 export function getAIOpsOverview() {
   return requestJson<AIOpsOverview>("/api/v1/admin/aiops/overview");
+}
+
+export function getMCPOverview() {
+  return requestJson<MCPOverview>("/api/v1/admin/mcp/overview");
 }
 
 export async function getDeployments() {

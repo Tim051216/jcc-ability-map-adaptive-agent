@@ -51,3 +51,7 @@ deploy/ecs/env/*.env
 *.err.log
 output/
 docs/course-materials/
+# Local runtime / export artifacts
+*.zip
+*.pid
+a3-ai-python/.run/

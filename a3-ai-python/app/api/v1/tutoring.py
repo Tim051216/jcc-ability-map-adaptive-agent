@@ -1,14 +1,18 @@
 """
 智能辅导 API
 """
+import asyncio
 import json
 from datetime import datetime
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user_id, get_db_session, get_websocket_user_id
-from app.db.session import async_session_factory
+from app.agents.tutoring_coordinator import TutoringCoordinator
+from app.core.config import settings
+from app.db.session import async_session_factory, get_db
 from app.schemas.tutoring import (
     AnswerEvaluationRequest,
     EscalationRecordCreate,
@@ -30,11 +34,34 @@ from app.schemas.tutoring import (
     TutoringQuestionResponse,
 )
 from app.services.tutoring_image_storage import upload_tutoring_question_image
+from app.services.tutoring_memory_store import memory_tutoring_store
 from app.services.tutoring_ocr_service import extract_text_from_base64_image
 from app.services.tutoring_service import TutoringService
 from app.services.tutoring_task_service import TutoringTaskService
 
 router = APIRouter()
+
+
+async def _can_connect_local_tutoring_db() -> bool:
+    dsn = settings.local_postgres_dsn
+    if not dsn:
+        return False
+    parsed = urlparse(dsn)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 5432
+    writer = None
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=0.25)
+        return True
+    except Exception:
+        return False
+    finally:
+        if writer is not None:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
 
 
 @router.post("/ocr-preview", response_model=OcrPreviewResponse)
@@ -87,7 +114,6 @@ async def upload_tutoring_image(
 async def submit_question(
     request: TutoringQuestionCreate,
     user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """
     提交问题
@@ -95,16 +121,28 @@ async def submit_question(
     支持文字+图片问题
     返回问题ID和会话ID
     """
-    service = TutoringService(db)
-    try:
-        result = await service.submit_question(user_id, request)
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"问题提交失败: {str(e)}")
+    if not await _can_connect_local_tutoring_db():
+        return memory_tutoring_store.create_question(
+            user_id=user_id,
+            question_text=request.question_text,
+            question_images=request.question_images,
+            course_id=request.course_id,
+            section_id=request.section_id,
+            session_id=int(request.session_id) if request.session_id else None,
+            persona=request.persona,
+        )
+
+    async with get_db() as db:
+        service = TutoringService(db)
+        try:
+            result = await service.submit_question(user_id, request)
+            return result
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"问题提交失败: {str(e)}")
 
 
 @router.post("/tasks", response_model=TutoringTaskSubmitResponse)
@@ -151,7 +189,6 @@ async def list_tutoring_tasks(
 async def get_answer(
     question_id: int,
     user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """
     获取解答
@@ -159,52 +196,75 @@ async def get_answer(
     如果解答不存在，会触发生成流程
     返回完整解答和生成状态
     """
-    service = TutoringService(db)
-    try:
-        # 先尝试获取已有解答
-        question = await service._get_question(question_id)
-        if not question or question.user_id != user_id:
+    if not await _can_connect_local_tutoring_db():
+        question = memory_tutoring_store.get_question(question_id)
+        if not question or question.get("user_id") != user_id:
             raise HTTPException(status_code=404, detail="问题不存在或无权访问")
-
-        # 如果已有解答，直接返回
-        if question.has_answer:
-            answer = await service._get_answer_by_question(question_id)
-            if answer:
-                answer.view_count = int(getattr(answer, "view_count", 0) or 0) + 1
-                answer.update_time = datetime.now()
-                await db.commit()
-                conf = float(answer.confidence_score or 0)
-                resolved_question_id = getattr(question, "id", question_id)
-                resolved_session_id = getattr(question, "session_id", None)
-                return {
-                    "status": "completed",
-                    "question_id": resolved_question_id,
-                    "session_id": resolved_session_id,
-                    "answer_id": answer.id,
-                    "answer_text": answer.answer_text,
-                    "diagrams": answer.answer_diagrams,
-                    "videos": answer.answer_videos,
-                    "reference_sources": answer.reference_sources,
-                    "confidence_score": conf,
-                    "generation_time": answer.generation_time,
-                    "should_escalate": conf < 60.0,
-                    "question_type": getattr(question, "question_type", None),
-                    "knowledge_points": getattr(question, "knowledge_points", None) or [],
-                }
-
-        # 如果没有解答，生成新解答
-        result = await service.generate_answer(question_id, user_id)
+        answer = memory_tutoring_store.get_answer_by_question(question_id)
+        if answer is None:
+            raise HTTPException(status_code=404, detail="答案尚未生成")
         return {
             "status": "completed",
-            **result,
+            "question_id": question["id"],
+            "session_id": question["session_id"],
+            "answer_id": answer["id"],
+            "answer_text": answer["answer_text"],
+            "diagrams": answer["answer_diagrams"] or [],
+            "videos": answer["answer_videos"] or [],
+            "reference_sources": answer["reference_sources"] or [],
+            "confidence_score": float(answer["confidence_score"] or 0),
+            "generation_time": answer["generation_time"],
+            "should_escalate": bool(question.get("is_escalated")),
+            "question_type": question.get("question_type"),
+            "knowledge_points": question.get("knowledge_points") or [],
         }
 
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"解答获取失败: {str(e)}")
+    async with get_db() as db:
+        service = TutoringService(db)
+        try:
+            # 先尝试获取已有解答
+            question = await service._get_question(question_id)
+            if not question or question.user_id != user_id:
+                raise HTTPException(status_code=404, detail="问题不存在或无权访问")
+
+            # 如果已有解答，直接返回
+            if question.has_answer:
+                answer = await service._get_answer_by_question(question_id)
+                if answer:
+                    answer.view_count = int(getattr(answer, "view_count", 0) or 0) + 1
+                    answer.update_time = datetime.now()
+                    await db.commit()
+                    conf = float(answer.confidence_score or 0)
+                    resolved_question_id = getattr(question, "id", question_id)
+                    resolved_session_id = getattr(question, "session_id", None)
+                    return {
+                        "status": "completed",
+                        "question_id": resolved_question_id,
+                        "session_id": resolved_session_id,
+                        "answer_id": answer.id,
+                        "answer_text": answer.answer_text,
+                        "diagrams": answer.answer_diagrams,
+                        "videos": answer.answer_videos,
+                        "reference_sources": answer.reference_sources,
+                        "confidence_score": conf,
+                        "generation_time": answer.generation_time,
+                        "should_escalate": conf < 60.0,
+                        "question_type": getattr(question, "question_type", None),
+                        "knowledge_points": getattr(question, "knowledge_points", None) or [],
+                    }
+
+            result = await service.generate_answer(question_id, user_id)
+            return {
+                "status": "completed",
+                **result,
+            }
+
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"解答获取失败: {str(e)}")
 
 
 @router.get("/history", response_model=TutoringHistoryResponse)
@@ -225,32 +285,43 @@ async def get_history(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db_session),
 ) -> TutoringHistoryResponse:
     """
     查询答疑历史
     
     支持多条件筛选和分页
     """
-    service = TutoringService(db)
-    try:
-        query = TutoringHistoryQuery(
-            user_id=user_id,
-            course_id=course_id,
-            section_id=section_id,
-            question_type=question_type,
-            keyword=keyword,
-            start_date=start_date,
-            end_date=end_date,
-            page=page,
-            page_size=page_size,
+    if not await _can_connect_local_tutoring_db():
+        return TutoringHistoryResponse(
+            **memory_tutoring_store.list_history(
+                user_id=user_id,
+                course_id=course_id,
+                keyword=keyword,
+                page=page,
+                page_size=page_size,
+            )
         )
-        result = await service.query_history(user_id, query)
-        return TutoringHistoryResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"历史查询失败: {str(e)}")
+
+    async with get_db() as db:
+        service = TutoringService(db)
+        try:
+            query = TutoringHistoryQuery(
+                user_id=user_id,
+                course_id=course_id,
+                section_id=section_id,
+                question_type=question_type,
+                keyword=keyword,
+                start_date=start_date,
+                end_date=end_date,
+                page=page,
+                page_size=page_size,
+            )
+            result = await service.query_history(user_id, query)
+            return TutoringHistoryResponse(**result)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"历史查询失败: {str(e)}")
 
 
 @router.post("/evaluate", response_model=dict)
@@ -486,6 +557,75 @@ async def stream_tutoring_answer(websocket: WebSocket, question_id: int) -> None
                 json.dumps({"chunk_type": "error", "content": "missing authentication"}, ensure_ascii=False)
             )
             await websocket.close(code=4401)
+            return
+
+        if not await _can_connect_local_tutoring_db():
+            question = memory_tutoring_store.get_question(question_id)
+            if not question or question.get("user_id") != user_id:
+                await websocket.send_text(
+                    json.dumps({"chunk_type": "error", "content": "问题不存在或无权访问"}, ensure_ascii=False)
+                )
+                await websocket.close(code=4404)
+                return
+
+            cached_answer = memory_tutoring_store.get_answer_by_question(question_id)
+            if cached_answer is not None:
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "chunk_type": "complete",
+                            "content": {
+                                "status": "completed",
+                                "question_id": question["id"],
+                                "session_id": question["session_id"],
+                                "answer_id": cached_answer["id"],
+                                "answer_text": cached_answer["answer_text"],
+                                "diagrams": cached_answer["answer_diagrams"] or [],
+                                "videos": cached_answer["answer_videos"] or [],
+                                "reference_sources": cached_answer["reference_sources"] or [],
+                                "confidence_score": float(cached_answer["confidence_score"] or 0),
+                                "generation_time": cached_answer["generation_time"],
+                                "should_escalate": bool(question.get("is_escalated")),
+                                "question_type": question.get("question_type"),
+                                "knowledge_points": question.get("knowledge_points") or [],
+                            },
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                await websocket.close()
+                return
+
+            async def emit_memory(msg: dict) -> None:
+                await websocket.send_text(json.dumps(msg, ensure_ascii=False))
+
+            persona = question.get("persona")
+            result = await TutoringCoordinator().run(
+                question_text=question.get("question_text") or "",
+                question_images=question.get("question_images"),
+                course_id=question.get("course_id"),
+                user_profile=None,
+                persona=persona,
+                on_event=emit_memory,
+            )
+            saved = memory_tutoring_store.save_answer(
+                question_id,
+                {
+                    "answer_text": result.get("answer_text", ""),
+                    "diagrams": result.get("answer_diagrams") or [],
+                    "videos": result.get("answer_videos") or [],
+                    "reference_sources": result.get("reference_sources") or [],
+                    "confidence_score": result.get("confidence_score") or 0,
+                    "generation_time": result.get("generation_time_ms"),
+                    "should_escalate": bool(result.get("should_escalate")),
+                    "question_type": (result.get("question_analysis") or {}).get("question_type"),
+                    "knowledge_points": (result.get("question_analysis") or {}).get("knowledge_points") or [],
+                },
+            )
+            await websocket.send_text(
+                json.dumps({"chunk_type": "saved", "content": saved}, ensure_ascii=False)
+            )
+            await websocket.close()
             return
 
         async with async_session_factory() as db:

@@ -4,6 +4,7 @@
 负责协调智能体、数据库操作和业务逻辑
 """
 
+import asyncio
 from datetime import datetime
 import re
 from typing import Any
@@ -48,6 +49,8 @@ from app.schemas.profile_conversation import (
 
 
 class ProfileConversationService:
+    PROFILE_BEHAVIOR_TIMEOUT_SECONDS = 8
+
     """对话式画像构建服务"""
 
     PROFILE_DIMENSIONS = [
@@ -966,37 +969,70 @@ class ProfileConversationService:
         # 分析行为影响
         impact = analyze_behavior_impact(behavior_type, behavior_data)
 
-        # 构建状态
-        state: ProfileConversationState = {
-            "user_id": user_id,
-            "profile": {
-                "knowledge_base": profile.knowledge_base,
-                "cognitive_style": profile.cognitive_style,
-                "learning_progress": profile.learning_progress,
-                "error_preference": profile.error_preference,
-                "interest_direction": profile.interest_direction,
-                "learning_habit": profile.learning_habit,
-                "tags": profile.tags or [],
-            },
-            "behavior_data": [
-                {
-                    "behavior_type": behavior_type,
-                    "behavior_data": behavior_data,
-                    "resource_type": resource_type,
-                    "resource_id": resource_id,
-                    "result": result,
-                    "duration": duration,
+        if behavior_data.get("scene") == "evaluation_submit":
+            profile_updates = self._build_behavior_fallback_updates(
+                behavior_type=behavior_type,
+                behavior_data=behavior_data,
+                result=result,
+                impact=impact,
+            )
+            updated_profile = self._build_behavior_fallback_profile(
+                profile=profile,
+                behavior_type=behavior_type,
+                behavior_data=behavior_data,
+                result=result,
+            )
+        else:
+            # 构建状态
+            state: ProfileConversationState = {
+                "user_id": user_id,
+                "profile": {
+                    "knowledge_base": profile.knowledge_base,
+                    "cognitive_style": profile.cognitive_style,
+                    "learning_progress": profile.learning_progress,
+                    "error_preference": profile.error_preference,
+                    "interest_direction": profile.interest_direction,
+                    "learning_habit": profile.learning_habit,
+                    "tags": profile.tags or [],
+                },
+                "behavior_data": [
+                    {
+                        "behavior_type": behavior_type,
+                        "behavior_data": behavior_data,
+                        "resource_type": resource_type,
+                        "resource_id": resource_id,
+                        "result": result,
+                        "duration": duration,
+                    }
+                ],
+                "execution_trace": [],
+            }
+
+            # 执行更新智能体
+            try:
+                result_state = await asyncio.wait_for(
+                    profile_updater_node(state),
+                    timeout=self.PROFILE_BEHAVIOR_TIMEOUT_SECONDS,
+                )
+            except Exception:
+                result_state = {
+                    "profile_updates": self._build_behavior_fallback_updates(
+                        behavior_type=behavior_type,
+                        behavior_data=behavior_data,
+                        result=result,
+                        impact=impact,
+                    ),
+                    "profile": self._build_behavior_fallback_profile(
+                        profile=profile,
+                        behavior_type=behavior_type,
+                        behavior_data=behavior_data,
+                        result=result,
+                    ),
                 }
-            ],
-            "execution_trace": [],
-        }
 
-        # 执行更新智能体
-        result_state = await profile_updater_node(state)
-
-        # 获取更新结果
-        profile_updates = result_state.get("profile_updates", {})
-        updated_profile = result_state.get("profile", {})
+            # 获取更新结果
+            profile_updates = result_state.get("profile_updates", {})
+            updated_profile = result_state.get("profile", {})
 
         # 保存历史版本
         history = ProfileHistoryModel(
@@ -1061,6 +1097,71 @@ class ProfileConversationService:
             4: "互动问答",
         }
         return behavior_names.get(behavior_type, "未知")
+
+    def _build_behavior_fallback_updates(
+        self,
+        *,
+        behavior_type: int,
+        behavior_data: dict,
+        result: str | None,
+        impact: dict[str, Any],
+    ) -> dict[str, Any]:
+        focus_points = behavior_data.get("knowledge_points") or behavior_data.get("weak_points") or []
+        focus_text = str(focus_points[0]) if focus_points else "当前测评重点"
+        return {
+            "updated_dimensions": {
+                dimension: {"status": "updated"}
+                for dimension in impact.get("affected_dimensions", ["learning_progress", "error_preference"])
+            },
+            "new_tags": ["测评已回流", "薄弱点跟踪"],
+            "removed_tags": [],
+            "summary": f"已根据本次{self._get_behavior_type_name(behavior_type)}行为回写画像，后续重点跟踪 {focus_text}。",
+            "result": result or "updated",
+        }
+
+    def _build_behavior_fallback_profile(
+        self,
+        *,
+        profile: StudentProfileModel,
+        behavior_type: int,
+        behavior_data: dict,
+        result: str | None,
+    ) -> dict[str, Any]:
+        learning_progress = dict(profile.learning_progress or {})
+        error_preference = dict(profile.error_preference or {})
+        tags = list(profile.tags or [])
+
+        knowledge_points = behavior_data.get("knowledge_points") or []
+        weak_points = behavior_data.get("weak_points") or []
+        focus_points = [str(item) for item in [*knowledge_points, *weak_points] if item]
+
+        learning_progress["last_behavior_type"] = self._get_behavior_type_name(behavior_type)
+        learning_progress["last_result"] = result or "updated"
+        learning_progress["last_behavior_at"] = datetime.now().isoformat(timespec="seconds")
+        if focus_points:
+            learning_progress["current_focus"] = focus_points[0]
+
+        if focus_points:
+            tracked = error_preference.get("tracked_points") or []
+            merged = []
+            for item in [*tracked, *focus_points]:
+                if item and item not in merged:
+                    merged.append(item)
+            error_preference["tracked_points"] = merged[:6]
+
+        for tag in ["测评已回流", "薄弱点跟踪"]:
+            if tag not in tags:
+                tags.append(tag)
+
+        return {
+            "knowledge_base": profile.knowledge_base or {},
+            "cognitive_style": profile.cognitive_style or {},
+            "learning_progress": learning_progress,
+            "error_preference": error_preference,
+            "interest_direction": profile.interest_direction or {},
+            "learning_habit": profile.learning_habit or {},
+            "tags": tags,
+        }
 
     async def get_profile_history(
         self, user_id: int, limit: int = 10

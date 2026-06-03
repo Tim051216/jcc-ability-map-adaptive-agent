@@ -19,6 +19,8 @@ api_router = APIRouter()
 for module_name, prefix, tags in [
     ("chat", "/v1/chat", ["chat"]),
     ("course", "/v1/course", ["course"]),
+    ("course_comment", "/v1/course-comments", ["course-comments"]),
+    ("danmaku", "/v1/danmaku", ["danmaku"]),
     ("learning", "/v1/learning", ["learning"]),
     ("profile", "/v1/profile", ["profile"]),
     ("profile_conversation", "/v1", ["profile-conversation"]),

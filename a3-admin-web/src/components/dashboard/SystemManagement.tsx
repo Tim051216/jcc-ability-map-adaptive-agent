@@ -44,15 +44,15 @@ function getConfigMeta(configKey: string) {
     case 'planner_daily_task_limit':
       return {
         title: '每日任务拆分上限',
-        summary: '控制学习规划器一天最多拆出多少个任务。',
-        impact: '值越大，规划更细但链路更长；值越小，任务更粗但响应更快。',
-        example: '当前值为 5，表示一天最多拆出 5 个学习任务。',
+        summary: '控制学习规划智能体在一天内最多拆分出多少个学习任务。',
+        impact: '数值越大，规划更细但链路更长；数值越小，任务更粗但响应更快。',
+        example: '当前值为 5，表示一天内最多拆分出 5 个学习任务。',
       };
     case 'rag_top_k':
       return {
         title: '知识检索候选数',
         summary: '控制 RAG 检索时最多返回多少个候选知识片段。',
-        impact: '值越大，召回更充分但噪声更高；值越小，更聚焦但可能漏信息。',
+        impact: '数值越大，召回更充分但噪声更高；数值越小，更聚焦但可能漏信息。',
         example: '当前值为 8，表示每次检索最多返回 8 个候选片段。',
       };
     default:
@@ -60,7 +60,7 @@ function getConfigMeta(configKey: string) {
         title: configKey,
         summary: '这是一个系统运行参数。',
         impact: '修改后会影响对应模块的运行行为。',
-        example: '如果不确定，建议先查看历史记录再修改。',
+        example: '如果暂时不确定，建议先查看历史记录再修改。',
       };
   }
 }
@@ -94,7 +94,7 @@ function getStatusLabel(status: string) {
     case 'warning':
       return '告警';
     case 'degraded':
-      return '降级';
+      return '已降级';
     case 'ok':
       return '正常';
     default:
@@ -122,10 +122,10 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
   const [saving, setSaving] = useState(false);
   const [deployTarget, setDeployTarget] = useState('ai-runtime');
   const [deployVersion, setDeployVersion] = useState('v2026.05.18-1');
-  const [deployNote, setDeployNote] = useState('发布新的检索与规划参数');
+  const [deployNote, setDeployNote] = useState('???????????');
   const [deploying, setDeploying] = useState(false);
   const [rollingBackId, setRollingBackId] = useState('');
-  const [rollbackNote, setRollbackNote] = useState('回滚到上一稳定版本');
+  const [rollbackNote, setRollbackNote] = useState('??????????');
 
   const loadData = async (nextSensitiveOnly = sensitiveOnly) => {
     setLoading(true);
@@ -327,7 +327,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
             <MetricCard label="配置总数" value={String(configSummary?.total ?? 0)} hint="当前系统内可管理的配置项数量" />
             <MetricCard label="敏感配置" value={String(configSummary?.sensitive_count ?? 0)} hint="涉及密钥、令牌或重要运行参数的配置" tone="warning" />
-            <MetricCard label="异常智能体" value={String(aiOps?.abnormal_agents.length ?? 0)} hint="处于告警、降级或异常状态的智能体数量" />
+            <MetricCard label="异常核心智能体" value={String(aiOps?.abnormal_agents.length ?? 0)} hint="处于告警、降级或异常状态的核心智能体数量" />
             <MetricCard label="慢链路" value={String(aiOps?.slow_chains.length ?? 0)} hint="当前需要重点盯防的链路数量" />
           </div>
 
@@ -337,7 +337,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                 <TimerReset className="h-5 w-5 text-sky-600" />
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">AI 运维总览</h2>
-                  <p className="mt-1 text-xs text-slate-500">先判断是智能体异常，还是链路性能退化，再决定后续动作。</p>
+                  <p className="mt-1 text-xs text-slate-500">先判断是核心智能体异常，还是链路性能退化，再决定后续动作。</p>
                 </div>
               </div>
               <div className="mt-5 grid gap-3">
@@ -347,7 +347,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                     <p className="mt-1 text-xs text-rose-700">{agent.latest_message ?? '暂无异常说明。'}</p>
                   </div>
                 ))}
-                {!(aiOps?.abnormal_agents.length ?? 0) ? <EmptyState label="当前没有异常智能体。" /> : null}
+                {!(aiOps?.abnormal_agents.length ?? 0) ? <EmptyState label="当前没有异常核心智能体。" /> : null}
               </div>
             </section>
 
@@ -355,7 +355,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">慢链路与耗时</h2>
-                  <p className="mt-1 text-xs text-slate-500">这里回答两个问题：哪条链路慢，以及慢在哪一组智能体。</p>
+                  <p className="mt-1 text-xs text-slate-500">这里回答两个问题：哪条链路慢，以及慢在哪个核心智能体组。</p>
                 </div>
                 <button
                   type="button"
@@ -371,7 +371,7 @@ export function SystemManagement({ onNavigate }: { onNavigate: (view: ViewType) 
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{chain.label}</p>
-                        <p className="mt-1 text-xs text-slate-600">涉及智能体：{chain.related_agents.join(' / ')}</p>
+                        <p className="mt-1 text-xs text-slate-600">涉及核心智能体：{chain.related_agents.join(' / ')}</p>
                       </div>
                       <span className="text-xs font-semibold text-slate-500">{getStatusLabel(chain.status)}</span>
                     </div>

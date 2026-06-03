@@ -14,6 +14,7 @@ class LearningAgentState(TypedDict, total=False):
     profile: dict[str, Any]
     retrieved_chunks: list[dict[str, Any]]
     citations: list[dict[str, Any]]
+    base_answer: str
     plan: dict[str, Any]
     resources: list[dict[str, Any]]
     evaluation: dict[str, Any]

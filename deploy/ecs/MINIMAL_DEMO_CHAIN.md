@@ -1,23 +1,23 @@
-# Minimal Demo Chain
+# 最小演示链路说明
 
-This document describes the smallest realistic demo chain for the current repo when:
+本文档说明在以下前提下，当前仓库可运行的最小可行演示链路：
 
-- ECS runs only:
+- ECS 仅部署：
   - `a3-gateway`
   - `a3-learning`
   - `a3-ai-python`
   - `a3-student-web`
   - `nginx`
-- managed services run in Alibaba Cloud:
+- 托管服务放在阿里云：
   - MySQL
   - PostgreSQL
   - Redis
   - OSS
-- `Milvus` is disabled with `MILVUS_ENABLED=false`
+- 通过 `MILVUS_ENABLED=false` 禁用 `Milvus`
 
-## Service dependency summary
+## 服务依赖概览
 
-### Required for the main demo
+### 主演示链路必需
 
 - `a3-student-web`
 - `nginx`
@@ -28,61 +28,61 @@ This document describes the smallest realistic demo chain for the current repo w
 - Redis
 - MySQL
 - OSS
-- LLM / embedding API
+- LLM / Embedding API
 
-### Optional but recommended only if you need the feature
+### 按需可选
 
 - `a3-user-service`
-  - Used by some profile and tutoring enrichment paths
-  - Current Python code already falls back when this service is unavailable
+  - 用于部分画像和辅导增强链路
+  - 当前 Python 代码在该服务不可用时已有降级兜底
 - `a3-resource-service`
-  - Needed only if you want gateway routes like `/cs/**` backed by real Java course data
-  - Current Python course pages mostly use built-in fixture data instead
+  - 仅当你希望 `/cs/**` 这类网关路由接入真实 Java 课程数据时需要
+  - 当前 Python 课程页大多仍使用内置示例数据
 - `a3-media-service`
-  - Needed for real section play signatures
-  - Without it, course playback info degrades gracefully
+  - 用于真实的小节播放签名
+  - 缺失时课程播放信息会降级，但页面仍可打开
 - `a3-auth-service`
-  - Not required for the current demo token flow
-  - Python already supports built-in demo bearer tokens like `student-demo`
+  - 对当前演示令牌链路不是必需
+  - Python 已支持 `student-demo` 等内置 Bearer Token
 
-## What works well in the current minimal chain
+## 当前最稳的演示能力
 
-- Home / overview
-- Learning path generation
-- Resource center
-- Favorites / collection
-- Evaluation and study report
-- AI tutor
-- Most profile and chat flows
+- 首页 / 学习总览
+- 学习路径生成
+- 资源中心
+- 收藏夹 / 收藏操作
+- 测评与学习报告
+- AI 辅导
+- 大部分画像与聊天链路
 
-These flows are mainly driven by `a3-ai-python`, `a3-learning`, local fixture course metadata, and external model APIs.
+这些链路主要依赖 `a3-ai-python`、`a3-learning`、本地课程示例数据和外部模型 API。
 
-## What degrades in the current minimal chain
+## 当前会降级的部分
 
-### No Milvus
+### 未启用 Milvus
 
-- `/ai/api/v1/rag/search` returns empty hits
-- admin knowledge ingest returns `503`
-- tutoring and chat still work, but without vector retrieval support
+- `/ai/api/v1/rag/search` 返回空命中
+- 管理端知识入库接口返回 `503`
+- 辅导和聊天仍可运行，但没有向量检索增强
 
-### No media service
+### 未部署媒体服务
 
-- section play signature requests can fail
-- course detail pages still open, but playback may show unavailable state
+- 小节播放签名请求可能失败
+- 课程详情页仍可打开，但播放可能显示不可用
 
-### No user service
+### 未部署用户服务
 
-- user profile enrichment uses fallback payloads
-- chat / profile generation still work, but with less real user context
+- 用户画像增强会回退到兜底数据
+- 聊天与画像生成仍可运行，但真实用户上下文会更少
 
-### No resource service
+### 未部署资源服务
 
-- gateway `/cs/**` routes are not backed by a real Java course center
-- current student demo is still mostly okay because Python course fixtures already cover overview and learning pages
+- 网关 `/cs/**` 路由不会接入真实 Java 课程中心
+- 当前学生端演示通常仍可运行，因为 Python 课程示例数据已覆盖总览和学习页面
 
-## Recommended demo pages
+## 推荐演示页面
 
-For the most stable contest demo, prioritize:
+为了保证比赛演示稳定，建议优先展示：
 
 1. `/`
 2. `/path`
@@ -91,17 +91,17 @@ For the most stable contest demo, prioritize:
 5. `/report?courseId=401`
 6. `/tutor?courseId=401&courseCode=software_engineering_4th`
 
-## Pages with higher integration risk
+## 集成风险较高的页面
 
 - `/learn`
-  - Depends on lesson progress and media playback integration
-  - Can still render, but playback/signature behavior is more fragile without extra Java services
+  - 依赖学习进度和媒体播放集成
+  - 虽然仍可渲染，但在缺少更多 Java 服务时，播放与签名相关行为更脆弱
 
-## Recommended deployment decision
+## 建议部署决策
 
-For the first ECS launch:
+对于首轮 ECS 上线，建议：
 
-- Keep `MILVUS_ENABLED=false`
-- Do not promise live RAG retrieval in the demo
-- Use AI tutor, learning path, resource generation, evaluation, and study report as the main story
-- Treat media playback as optional unless you also deploy the media-related Java chain
+- 保持 `MILVUS_ENABLED=false`
+- 演示中不要承诺实时 RAG 检索
+- 以 AI 辅导、学习路径、资源生成、测评和学习报告作为主线
+- 除非同时部署媒体相关 Java 服务，否则将媒体播放视为可选能力

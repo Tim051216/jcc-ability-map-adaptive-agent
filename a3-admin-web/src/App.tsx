@@ -1,16 +1,25 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
-import { Overview } from './components/dashboard/Overview';
-import { UserGovernance } from './components/dashboard/UserGovernance';
-import { ServiceOperations } from './components/dashboard/ServiceOperations';
-import { ContentCompliance } from './components/dashboard/ContentCompliance';
-import { AIMonitoring } from './components/dashboard/AIMonitoring';
-import { SystemManagement } from './components/dashboard/SystemManagement';
 import { AdminPanelDrawer, PanelType } from './components/panels/AdminPanels';
 import { ViewType } from './types';
 import { describeError, getAdminSessionState, getAgentRuntimeSummary, getAuditLogSummary, getDashboardSummary, getNotifications, getReviewSummary, setAdminActor } from './lib/adminApi';
+
+const Overview = lazy(() => import('./components/dashboard/Overview').then((module) => ({ default: module.Overview })));
+const UserGovernance = lazy(() => import('./components/dashboard/UserGovernance').then((module) => ({ default: module.UserGovernance })));
+const ServiceOperations = lazy(() => import('./components/dashboard/ServiceOperations').then((module) => ({ default: module.ServiceOperations })));
+const ContentCompliance = lazy(() => import('./components/dashboard/ContentCompliance').then((module) => ({ default: module.ContentCompliance })));
+const AIMonitoring = lazy(() => import('./components/dashboard/AIMonitoring').then((module) => ({ default: module.AIMonitoring })));
+const SystemManagement = lazy(() => import('./components/dashboard/SystemManagement').then((module) => ({ default: module.SystemManagement })));
+
+function ViewFallback() {
+  return (
+    <div className="flex min-h-[280px] items-center justify-center rounded-3xl border border-slate-200 bg-white text-sm font-semibold text-slate-500">
+      正在加载管理视图...
+    </div>
+  );
+}
 
 function resolveInitialView(): ViewType {
   const value = new URLSearchParams(window.location.search).get('view');
@@ -149,7 +158,7 @@ export default function App() {
               transition={{ duration: 0.15 }}
               className="p-4 md:p-6 xl:p-8"
             >
-              {renderView()}
+              <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
             </motion.div>
           </AnimatePresence>
         </main>

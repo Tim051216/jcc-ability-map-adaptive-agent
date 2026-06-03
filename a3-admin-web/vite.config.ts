@@ -31,5 +31,29 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return;
+            }
+            if (id.includes('react-router')) {
+              return 'router';
+            }
+            if (id.includes('motion') || id.includes('framer-motion')) {
+              return 'motion';
+            }
+            if (id.includes('recharts')) {
+              return 'charts';
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons';
+            }
+            return 'vendor';
+          },
+        },
+      },
+    },
   };
 });

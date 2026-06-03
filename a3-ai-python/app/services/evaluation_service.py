@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -24,6 +25,65 @@ from app.services.evaluation_agent_service import EvaluationAgentService
 
 
 class EvaluationService:
+    PAPER_AGENT_TIMEOUT_SECONDS = 6
+    FALLBACK_SINGLE_CHOICE_VARIANTS = [
+        {
+            "prompt_template": "关于“{point}”的下列表述中，哪一项最符合课程要求？",
+            "options_template": [
+                "A. 只记定义，不关心它与前后流程的关系",
+                "B. 结合概念、常见误区与实际场景一起理解",
+                "C. 只刷题，不回到知识结构中整理",
+                "D. 完全依赖生成结果，不做主动复盘",
+            ],
+            "correct_answer": "B",
+            "explanation_template": "本题考查对“{point}”的理解方式。更合理的学习方式是把概念、误区和应用场景一起掌握，而不是孤立记忆。",
+        },
+        {
+            "prompt_template": "在学习“{point}”时，哪种做法更能体现软件工程课程的训练目标？",
+            "options_template": [
+                "A. 只背术语，不分析它解决什么问题",
+                "B. 只看结论，不关心过程与约束条件",
+                "C. 能说明它在项目流程中的作用，并结合案例分析",
+                "D. 看到相似题型后直接套模板",
+            ],
+            "correct_answer": "C",
+            "explanation_template": "软件工程课程强调把知识点放进项目流程中理解。“{point}”只有和场景、约束、案例结合，才算真正掌握。",
+        },
+        {
+            "prompt_template": "如果要判断自己是否真正掌握了“{point}”，以下哪项证据最有效？",
+            "options_template": [
+                "A. 能解释关键概念，并说明适用场景与常见错误",
+                "B. 只会复述教材原句",
+                "C. 只记住老师给出的标准答案",
+                "D. 只收藏资料但从不练习",
+            ],
+            "correct_answer": "A",
+            "explanation_template": "真正掌握“{point}”不仅要会说概念，还要能说明场景、误区和应用边界，这比单纯背诵更能反映理解深度。",
+        },
+        {
+            "prompt_template": "围绕“{point}”进行阶段复盘时，哪一种做法最合理？",
+            "options_template": [
+                "A. 只看对错，不分析错因",
+                "B. 只追求做题速度，不总结规律",
+                "C. 错题全都跳过，等下次再说",
+                "D. 记录错因，并把知识点回连到流程图或章节结构",
+            ],
+            "correct_answer": "D",
+            "explanation_template": "阶段复盘的重点是把“{point}”相关错因回连到整体知识结构，帮助后续规划和资源推荐更准确。",
+        },
+        {
+            "prompt_template": "针对“{point}”的薄弱问题，哪一项最适合作为下一步强化动作？",
+            "options_template": [
+                "A. 继续重复同一题，不看解析",
+                "B. 先补概念，再做一个贴近项目情境的小练习",
+                "C. 不看薄弱点，直接换一个完全无关章节",
+                "D. 只看答案，不自己表达",
+            ],
+            "correct_answer": "B",
+            "explanation_template": "对“{point}”的强化应遵循“补概念 + 做场景练习”的顺序，这样更利于把测评结果转成真正的能力提升。",
+        },
+    ]
+
     async def generate_paper(self, request: EvaluationPaperGenerateRequest) -> EvaluationPaperResponse:
         course_context = await CourseContextService().resolve(
             course_id=request.course_id,
@@ -86,18 +146,21 @@ class EvaluationService:
                 paper = await paper_repo.get_paper(session, paper_id)
                 if paper is None or paper.user_id != request.user_id:
                     raise HTTPException(status_code=404, detail="evaluation paper not found")
+                await paper_repo._realign_answer_sequence(session)
                 response = self._build_submission_response(
                     paper_id=paper.id,
                     course_code=paper.course_code,
                     questions=[EvaluationQuestion.model_validate(item) for item in paper.questions_data or []],
                     request=request,
                 )
+                next_answer_id = await paper_repo.get_next_answer_id(session)
                 for answer in request.answers:
                     question = next((item for item in response["questions"] if item.question_id == answer.question_id), None)
                     if question is None:
                         continue
                     await paper_repo.create_answer(
                         session,
+                        answer_id=next_answer_id,
                         paper_id=paper.id,
                         user_id=request.user_id,
                         question_id=question.question_id,
@@ -111,6 +174,7 @@ class EvaluationService:
                         created_at=now,
                         updated_at=now,
                     )
+                    next_answer_id += 1
 
                 paper.status = "submitted"
                 paper.updated_at = now
@@ -194,7 +258,25 @@ class EvaluationService:
         plan = request.plan or {}
         resources = request.resources or []
         dimensions = profile.get("dimensions", {})
-        weak_points = dimensions.get("weak_point_preference", {}).get("evidence", []) or [request.course_code]
+        answer_knowledge_points = [
+            str(item.get("knowledge_point") or "").strip()
+            for item in request.answers
+            if str(item.get("knowledge_point") or "").strip()
+        ]
+        unique_knowledge_points = list(dict.fromkeys(answer_knowledge_points))
+        incorrect_knowledge_points = list(
+            dict.fromkeys(
+                str(item.get("knowledge_point") or "").strip()
+                for item in request.answers
+                if not item.get("is_correct") and str(item.get("knowledge_point") or "").strip()
+            )
+        )
+        profile_weak_points = [
+            str(item).strip()
+            for item in dimensions.get("weak_point_preference", {}).get("evidence", [])
+            if str(item).strip()
+        ]
+        weak_points = incorrect_knowledge_points or unique_knowledge_points or profile_weak_points or [request.course_code]
         plan_steps = plan.get("steps", [])
 
         answer_count = len(request.answers)
@@ -235,7 +317,7 @@ class EvaluationService:
             ],
             layered_results=layered_results,
             metrics=metrics,
-            knowledge_points=weak_points[:3],
+            knowledge_points=(unique_knowledge_points or weak_points)[:3],
             recommended_actions=[
                 "追加一轮薄弱点专项练习。",
                 "保留当前阶段任务节奏，并在综合巩固阶段增加输出型任务。",
@@ -314,7 +396,13 @@ class EvaluationService:
         self,
         request: EvaluationPaperGenerateRequest,
     ) -> list[EvaluationQuestion]:
-        generated = await self._build_questions_with_agent(request)
+        try:
+            generated = await asyncio.wait_for(
+                self._build_questions_with_agent(request),
+                timeout=self.PAPER_AGENT_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            generated = []
         if generated:
             return generated[: request.question_count]
         return self._build_questions(request)
@@ -375,19 +463,15 @@ class EvaluationService:
         for index in range(request.question_count):
             point = points[index % len(points)]
             question_no = index + 1
+            variant = self.FALLBACK_SINGLE_CHOICE_VARIANTS[index % len(self.FALLBACK_SINGLE_CHOICE_VARIANTS)]
             questions.append(
                 EvaluationQuestion(
                     question_id=f"q{question_no}",
                     question_type="single_choice",
-                    prompt=f"关于“{point}”的下列表述中，哪一项最符合课程要求？",
-                    options=[
-                        f"A. 仅关注记忆定义，不需要理解应用场景",
-                        f"B. 将概念、常见误区和应用场景一起理解",
-                        f"C. 只做练习题，不需要回顾知识结构",
-                        f"D. 完全依赖资源生成，不做主动总结",
-                    ],
-                    correct_answer="B",
-                    explanation="题目重点考查对知识点理解方式的把握，正确做法应兼顾概念、误区和应用场景。",
+                    prompt=variant["prompt_template"].format(point=point),
+                    options=variant["options_template"],
+                    correct_answer=variant["correct_answer"],
+                    explanation=variant["explanation_template"].format(point=point),
                     knowledge_point=point,
                     difficulty="basic" if index < 2 else "advanced",
                 )

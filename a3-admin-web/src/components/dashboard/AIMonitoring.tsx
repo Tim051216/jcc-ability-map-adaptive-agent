@@ -8,6 +8,8 @@ import {
   getAgentLogs,
   getAgentRuntimeSummary,
   getAgentStatus,
+  getMCPOverview,
+  MCPOverview,
 } from '@/src/lib/adminApi';
 import { formatDateTime, formatStatusLabel } from '@/src/lib/formatters';
 import { ErrorPanel, LoadingPanel } from '@/src/components/shared/AsyncState';
@@ -17,6 +19,23 @@ const levelOptions = ['all', 'error', 'warning', 'info', 'debug'] as const;
 const healthyStatuses = new Set(['ok', 'active']);
 const warningStatuses = new Set(['degraded', 'warning', 'blocked']);
 const dangerStatuses = new Set(['error', 'unavailable']);
+
+function formatLevelLabel(level: string) {
+  switch (level.toLowerCase()) {
+    case 'error':
+      return '异常';
+    case 'warning':
+      return '告警';
+    case 'info':
+      return '信息';
+    case 'debug':
+      return '调试';
+    case 'all':
+      return '全部';
+    default:
+      return level;
+  }
+}
 
 function openAppUrl(path: string) {
   window.open(path, '_blank', 'noopener,noreferrer');
@@ -88,7 +107,10 @@ function getStatusBadgeClass(status: string) {
 }
 
 function getCategoryLabel(category?: string | null) {
-  return category || 'general';
+  if (!category || category === 'general' || category === 'runtime' || category === 'core') {
+    return '核心智能体';
+  }
+  return category;
 }
 
 function buildDegradedHint(log?: AgentRuntimeLog | null) {
@@ -182,6 +204,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
   const [statusItems, setStatusItems] = useState<AgentStatusItem[]>([]);
   const [logs, setLogs] = useState<AgentRuntimeLog[]>([]);
   const [summary, setSummary] = useState<AgentRuntimeSummary | null>(null);
+  const [mcpOverview, setMcpOverview] = useState<MCPOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('');
@@ -192,14 +215,16 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statusPayload, logPayload, summaryPayload] = await Promise.all([
+      const [statusPayload, logPayload, summaryPayload, mcpPayload] = await Promise.all([
         getAgentStatus(),
         getAgentLogs(selectedAgent || undefined, levelFilter === 'all' ? undefined : levelFilter),
         getAgentRuntimeSummary(undefined, levelFilter === 'all' ? undefined : levelFilter),
+        getMCPOverview(),
       ]);
       setStatusItems(statusPayload);
       setLogs(logPayload);
       setSummary(summaryPayload);
+      setMcpOverview(mcpPayload);
       setError('');
     } catch (err) {
       setError(describeError(err));
@@ -323,8 +348,8 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
     <div className="mx-auto flex max-w-[1480px] flex-col gap-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">AI 监控</h1>
-          <p className="mt-1 text-sm text-slate-500">所有智能体按组固定排布，点击单个智能体只更新下方详情和日志，不再打乱整个页面。</p>
+          <h1 className="text-3xl font-bold text-slate-900">五个核心智能体监控</h1>
+          <p className="mt-1 text-sm text-slate-500">当前页面按 5 个核心智能体固定排布，点击单个智能体只更新下方详情和日志，不再打乱整个页面。</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -356,10 +381,10 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
             </div>
             <h2 className="mt-4 text-2xl font-semibold text-slate-900">先看整体，再按组逐个查看</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              页面只保留一套分组看板。每个组的位置固定，不会因为点击某个智能体而重排；组内可以逐个点选，下面再看详情和日志。
+              页面只保留一套核心智能体看板。每个组的位置固定，不会因为点击某个智能体而重排；组内可以逐个点选，下面再看详情和日志。
             </p>
             <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <OverviewStat label="全部智能体" value={String(overview.total)} tone="neutral" />
+              <OverviewStat label="核心智能体总数" value={String(overview.total)} tone="neutral" />
               <OverviewStat label="已上报状态" value={String(overview.reported)} tone="healthy" />
               <OverviewStat label="正常" value={String(overview.healthy)} tone="healthy" />
               <OverviewStat label="告警/异常" value={String(overview.warning + overview.danger)} tone="danger" />
@@ -390,12 +415,12 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                   <MiniInfo label="错误数" value={String(selectedItem.error_count)} />
                   <MiniInfo label="更新时间" value={formatDateTime(selectedItem.updated_at)} />
                   <MiniInfo label="状态来源" value={selectedItem.status_source === 'runtime' ? '运行时上报' : '仅代码注册'} />
-                  <MiniInfo label="源码位置" value={selectedItem.source_path ?? '暂无'} />
+                  <MiniInfo label="代码位置" value={selectedItem.source_path ?? '暂无'} />
                 </div>
               </div>
             ) : (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                先在下面的分组看板里点一个智能体，这里就会显示它的详情。
+                先在下面的看板里点一个核心智能体，这里就会显示它的详情。
               </div>
             )}
           </div>
@@ -411,7 +436,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
               <input
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜 agent、分组、状态或消息"
+                placeholder="搜索智能体、分组、状态或消息"
                 className="h-11 w-full rounded-xl border border-border bg-white pl-10 pr-4 text-sm text-slate-900"
               />
             </div>
@@ -428,7 +453,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                     levelFilter === item ? 'bg-slate-900 text-white' : 'border border-border bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  {item === 'all' ? '全部' : item.toUpperCase()}
+                  {formatLevelLabel(item)}
                 </button>
               ))}
             </div>
@@ -452,7 +477,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                 onClick={() => openAppUrl(buildExportUrl(selectedAgent || undefined, levelFilter))}
                 className="rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                导出结果
+                导出结果表格
               </button>
             </div>
           </div>
@@ -461,11 +486,95 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
 
       {summary ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="当前日志数" value={String(summary.total)} hint="导出当前筛选结果 CSV" onClick={() => openAppUrl(buildExportUrl(selectedAgent || undefined, levelFilter))} />
+          <Metric label="当前日志数" value={String(summary.total)} hint="导出当前筛选结果表格" onClick={() => openAppUrl(buildExportUrl(selectedAgent || undefined, levelFilter))} />
           <Metric label="错误日志" value={String(summary.error_count)} hint="打开当前筛选日志接口" onClick={() => openAppUrl(buildLogsUrl(selectedAgent || undefined, levelFilter))} />
-          <Metric label="降级 Agent" value={String(summary.degraded_agent_count)} hint="优先排查成功但已降级的链路" onClick={() => onNavigate('operations')} />
+          <Metric label="降级智能体" value={String(summary.degraded_agent_count)} hint="优先排查成功但已降级的核心链路" onClick={() => onNavigate('operations')} />
           <Metric label="最近时间" value={formatDateTime(summary.latest_log_at)} hint="打开日志摘要接口" onClick={() => openAppUrl(buildSummaryUrl(levelFilter))} />
         </div>
+      ) : null}
+
+      {mcpOverview ? (
+        <section className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">MCP 接入监控</h2>
+              <p className="mt-1 text-xs text-slate-400">这里专门看 MCP server、工具调用、会话状态和延迟，方便把 AI 工具接入也纳入统一运维视角。</p>
+            </div>
+            <span className="text-xs font-medium text-slate-400">最近更新 {formatDateTime(mcpOverview.latest_updated_at)}</span>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <OverviewStat label="MCP Server 总数" value={String(mcpOverview.total_servers)} tone="neutral" />
+            <OverviewStat label="健康 Server" value={String(mcpOverview.healthy_servers)} tone="healthy" />
+            <OverviewStat label="告警 / 异常 Server" value={String(mcpOverview.warning_servers + mcpOverview.error_servers)} tone="danger" />
+            <OverviewStat label="平均延迟" value={`${mcpOverview.avg_latency_ms} ms`} tone="muted" />
+          </div>
+          <div className="mt-5 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="grid gap-3">
+              {mcpOverview.servers.map((server) => (
+                <div key={server.server_id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">{server.display_name}</h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {server.server_id} | {server.transport.toUpperCase()} | {server.endpoint ?? '暂无 endpoint'}
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStatusBadgeClass(server.status)}`}>
+                      {formatStatusLabel(server.status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <MiniInfo label="连接客户端" value={String(server.connected_clients)} />
+                    <MiniInfo label="错误率" value={`${server.error_rate}%`} />
+                    <MiniInfo label="平均延迟" value={`${server.avg_latency_ms} ms`} />
+                  </div>
+                  {server.latest_error ? (
+                    <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-700">{server.latest_error}</p>
+                  ) : null}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {server.tools.map((tool) => (
+                      <div key={`${server.server_id}-${tool.tool_name}`} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                        <p className="text-xs font-semibold text-slate-900">{tool.display_name}</p>
+                        <p className="mt-1 text-[11px] text-slate-400">{tool.tool_name}</p>
+                        <div className="mt-2 space-y-1 text-[11px] text-slate-500">
+                          <p>调用 {tool.call_count}</p>
+                          <p>异常 {tool.error_count}</p>
+                          <p>平均 {tool.avg_latency_ms} ms</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">MCP 会话与工具调用</h3>
+              <p className="mt-1 text-xs text-slate-500">看当前哪些页面或模块正在通过 MCP 调工具，以及有没有重试、失败或超时。</p>
+              <div className="mt-4 space-y-3">
+                {mcpOverview.sessions.map((session) => (
+                  <div key={session.session_id} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{session.client_name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {session.server_id} | {session.tool_name ?? '未指定工具'}
+                        </p>
+                      </div>
+                      <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStatusBadgeClass(session.status)}`}>
+                        {formatStatusLabel(session.status)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <MiniInfo label="会话时长" value={`${session.duration_ms} ms`} />
+                      <MiniInfo label="最近更新时间" value={formatDateTime(session.updated_at)} />
+                    </div>
+                  </div>
+                ))}
+                {!mcpOverview.sessions.length ? <EmptyState label="当前没有活跃的 MCP 会话。" /> : null}
+              </div>
+            </div>
+          </div>
+        </section>
       ) : null}
 
       {loading ? <LoadingPanel title="加载 AI 监控数据" /> : null}
@@ -475,7 +584,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Boxes className="h-5 w-5 text-sky-600" />
-            <h2 className="text-lg font-semibold text-slate-900">智能体分组看板</h2>
+            <h2 className="text-lg font-semibold text-slate-900">核心智能体看板</h2>
           </div>
           <span className="text-xs font-medium text-slate-400">{groupedItems.length} 个分组</span>
         </div>
@@ -486,7 +595,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">{group.key}</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    {group.items.length} 个智能体 | 正常 {group.healthy} | 告警 {group.warning} | 异常 {group.danger} | 未上报 {group.unreported}
+                    {group.items.length} 个核心智能体 | 正常 {group.healthy} | 告警 {group.warning} | 异常 {group.danger} | 未上报 {group.unreported}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 text-[11px]">
@@ -524,7 +633,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
             </section>
           ))}
         </div>
-        {!groupedItems.length ? <EmptyState label="没有匹配的智能体分组。" /> : null}
+        {!groupedItems.length ? <EmptyState label="没有匹配的核心智能体分组。" /> : null}
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.92fr_1.08fr]">
@@ -532,7 +641,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-sky-600" />
-              <h2 className="text-lg font-semibold text-slate-900">选中智能体详情</h2>
+              <h2 className="text-lg font-semibold text-slate-900">选中核心智能体详情</h2>
             </div>
             {selectedItem ? <span className="text-xs font-medium text-slate-400">{selectedItem.agent_name}</span> : null}
           </div>
@@ -563,11 +672,11 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
               <div className="grid gap-3">
                 <MiniInfo label="更新时间" value={formatDateTime(selectedItem.updated_at)} />
                 <MiniInfo label="状态来源" value={selectedItem.status_source === 'runtime' ? '运行时已上报' : '仅代码注册'} />
-                <MiniInfo label="源码位置" value={selectedItem.source_path ?? '暂无'} />
+                <MiniInfo label="代码位置" value={selectedItem.source_path ?? '暂无'} />
               </div>
             </div>
           ) : (
-            <EmptyState label="还没有选中智能体。先从上面的分组看板点一个。" />
+            <EmptyState label="还没有选中核心智能体。先从上面的看板点一个。" />
           )}
         </section>
 
@@ -575,14 +684,14 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">运行日志</h2>
-              <p className="mt-1 text-xs text-slate-400">当前错误日志 {visibleErrorLogs} 条</p>
+              <p className="mt-1 text-xs text-slate-400">当前异常日志 {visibleErrorLogs} 条</p>
             </div>
             <button
               type="button"
               onClick={() => openAppUrl(buildExportUrl(selectedAgent || undefined, levelFilter))}
               className="text-sm font-semibold text-slate-500 transition hover:text-slate-900"
             >
-              导出 CSV
+              导出表格
             </button>
           </div>
           <div className="mt-5 space-y-3">
@@ -594,7 +703,7 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-xs text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
               >
                 <div className="flex items-center justify-between gap-4">
-                  <span className="font-semibold text-slate-900">[{item.agent_name}] {item.level}</span>
+                  <span className="font-semibold text-slate-900">[{item.agent_name}] {formatLevelLabel(item.level)}</span>
                   <div className="flex items-center gap-2 text-slate-400">
                     <span>{formatDateTime(item.created_at)}</span>
                     <ExternalLink className="h-3.5 w-3.5" />
@@ -602,8 +711,8 @@ export function AIMonitoring({ onNavigate }: { onNavigate: (view: ViewType) => v
                 </div>
                 <p className="mt-2 leading-6 text-slate-600">{item.message}</p>
                 <div className="mt-2 flex flex-wrap gap-2 text-slate-400">
-                  <span>状态 {item.status}</span>
-                  {item.payload ? <span>附带 payload</span> : null}
+                  <span>状态 {formatStatusLabel(item.status)}</span>
+                  {item.payload ? <span>附带运行参数</span> : null}
                 </div>
                 {item.payload ? (
                   <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-white/80 p-3">

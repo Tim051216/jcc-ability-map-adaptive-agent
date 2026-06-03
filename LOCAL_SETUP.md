@@ -133,6 +133,20 @@ cd .\a3-ai-python
 - AI 服务依赖 PostgreSQL、Redis、Milvus、MinIO
 - 默认端口为 `18080`
 - 本地请只保留一个 `18080` 实例，避免错误 Python 抢占端口
+- 如果本机 PostgreSQL `127.0.0.1:15432` 未启动，当前仓库中的 `a3-ai-python` 会自动切换到本地 SQLite 持久化文件：
+  `a3-ai-python/local_data/a3_ai_local.db`
+- 这能保证资源中心、AI 导师、运营后台等演示链路继续可用；当 PostgreSQL 恢复后，AI 服务会重新优先使用 `.env` 中的 `POSTGRES_DSN`
+
+### PostgreSQL 恢复建议
+
+如果你要切回企业版 PostgreSQL 持久化，请按下面顺序排查：
+
+1. 启动 Docker Desktop，确认本机 Docker daemon 可用
+2. 执行 `docker compose -f .\docker-compose.local.yml up -d postgres`
+3. 确认 `127.0.0.1:15432` 已监听
+4. 重启 `a3-ai-python`
+
+如果当前机器没有 Docker / PostgreSQL 运行时，也可以先继续使用 SQLite fallback 进行本地联调和演示。
 
 可用自检接口：
 

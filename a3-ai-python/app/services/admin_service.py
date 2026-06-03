@@ -263,12 +263,15 @@ class AdminService:
 
         grouped: dict[str, AgentStatusResponse] = {}
         for log in logs:
-            current = grouped.get(log.agent_name)
+            canonical_name = AgentRegistryService.canonical_name(log.agent_name)
+            if not AgentRegistryService.is_core_agent(canonical_name):
+                continue
+            current = grouped.get(canonical_name)
             if current is None:
-                grouped[log.agent_name] = AgentStatusResponse(
-                    agent_name=log.agent_name,
+                grouped[canonical_name] = AgentStatusResponse(
+                    agent_name=canonical_name,
                     latest_status=log.status,
-                    latest_message=self._normalize_agent_message(log.agent_name, log.message),
+                    latest_message=self._normalize_agent_message(canonical_name, log.message),
                     error_count=1 if log.level == "error" else 0,
                     updated_at=log.updated_at,
                     status_source="runtime",
@@ -305,8 +308,9 @@ class AdminService:
         for agent_name, runtime_item in grouped.items():
             if agent_name in seen_names:
                 continue
-            runtime_item.display_name = AgentRegistryService.humanize(agent_name)
-            runtime_item.category = "runtime"
+            runtime_item.display_name = AgentRegistryService.display_name_for(agent_name)
+            runtime_item.category = AgentRegistryService.category_for(agent_name)
+            runtime_item.source_path = AgentRegistryService.source_path_for(agent_name)
             runtime_item.status_source = "runtime"
             items.append(runtime_item)
 
@@ -323,12 +327,22 @@ class AdminService:
 
         try:
             async with async_session_factory() as session:
-                items, total = await AgentRuntimeRepository().list_logs(session, agent_name=agent_name, level=level)
+                filter_names = AgentRegistryService.expand_filter_names(agent_name)
+                items, _ = await AgentRuntimeRepository().list_logs(session, level=level)
         except (SQLAlchemyError, OSError) as exc:
             if should_use_admin_demo_data(exc):
-                return AdminDemoStore.list_agent_logs()
+                return AdminDemoStore.list_agent_logs(agent_name=agent_name, level=level)
             raise
-        return AgentRuntimeLogListResponse(items=[self._to_agent_log_response(item) for item in items], total=total)
+        filtered_items = [item for item in items if not filter_names or item.agent_name in filter_names]
+        filtered_items = [
+            item
+            for item in filtered_items
+            if AgentRegistryService.is_core_agent(item.agent_name)
+        ]
+        return AgentRuntimeLogListResponse(
+            items=[self._to_agent_log_response(item) for item in filtered_items],
+            total=len(filtered_items),
+        )
 
     async def list_admin_users(
         self,
@@ -793,13 +807,14 @@ class AdminService:
 
     @staticmethod
     def _to_agent_log_response(log) -> AgentRuntimeLogResponse:
+        canonical_name = AgentRegistryService.canonical_name(log.agent_name)
         return AgentRuntimeLogResponse(
             log_id=log.id,
-            agent_name=log.agent_name,
+            agent_name=canonical_name,
             level=log.level,
             status=log.status,
-            message=AdminService._normalize_agent_message(log.agent_name, log.message),
-            payload=AdminService._normalize_agent_payload(log.agent_name, log.payload),
+            message=AdminService._normalize_agent_message(canonical_name, log.message),
+            payload=AdminService._normalize_agent_payload(canonical_name, log.payload),
             created_at=log.created_at,
             updated_at=log.updated_at,
         )
@@ -809,15 +824,15 @@ class AdminService:
         if not message:
             return message
         if agent_name == "profile_agent":
-            return "学习画像链路可用"
-        if agent_name == "resource_agent":
-            return "资源包推荐完成，已返回讲义、练习和案例组合。"
-        if agent_name == "planner_agent":
-            return "学习路径已生成，并同步到今日任务编排。"
-        if agent_name == "evaluator_agent":
-            return "阶段测评生成耗时偏高，已切换到降级模板输出。"
-        if agent_name == "question_generator_agent" and "fallback" in message.lower():
-            return "题目生成已完成，但本次部分知识点走了兜底题模板。"
+            return "学习画像智能体运行正常，画像上下文已同步。"
+        if agent_name == "knowledge_tutoring_agent":
+            return "知识检索与答疑智能体已完成路由、检索与基础问答。"
+        if agent_name == "learning_planning_agent":
+            return "学习规划智能体已生成个性化学习路径。"
+        if agent_name == "resource_generation_agent":
+            return "资源生成智能体已返回讲义、练习或导图等推荐结果。"
+        if agent_name == "evaluation_feedback_agent":
+            return "测评反馈智能体已完成评估汇总，并输出最终反馈。"
         return message
 
     @staticmethod
@@ -825,6 +840,6 @@ class AdminService:
         if payload is None:
             return None
         normalized_payload = dict(payload)
-        if agent_name == "resource_agent" and "topic" in normalized_payload:
+        if agent_name == "resource_generation_agent" and "topic" in normalized_payload:
             normalized_payload["topic"] = "模型评估与过拟合"
         return normalized_payload

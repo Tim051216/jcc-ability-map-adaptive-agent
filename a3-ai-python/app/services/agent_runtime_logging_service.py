@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -43,18 +44,17 @@ class AgentRuntimeLoggingService:
     ) -> None:
         now_iso = self._now_iso()
         try:
-            async with async_session_factory() as session:
-                await AgentRuntimeRepository().create_log(
-                    session,
+            await asyncio.wait_for(
+                self._write_log(
                     agent_name=agent_name,
-                    level=level,
                     status=status,
                     message=message,
+                    level=level,
                     payload=self._compact_payload(payload),
-                    created_at=now_iso,
-                    updated_at=now_iso,
-                )
-                await session.commit()
+                    now_iso=now_iso,
+                ),
+                timeout=0.8,
+            )
         except Exception as exc:
             logger.warning(
                 "agent_runtime_logging.failed",
@@ -62,6 +62,29 @@ class AgentRuntimeLoggingService:
                 status=status,
                 error=str(exc),
             )
+
+    async def _write_log(
+        self,
+        *,
+        agent_name: str,
+        status: str,
+        message: str,
+        level: str,
+        payload: dict[str, Any] | None,
+        now_iso: str,
+    ) -> None:
+        async with async_session_factory() as session:
+            await AgentRuntimeRepository().create_log(
+                session,
+                agent_name=agent_name,
+                level=level,
+                status=status,
+                message=message,
+                payload=payload,
+                created_at=now_iso,
+                updated_at=now_iso,
+            )
+            await session.commit()
 
     @asynccontextmanager
     async def track(

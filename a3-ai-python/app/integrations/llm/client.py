@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.integrations.llm.base import LLMMessage
@@ -23,15 +24,28 @@ class LLMClient:
         *,
         temperature: float = 0.2,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> Any:
-        _ = temperature
-        _ = max_tokens
         provider = get_llm_provider()
         llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=str(m.get("content", ""))) for m in messages]
-        text = await provider.generate(llm_messages)
+        text = await provider.generate(llm_messages, temperature=temperature, max_tokens=max_tokens, model=model)
         msg = CompatNamespace(content=text)
         choice = CompatNamespace(message=msg)
         return CompatNamespace(content=text, choices=[choice])
+
+    async def chat_completion_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+        model: str | None = None,
+    ) -> AsyncIterator[str]:
+        provider = get_llm_provider()
+        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=str(m.get("content", ""))) for m in messages]
+        async for chunk in provider.generate_stream(llm_messages, temperature=temperature, max_tokens=max_tokens, model=model):
+            if chunk:
+                yield chunk
 
 
 def get_llm_client() -> LLMClient:

@@ -14,7 +14,8 @@ from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select
 
 from app.db.models.resource_source_file import ResourceSourceFile
 from app.db.session import async_session_factory, engine
@@ -23,6 +24,11 @@ from app.services.resource_source_file_storage_service import ResourceSourceFile
 
 
 class ResourceSourceFileService:
+    LIST_PREVIEW_FILE_LIMIT = 3
+    _indexed_refs_cache: dict[int, list[ResourceSourceFileRef]] = {}
+    _indexed_counts_cache: dict[int, int] = {}
+    _index_cache_ready: bool = False
+    SOFTWARE_ENGINEERING_RESOURCE_IDS = (101, 102, 103, 104, 105, 106)
     SUPPORTED_EXTENSIONS = {
         ".doc",
         ".docx",
@@ -51,7 +57,14 @@ class ResourceSourceFileService:
     OPEN_URL_TEMPLATE = "/api/v1/resource/source-files/{file_id}/open"
     PREVIEW_URL_TEMPLATE = "/api/v1/resource/source-files/{file_id}/preview"
     PREVIEW_ASSET_URL_TEMPLATE = "/api/v1/resource/source-files/{file_id}/preview-assets/{asset_path}"
-    MATERIAL_CATEGORY_RULES: dict[int, list[str]] = {}
+    MATERIAL_CATEGORY_RULES: dict[int, list[str]] = {
+        101: ["1.教学大纲-进度计划", "2.教案"],
+        102: ["★《软件工程与实践》4版PPT[新]"],
+        103: ["2.教案（多种教学模式）"],
+        104: ["3.企业实用报告案例（指导）", "4.实验报告-样例", "7.实验-课设参考资料"],
+        105: ["4. 习题与答案（含自测）（加密）", "8.复习题及答案（加密）", "9.试卷库-测试[参考]（加密）"],
+        106: ["1.教学大纲-进度计划", "2.教案", "★《软件工程与实践》4版PPT[新]", "7.实验-课设参考资料"],
+    }
 
     def __init__(self) -> None:
         root = Path(__file__).resolve().parents[3]
@@ -62,19 +75,165 @@ class ResourceSourceFileService:
         self._ffmpeg_path = shutil.which("ffmpeg")
         self._storage = ResourceSourceFileStorageService()
 
-    async def list_for_resource(self, *, resource_id: int, course_code: str) -> list[ResourceSourceFileRef]:
+    async def list_for_resource(
+        self,
+        *,
+        resource_id: int,
+        course_code: str,
+        limit: int | None = None,
+    ) -> list[ResourceSourceFileRef]:
         if course_code != "software_engineering_4th":
             return []
         await self._ensure_table()
-        await self._sync_resource_files(resource_id=resource_id, course_code=course_code)
+        return await self.list_indexed_for_resource(
+            resource_id=resource_id,
+            course_code=course_code,
+            limit=limit,
+        )
+
+    async def list_indexed_for_resource(
+        self,
+        *,
+        resource_id: int,
+        course_code: str,
+        limit: int | None = None,
+    ) -> list[ResourceSourceFileRef]:
+        if course_code != "software_engineering_4th":
+            return []
+        cached = self.__class__._indexed_refs_cache.get(resource_id)
+        if cached is not None:
+            return list(cached if limit is None else cached[:limit])
         async with async_session_factory() as session:
-            result = await session.execute(
+            stmt = (
                 select(ResourceSourceFile)
                 .where(ResourceSourceFile.resource_id == resource_id)
                 .order_by(ResourceSourceFile.sort_order.asc(), ResourceSourceFile.display_name.asc())
             )
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            result = await session.execute(stmt)
             rows = result.scalars().all()
         return [self._to_ref(row) for row in rows]
+
+    async def count_for_resource(self, *, resource_id: int, course_code: str) -> int:
+        if course_code != "software_engineering_4th":
+            return 0
+        await self._ensure_table()
+        return await self.count_indexed_for_resource(
+            resource_id=resource_id,
+            course_code=course_code,
+        )
+
+    async def count_indexed_for_resource(self, *, resource_id: int, course_code: str) -> int:
+        if course_code != "software_engineering_4th":
+            return 0
+        cached = self.__class__._indexed_counts_cache.get(resource_id)
+        if cached is not None:
+            return cached
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(func.count(ResourceSourceFile.id)).where(ResourceSourceFile.resource_id == resource_id)
+            )
+            return int(result.scalar_one() or 0)
+
+    async def list_indexed_for_resources(
+        self,
+        *,
+        resource_ids: list[int],
+        course_code: str,
+        limit: int | None = None,
+    ) -> dict[int, list[ResourceSourceFileRef]]:
+        if course_code != "software_engineering_4th" or not resource_ids:
+            return {}
+        if self.__class__._index_cache_ready:
+            return {
+                resource_id: list(
+                    self.__class__._indexed_refs_cache.get(resource_id, [])
+                    if limit is None
+                    else self.__class__._indexed_refs_cache.get(resource_id, [])[:limit]
+                )
+                for resource_id in resource_ids
+            }
+
+        async with async_session_factory() as session:
+            stmt = (
+                select(ResourceSourceFile)
+                .where(ResourceSourceFile.resource_id.in_(resource_ids))
+                .order_by(
+                    ResourceSourceFile.resource_id.asc(),
+                    ResourceSourceFile.sort_order.asc(),
+                    ResourceSourceFile.display_name.asc(),
+                )
+            )
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+
+        grouped: dict[int, list[ResourceSourceFileRef]] = {resource_id: [] for resource_id in resource_ids}
+        for row in rows:
+            items = grouped.setdefault(int(row.resource_id), [])
+            if limit is None or len(items) < limit:
+                items.append(self._to_ref(row))
+        return grouped
+
+    async def count_indexed_for_resources(
+        self,
+        *,
+        resource_ids: list[int],
+        course_code: str,
+    ) -> dict[int, int]:
+        if course_code != "software_engineering_4th" or not resource_ids:
+            return {}
+        if self.__class__._index_cache_ready:
+            return {
+                resource_id: int(self.__class__._indexed_counts_cache.get(resource_id, 0))
+                for resource_id in resource_ids
+            }
+
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ResourceSourceFile.resource_id, func.count(ResourceSourceFile.id))
+                .where(ResourceSourceFile.resource_id.in_(resource_ids))
+                .group_by(ResourceSourceFile.resource_id)
+            )
+            rows = result.all()
+
+        counts = {resource_id: 0 for resource_id in resource_ids}
+        for resource_id, count in rows:
+            counts[int(resource_id)] = int(count or 0)
+        return counts
+
+    async def prebuild_software_engineering_index(self) -> None:
+        await self._ensure_table()
+        for resource_id in self.SOFTWARE_ENGINEERING_RESOURCE_IDS:
+            await self._sync_resource_files(
+                resource_id=resource_id,
+                course_code="software_engineering_4th",
+            )
+        await self._refresh_index_cache()
+
+    async def _refresh_index_cache(self) -> None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ResourceSourceFile)
+                .where(ResourceSourceFile.course_code == "software_engineering_4th")
+                .order_by(
+                    ResourceSourceFile.resource_id.asc(),
+                    ResourceSourceFile.sort_order.asc(),
+                    ResourceSourceFile.display_name.asc(),
+                )
+            )
+            rows = result.scalars().all()
+
+        refs_cache: dict[int, list[ResourceSourceFileRef]] = {}
+        counts_cache: dict[int, int] = {}
+        for row in rows:
+            resource_id = int(row.resource_id)
+            refs_cache.setdefault(resource_id, []).append(self._to_ref(row))
+            counts_cache[resource_id] = counts_cache.get(resource_id, 0) + 1
+
+        self.__class__._indexed_refs_cache = refs_cache
+        self.__class__._indexed_counts_cache = counts_cache
+        self.__class__._index_cache_ready = True
 
     async def open_source_file(self, file_id: int) -> FileResponse:
         source_file = await self._load_source_file(file_id)
@@ -180,13 +339,17 @@ class ResourceSourceFileService:
     async def _sync_resource_files(self, *, resource_id: int, course_code: str) -> None:
         async with async_session_factory() as session:
             existing = await session.execute(
-                select(ResourceSourceFile.id).where(ResourceSourceFile.resource_id == resource_id).limit(1)
+                select(ResourceSourceFile.id, ResourceSourceFile.relative_path).where(ResourceSourceFile.resource_id == resource_id)
             )
-            if existing.scalar_one_or_none() is not None:
-                return
+            existing_rows = existing.all()
+            existing_paths = {str(relative_path) for _, relative_path in existing_rows}
 
         selected_files = self._collect_selected_files(resource_id=resource_id)
         if not selected_files:
+            return
+
+        pending_files = [item for item in selected_files if str(item["relative_path"]) not in existing_paths]
+        if not pending_files:
             return
 
         async with async_session_factory() as session:
@@ -210,10 +373,13 @@ class ResourceSourceFileService:
                         created_at=created_at,
                         updated_at=created_at,
                     )
-                    for item in selected_files
+                    for item in pending_files
                 ]
             )
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
 
     def _collect_selected_files(self, *, resource_id: int) -> list[dict[str, object]]:
         course_dir = self._find_course_directory()
@@ -298,20 +464,8 @@ class ResourceSourceFileService:
         preview_url = None
         open_url = self.OPEN_URL_TEMPLATE.format(file_id=source_file.id)
 
-        if self._storage.is_enabled():
-            try:
-                open_url = self._build_source_storage_url(source_file)
-            except Exception:
-                open_url = self.OPEN_URL_TEMPLATE.format(file_id=source_file.id)
-
         if preview_mode != "unsupported":
-            if self._storage.is_enabled() and preview_mode in {"image", "pdf", "text"}:
-                try:
-                    preview_url = self._build_source_storage_url(source_file)
-                except Exception:
-                    preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
-            else:
-                preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
+            preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
         return ResourceSourceFileRef(
             file_id=source_file.id,
             display_name=source_file.display_name,

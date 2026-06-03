@@ -1,201 +1,301 @@
-import React, { Suspense, lazy } from "react";
-import { BrowserRouter as Router, Routes, Route, useLocation, Link } from "react-router-dom";
-import { ArrowRight, BookOpen, Compass, Sparkles, Target } from "lucide-react";
-import { Header } from "./components/Header";
-import { navItems } from "./constants";
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-const Overview = lazy(() => import("./pages/Overview").then((module) => ({ default: module.Overview })));
-const CapabilityModel = lazy(() => import("./pages/CapabilityModel").then((module) => ({ default: module.CapabilityModel })));
-const LearningPath = lazy(() => import("./pages/LearningPath").then((module) => ({ default: module.LearningPath })));
-const CourseLearning = lazy(() => import("./pages/CourseLearning").then((module) => ({ default: module.CourseLearning })));
-const ResourceCenter = lazy(() => import("./pages/ResourceCenter").then((module) => ({ default: module.ResourceCenter })));
-const ResourceSourcePreview = lazy(() => import("./pages/ResourceSourcePreview.tsx").then((module) => ({ default: module.ResourceSourcePreview })));
-const Collection = lazy(() => import("./pages/Collection.tsx").then((module) => ({ default: module.Collection })));
-const Evaluation = lazy(() => import("./pages/Evaluation").then((module) => ({ default: module.Evaluation })));
-const AITutor = lazy(() => import("./pages/AITutor").then((module) => ({ default: module.AITutor })));
-const StudyReport = lazy(() => import("./pages/StudyReport").then((module) => ({ default: module.StudyReport })));
+import React, { Suspense, lazy, useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from "react-router-dom";
+import {
+  Layers,
+  Compass,
+  Tv,
+  FolderOpen,
+  Heart,
+  ClipboardCheck,
+  BarChart2,
+  User,
+  Bot
+} from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import Header from "./components/Header";
+import WelcomeScreen from "./components/WelcomeScreen";
+import Login from "./pages/Login";
 
-function RouteLoadingFallback() {
+const Overview = lazy(() => import("./pages/Overview"));
+const LearningPath = lazy(() => import("./pages/LearningPath"));
+const CourseLearning = lazy(() => import("./pages/CourseLearning"));
+const ResourceCenter = lazy(() => import("./pages/ResourceCenter"));
+import ResourceSourcePreview from "./pages/ResourceSourcePreview";
+const CapabilityModel = lazy(() => import("./pages/CapabilityModel"));
+const Evaluation = lazy(() => import("./pages/Evaluation"));
+const StudyReport = lazy(() => import("./pages/StudyReport"));
+const Collection = lazy(() => import("./pages/Collection"));
+import AITutor from "./pages/AITutor";
+
+interface UserSession {
+  id: string;
+  name: string;
+  avatar: string;
+  loggedIn: boolean;
+}
+
+function RouteFallback() {
   return (
-    <div className="mx-auto flex min-h-[60vh] max-w-[1240px] items-center justify-center px-8">
-      <div className="rounded-3xl border border-outline-variant/50 bg-white px-8 py-6 text-sm text-on-surface-variant shadow-sm">
-        页面加载中...
-      </div>
+    <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-[#E3E8EC] bg-white text-sm font-semibold text-[#564145]">
+      正在加载页面内容...
     </div>
   );
 }
 
-function AppContent() {
+function MainLayout({
+  user,
+  onLogout,
+  children
+}: {
+  user: UserSession;
+  onLogout: () => void;
+  children: React.ReactNode;
+}) {
   const location = useLocation();
-  const showFooterAiCard = location.pathname === "/";
-  const currentNavItem =
-    navItems.find((item) => item.path === location.pathname || (item.path !== "/" && location.pathname.startsWith(`${item.path}/`))) || navItems[0];
-  const headerTitle = location.pathname === "/learn" ? "课程学习" : currentNavItem.path === "/" ? "A3 学习工作台" : currentNavItem.name;
+  const isLoginPage = location.pathname === "/login";
+  const currentPath = location.pathname;
+
+  const navItems = [
+    { label: "摘要", id: "overview", path: "/", icon: Layers },
+    { label: "路径", id: "path", path: "/path", icon: Compass },
+    { label: "课堂", id: "learn", path: "/learn", icon: Tv },
+    { label: "资源", id: "resources", path: "/resources", icon: FolderOpen },
+    { label: "收藏", id: "collection", path: "/collection", icon: Heart },
+    { label: "评估", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
+    { label: "报告", id: "report", path: "/report", icon: BarChart2 },
+    { label: "自画像", id: "profile", path: "/profile", icon: User },
+    { label: "AI导师", id: "tutor", path: "/tutor", icon: Bot },
+  ];
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#f5f7f9]">
-      <Header title={headerTitle} />
-      <main className="min-h-screen pt-28">
-        <Suspense fallback={<RouteLoadingFallback />}>
-          <Routes>
-            <Route path="/" element={<Overview />} />
-            <Route path="/profile" element={<CapabilityModel />} />
-            <Route path="/path" element={<LearningPath />} />
-            <Route path="/learn" element={<CourseLearning />} />
-            <Route path="/resources" element={<ResourceCenter />} />
-            <Route path="/resources/preview" element={<ResourceSourcePreview />} />
-            <Route path="/collection" element={<Collection />} />
-            <Route path="/report" element={<StudyReport />} />
-            <Route path="/evaluation" element={<Evaluation />} />
-            <Route path="/tutor" element={<AITutor />} />
-          </Routes>
-        </Suspense>
-      </main>
+    <div className="min-h-screen bg-[#F4F7F9] flex flex-col text-[#171c22]">
+      {/* Do not render header navbar on login page */}
+      {!isLoginPage && <Header user={user} onLogout={onLogout} />}
+      
+      <div className={`flex-grow flex flex-col ${isLoginPage ? "" : "max-w-[1280px] w-full mx-auto px-4 md:px-10 py-6 md:py-8 pb-24 md:pb-8"}`}>
+        {/* Main interactive content page */}
+        <main className="flex-grow min-w-0">
+          {children}
+        </main>
+      </div>
 
-      <footer className="relative overflow-hidden bg-[#102a43] pt-16 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(18,208,157,0.18),_transparent_32%),radial-gradient(circle_at_80%_20%,_rgba(255,255,255,0.08),_transparent_22%)]" />
-
-        <div className="relative mx-auto max-w-[1240px] px-6 pb-10 md:px-10">
-          <div className={showFooterAiCard ? "grid gap-8 lg:grid-cols-[1.4fr_0.9fr_0.9fr_1.1fr]" : "grid gap-8 lg:grid-cols-[1.5fr_1fr_1fr]"}>
-            <section className="rounded-[32px] border border-white/10 bg-white/5 p-8 shadow-[0_18px_45px_rgba(0,0,0,0.16)] backdrop-blur-sm">
-              <Link to="/" className="group inline-flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-sm font-black text-white shadow-lg transition-transform group-hover:rotate-6">
-                  A3
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold tracking-tight">A3 学习平台</h3>
-                  <p className="mt-1 text-xs uppercase tracking-[0.22em] text-primary/90">学生工作台</p>
-                </div>
-              </Link>
-
-              <p className="mt-6 max-w-md text-sm leading-8 text-white/72">
-                面向学生端的统一学习工作台，串联能力画像、学习路径、资源生成、测评与 AI 辅导闭环。
-              </p>
-
-              <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                  <div className="flex items-center gap-2 text-primary">
-                    <Compass className="h-4 w-4" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.18em]">路径</span>
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-white">学习路径联动</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                  <div className="flex items-center gap-2 text-primary">
-                    <BookOpen className="h-4 w-4" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.18em]">资源</span>
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-white">资源中心同步</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                  <div className="flex items-center gap-2 text-primary">
-                    <Target className="h-4 w-4" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.18em]">测评</span>
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-white">测评反馈闭环</p>
-                </div>
-              </div>
-            </section>
-
-            <section className="px-2 py-2">
-              <div className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-primary">学习入口</div>
-              <div className="space-y-3">
-                <Link to="/" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  学习总览
-                </Link>
-                <Link to="/path" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  学习路径
-                </Link>
-                <Link to="/resources?courseId=401" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  资源中心
-                </Link>
-                <Link to="/report" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  学习报告
-                </Link>
-              </div>
-            </section>
-
-            <section className="px-2 py-2">
-              <div className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-primary">支持服务</div>
-              <div className="space-y-3">
-                <Link to="/tutor" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  AI 辅导
-                </Link>
-                <Link to="/collection" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  我的收藏
-                </Link>
-                <Link to="/profile" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  能力画像
-                </Link>
-                <Link to="/evaluation" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white/76 transition-colors hover:bg-white/6 hover:text-white">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                  学习测评
-                </Link>
-              </div>
-            </section>
-
-            {showFooterAiCard ? (
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-7 backdrop-blur-sm">
-              <div className="flex items-center gap-2 text-primary">
-                <Sparkles className="h-4 w-4" />
-                <span className="text-xs font-black uppercase tracking-[0.22em]">当前模式</span>
-              </div>
-
-              <h4 className="mt-5 text-xl font-bold text-white">本地 AI 学习工作台</h4>
-              <p className="mt-4 text-sm leading-8 text-white/70">
-                当前学生端已接入本地 AI 服务，可联动学习路径、资源、测评与辅导接口。
-              </p>
-
-              <div className="mt-7 space-y-3">
-                <div className="flex items-center justify-between rounded-2xl bg-white/6 px-4 py-3 text-sm text-white/74">
-                  <span>当前场景</span>
-                  <span className="font-semibold text-white">学生端演示</span>
-                </div>
-                <div className="flex items-center justify-between rounded-2xl bg-white/6 px-4 py-3 text-sm text-white/74">
-                  <span>已连接模块</span>
-                  <span className="font-semibold text-white">路径 / 资源 / 测评</span>
-                </div>
-              </div>
-
+      {/* Persistent Bottom Mobile/Preview Indicator Navigation Tab Bar */}
+      {!isLoginPage && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-[#E3E8EC] py-2 px-3 shadow-[0_-4px_16px_rgba(23,28,34,0.06)] flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+          {navItems.map((item) => {
+            const isActive = currentPath === item.path;
+            return (
               <Link
-                to="/resources"
-                className="mt-7 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-transform hover:scale-[1.02]"
+                key={item.path}
+                to={item.path}
+                className={`flex flex-col items-center gap-1 text-[10px] font-extrabold shrink-0 pb-1.5 pt-0.5 px-3 rounded-xl transition-all ${
+                  isActive ? "text-[#fb7299] bg-[#fb7299]/5 scale-105" : "text-[#564145]/80 hover:text-[#fb7299]"
+                }`}
               >
-                进入资源中心
-                <ArrowRight className="h-4 w-4" />
+                <item.icon className={`w-4.5 h-4.5 ${isActive ? "text-[#fb7299]" : "text-[#564145]/60"}`} />
+                <span>{item.label}</span>
               </Link>
-            </section>
-            ) : null}
-          </div>
-
-          <div className="mt-12 flex flex-col gap-5 border-t border-white/8 pt-6 text-xs text-white/40 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-8">
-              <p>版权所有 2026 A3 学习平台</p>
-              <div className="flex flex-wrap gap-5">
-                <span className="cursor-pointer transition-colors hover:text-white/70">隐私说明</span>
-                <span className="cursor-pointer transition-colors hover:text-white/70">使用条款</span>
-                <span className="cursor-pointer transition-colors hover:text-white/70">平台公告</span>
-              </div>
-            </div>
-            <p>A3 本地学生端构建</p>
-          </div>
-        </div>
-      </footer>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }
 
 export default function App() {
+  const SESSION_STORAGE_KEY = "bililearn-user-session";
+  // Keep the app entry hot-reload friendly after swapping in the zip frontend.
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
+    return !sessionStorage.getItem("hasSeenWelcome");
+  });
+
+  useEffect(() => {
+    (window as any).retriggerWelcome = () => {
+      setShowWelcome(true);
+    };
+    return () => {
+      delete (window as any).retriggerWelcome;
+    };
+  }, []);
+
+  // Pre-initialize with logged-out state for entering login page first
+  const [user, setUser] = useState<UserSession>(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) {
+        return {
+          id: "",
+          name: "",
+          avatar: "",
+          loggedIn: false
+        };
+      }
+      const parsed = JSON.parse(raw) as UserSession;
+      return parsed?.loggedIn ? parsed : {
+        id: "",
+        name: "",
+        avatar: "",
+        loggedIn: false
+      };
+    } catch {
+      return {
+        id: "",
+        name: "",
+        avatar: "",
+        loggedIn: false
+      };
+    }
+  });
+
+  useEffect(() => {
+    if (user.loggedIn) {
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+      return;
+    }
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  }, [user]);
+
+  const handleLoginSuccess = (userData: { id: string; name: string; avatar: string }) => {
+    setUser({
+      ...userData,
+      loggedIn: true
+    });
+  };
+
+  const handleLogout = () => {
+    setUser({
+      id: "",
+      name: "",
+      avatar: "",
+      loggedIn: false
+    });
+  };
+
+  // Protected route wrapper
+  const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+    if (!user.loggedIn) {
+      return <Navigate to="/login" replace />;
+    }
+    return <>{children}</>;
+  };
+
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <BrowserRouter>
+      {/* Global premium animated anime welcome screen */}
+      <AnimatePresence>
+        {showWelcome && (
+          <WelcomeScreen onDismiss={() => setShowWelcome(false)} />
+        )}
+      </AnimatePresence>
+
+      <MainLayout user={user} onLogout={handleLogout}>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            {/* Public Auth Portal */}
+            <Route
+              path="/login"
+              element={
+                user.loggedIn ? (
+                  <Navigate to="/" replace />
+                ) : (
+                  <Login onLoginSuccess={handleLoginSuccess} />
+                )
+              }
+            />
+
+            {/* Secure Student Dashboards */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Overview user={user} />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <CapabilityModel user={user} />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/path"
+              element={
+                <ProtectedRoute>
+                  <LearningPath />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/learn"
+              element={
+                <ProtectedRoute>
+                  <CourseLearning />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/resources"
+              element={
+                <ProtectedRoute>
+                  <ResourceCenter />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/resources/preview"
+              element={
+                <ProtectedRoute>
+                  <ResourceSourcePreview />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/collection"
+              element={
+                <ProtectedRoute>
+                  <Collection />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/report"
+              element={
+                <ProtectedRoute>
+                  <StudyReport />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/evaluation"
+              element={
+                <ProtectedRoute>
+                  <Evaluation />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tutor"
+              element={
+                <ProtectedRoute>
+                  <AITutor user={user} />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Fallback route redirection to overview */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </MainLayout>
+    </BrowserRouter>
   );
 }

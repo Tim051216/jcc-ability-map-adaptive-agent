@@ -3,10 +3,14 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from fastapi import HTTPException
+from sqlalchemy import select
 
 from app.core.constants import RESOURCE_TYPES
+from app.db.base import Base
+from app.db.models.generated_resource import GeneratedResource, ResourceFavorite, ResourceFavoriteHistory
+from app.db.models.resource_source_file import ResourceSourceFile
 from app.db.repositories.resource_repository import ResourceRepository
-from app.db.session import async_session_factory
+from app.db.session import async_session_factory, engine
 from app.schemas.common import ResourceCard
 from app.schemas.resource import (
     ResourceArchiveRequest,
@@ -28,7 +32,88 @@ class ResourceService:
     _favorite_cache: ClassVar[set[tuple[int, int]]] = set()
     _favorite_history_cache: ClassVar[list[dict[str, str | int | None]]] = []
     _archived_cache: ClassVar[dict[int, dict[str, str | int | None]]] = {}
+    _resource_index_warmed: ClassVar[bool] = False
     _next_resource_id: ClassVar[int] = 1
+    _builtin_video_resources: ClassVar[dict[int, ResourceCard]] = {
+        900001: ResourceCard(
+            resource_id=900001,
+            resource_type="video",
+            title="软件工程课程项目演示视频",
+            summary="站内托管的课程项目演示视频，适合作为进入学习流程前的整体导览材料。",
+            content_markdown="# 视频资源\n站内托管的课程项目演示视频，适合作为进入学习流程前的整体导览材料。",
+            source_titles=["项目演示", "软件工程"],
+            study_suggestion="建议先观看本视频，快速建立课程项目背景和整体业务场景认知。",
+            source_file_count=1,
+            source_files=[
+                {
+                    "file_id": 901,
+                    "display_name": "project-demo.mp4",
+                    "relative_path": "/videos/software-engineering-4th/project-demo.mp4",
+                    "top_level_category": "视频",
+                    "file_extension": ".mp4",
+                    "mime_type": "video/mp4",
+                    "file_size": 13631541,
+                    "preview_text": "软件工程课程项目演示视频",
+                    "is_inline_previewable": True,
+                    "preview_mode": "video",
+                    "preview_url": "/videos/software-engineering-4th/project-demo.mp4",
+                    "open_url": "/videos/software-engineering-4th/project-demo.mp4",
+                }
+            ],
+        ),
+        900002: ResourceCard(
+            resource_id=900002,
+            resource_type="video",
+            title="系统流程设计演示视频",
+            summary="站内托管的流程建模演示视频，适合配合系统分析与设计章节一起学习。",
+            content_markdown="# 视频资源\n站内托管的流程建模演示视频，适合配合系统分析与设计章节一起学习。",
+            source_titles=["流程设计", "系统分析"],
+            study_suggestion="建议在复习业务流程图、系统结构图或设计迁移关系时观看本视频。",
+            source_file_count=1,
+            source_files=[
+                {
+                    "file_id": 902,
+                    "display_name": "visio-flow-demo.mp4",
+                    "relative_path": "/videos/software-engineering-4th/visio-flow-demo.mp4",
+                    "top_level_category": "视频",
+                    "file_extension": ".mp4",
+                    "mime_type": "video/mp4",
+                    "file_size": 24477668,
+                    "preview_text": "系统流程设计演示视频",
+                    "is_inline_previewable": True,
+                    "preview_mode": "video",
+                    "preview_url": "/videos/software-engineering-4th/visio-flow-demo.mp4",
+                    "open_url": "/videos/software-engineering-4th/visio-flow-demo.mp4",
+                }
+            ],
+        ),
+        900003: ResourceCard(
+            resource_id=900003,
+            resource_type="video",
+            title="云端应用集成演示视频",
+            summary="站内托管的系统集成演示视频，展示从前端到服务端的联动流程。",
+            content_markdown="# 视频资源\n站内托管的系统集成演示视频，展示从前端到服务端的联动流程。",
+            source_titles=["系统集成", "云端应用"],
+            study_suggestion="建议在看完项目演示后继续观看，帮助理解端到端的系统集成顺序。",
+            source_file_count=1,
+            source_files=[
+                {
+                    "file_id": 903,
+                    "display_name": "cloud-app-demo.mp4",
+                    "relative_path": "/videos/software-engineering-4th/cloud-app-demo.mp4",
+                    "top_level_category": "视频",
+                    "file_extension": ".mp4",
+                    "mime_type": "video/mp4",
+                    "file_size": 78228810,
+                    "preview_text": "云端应用集成演示视频",
+                    "is_inline_previewable": True,
+                    "preview_mode": "video",
+                    "preview_url": "/videos/software-engineering-4th/cloud-app-demo.mp4",
+                    "open_url": "/videos/software-engineering-4th/cloud-app-demo.mp4",
+                }
+            ],
+        ),
+    }
 
     async def generate_resources(
         self,
@@ -69,14 +154,30 @@ class ResourceService:
             resolved_course_code = (
                 await CourseContextService().resolve(course_id=course_id, course_code=course_code)
             ).course_code
-        async with async_session_factory() as session:
-            items, total = await ResourceRepository().list_resources(
-                session,
-                user_id=user_id,
-                course_code=resolved_course_code,
-                resource_type=resource_type,
+        builtin_items = self._list_builtin_video_resources(
+            course_code=resolved_course_code,
+            resource_type=resource_type,
+        )
+        try:
+            async with async_session_factory() as session:
+                await self._ensure_seed_resources(
+                    session=session,
+                    user_id=user_id,
+                    course_code=resolved_course_code,
+                )
+                items, total = await ResourceRepository().list_resources(
+                    session,
+                    user_id=user_id,
+                    course_code=resolved_course_code,
+                    resource_type=resource_type,
+                )
+            result_items = await self._hydrate_cards(
+                items,
+                preview_limit=ResourceSourceFileService.LIST_PREVIEW_FILE_LIMIT,
             )
-        return ResourceListResponse(items=[self._to_card(item) for item in items], total=total)
+            return ResourceListResponse(items=builtin_items + result_items, total=total + len(builtin_items))
+        except Exception:
+            return ResourceListResponse(items=builtin_items, total=len(builtin_items))
 
     async def list_archived_resources(
         self,
@@ -99,34 +200,123 @@ class ResourceService:
                 resource_type=resource_type,
                 archived_only=True,
             )
-        return ResourceListResponse(items=[self._to_card(item) for item in items], total=total)
+        return ResourceListResponse(
+            items=await self._hydrate_cards(
+                items,
+                preview_limit=ResourceSourceFileService.LIST_PREVIEW_FILE_LIMIT,
+            ),
+            total=total,
+        )
 
     async def get_resource(self, resource_id: int) -> ResourceCard:
+        builtin = self._builtin_video_resources.get(resource_id)
+        if builtin is not None:
+            return builtin
         async with async_session_factory() as session:
+            await self._ensure_seed_resources(session=session, user_id=1001, course_code="software_engineering_4th")
             resource = await ResourceRepository().get_resource(session, resource_id)
             if resource is None:
                 raise HTTPException(status_code=404, detail="resource not found")
-            card = self._to_card(resource)
-            source_files = await ResourceSourceFileService().list_for_resource(
-                resource_id=resource_id,
-                course_code=str(resource.course_code or ""),
-            )
-            return ResourceCard(
-                resource_id=card.resource_id,
-                resource_type=card.resource_type,
-                title=card.title,
-                summary=card.summary,
-                content_markdown=card.content_markdown,
-                source_titles=card.source_titles,
-                study_suggestion=card.study_suggestion,
-                source_file_count=len(source_files),
-                source_files=source_files,
-            )
+            return await self._hydrate_card(resource, preview_limit=None)
 
     async def list_favorites(self, user_id: int) -> ResourceListResponse:
         async with async_session_factory() as session:
+            await self._ensure_seed_resources(
+                session=session,
+                user_id=user_id,
+                course_code="software_engineering_4th",
+            )
             resources = await ResourceRepository().list_favorites(session, user_id=user_id)
-        return ResourceListResponse(items=[self._to_card(item) for item in resources], total=len(resources))
+        return ResourceListResponse(
+            items=await self._hydrate_cards(
+                resources,
+                preview_limit=ResourceSourceFileService.LIST_PREVIEW_FILE_LIMIT,
+            ),
+            total=len(resources),
+        )
+
+    async def ensure_default_resource_index(self) -> None:
+        async with async_session_factory() as session:
+            await self._ensure_seed_resources(
+                session=session,
+                user_id=1001,
+                course_code="software_engineering_4th",
+            )
+        await ResourceSourceFileService().prebuild_software_engineering_index()
+        self.__class__._resource_index_warmed = True
+
+    async def _ensure_seed_resources(self, *, session, user_id: int, course_code: str | None) -> None:
+        normalized_course_code = (course_code or "").strip()
+        if normalized_course_code not in {"software_engineering_4th", "se_practice_4th"}:
+            return
+
+        await self._ensure_resource_tables()
+
+        existing_stmt = select(GeneratedResource.id).where(
+            GeneratedResource.user_id == user_id,
+            GeneratedResource.course_code == "software_engineering_4th",
+        ).limit(1)
+        existing = await session.execute(existing_stmt)
+        if existing.scalar_one_or_none() is not None:
+            return
+
+        from scripts.init_real_local_data import build_software_engineering_seed_resources
+
+        seed_resources = build_software_engineering_seed_resources()
+        now = datetime.now(timezone.utc).isoformat()
+        for resource in seed_resources:
+            resource.user_id = user_id
+            session.add(resource)
+
+        session.add_all(
+            [
+                ResourceFavorite(
+                    user_id=user_id,
+                    resource_id=101,
+                    category="软件工程导学",
+                    notes="真实课程资料初始化收藏",
+                    created_at=now,
+                    updated_at=now,
+                ),
+                ResourceFavorite(
+                    user_id=user_id,
+                    resource_id=104,
+                    category="实验实践",
+                    notes="真实课程资料初始化收藏",
+                    created_at=now,
+                    updated_at=now,
+                ),
+                ResourceFavoriteHistory(
+                    user_id=user_id,
+                    resource_id=101,
+                    action="favorite",
+                    created_at=now,
+                    updated_at=now,
+                ),
+                ResourceFavoriteHistory(
+                    user_id=user_id,
+                    resource_id=104,
+                    action="favorite",
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+    async def _ensure_resource_tables(self) -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(
+                lambda sync_conn: Base.metadata.create_all(
+                    sync_conn,
+                    tables=[
+                        GeneratedResource.__table__,
+                        ResourceFavorite.__table__,
+                        ResourceFavoriteHistory.__table__,
+                        ResourceSourceFile.__table__,
+                    ],
+                )
+            )
 
     async def list_favorite_history(self, user_id: int) -> ResourceFavoriteHistoryListResponse:
         async with async_session_factory() as session:
@@ -380,6 +570,119 @@ class ResourceService:
             course_code=str(resource.course_code or ""),
             source_titles=list(resource.source_titles or []),
         )
+
+    async def _hydrate_card(self, resource, preview_limit: int | None = None) -> ResourceCard:
+        card = self._to_card(resource)
+        source_file_service = ResourceSourceFileService()
+        course_code = str(resource.course_code or "")
+        source_files = await source_file_service.list_indexed_for_resource(
+            resource_id=resource.id,
+            course_code=course_code,
+            limit=preview_limit,
+        )
+        source_file_count = len(source_files)
+
+        if (
+            course_code == "software_engineering_4th"
+            and not source_files
+            and preview_limit is not None
+            and not self.__class__._resource_index_warmed
+        ):
+            await source_file_service.prebuild_software_engineering_index()
+            self.__class__._resource_index_warmed = True
+            source_files = await source_file_service.list_indexed_for_resource(
+                resource_id=resource.id,
+                course_code=course_code,
+                limit=preview_limit,
+            )
+            source_file_count = len(source_files)
+
+        if preview_limit is not None and course_code == "software_engineering_4th":
+            source_file_count = await source_file_service.count_indexed_for_resource(
+                resource_id=resource.id,
+                course_code=course_code,
+            )
+        return ResourceCard(
+            resource_id=card.resource_id,
+            resource_type=card.resource_type,
+            title=card.title,
+            summary=card.summary,
+            content_markdown=card.content_markdown,
+            source_titles=card.source_titles,
+            study_suggestion=card.study_suggestion,
+            source_file_count=source_file_count,
+            source_files=source_files,
+        )
+
+    async def _hydrate_cards(self, resources, preview_limit: int | None = None) -> list[ResourceCard]:
+        resource_list = list(resources)
+        if not resource_list:
+            return []
+
+        course_code = str(resource_list[0].course_code or "")
+        source_file_service = ResourceSourceFileService()
+        source_files_by_resource: dict[int, list] = {}
+        source_counts_by_resource: dict[int, int] = {}
+
+        if course_code == "software_engineering_4th":
+            resource_ids = [int(resource.id) for resource in resource_list]
+            source_files_by_resource = await source_file_service.list_indexed_for_resources(
+                resource_ids=resource_ids,
+                course_code=course_code,
+                limit=preview_limit,
+            )
+
+            if (
+                preview_limit is not None
+                and not any(source_files_by_resource.get(resource_id) for resource_id in resource_ids)
+                and not self.__class__._resource_index_warmed
+            ):
+                await source_file_service.prebuild_software_engineering_index()
+                self.__class__._resource_index_warmed = True
+                source_files_by_resource = await source_file_service.list_indexed_for_resources(
+                    resource_ids=resource_ids,
+                    course_code=course_code,
+                    limit=preview_limit,
+                )
+
+            if preview_limit is not None:
+                source_counts_by_resource = await source_file_service.count_indexed_for_resources(
+                    resource_ids=resource_ids,
+                    course_code=course_code,
+                )
+
+        cards: list[ResourceCard] = []
+        for resource in resource_list:
+            card = self._to_card(resource)
+            source_files = source_files_by_resource.get(int(resource.id), [])
+            source_file_count = source_counts_by_resource.get(int(resource.id), len(source_files))
+            cards.append(
+                ResourceCard(
+                    resource_id=card.resource_id,
+                    resource_type=card.resource_type,
+                    title=card.title,
+                    summary=card.summary,
+                    content_markdown=card.content_markdown,
+                    source_titles=card.source_titles,
+                    study_suggestion=card.study_suggestion,
+                    source_file_count=source_file_count,
+                    source_files=source_files,
+                )
+            )
+        return cards
+
+    @classmethod
+    def _list_builtin_video_resources(
+        cls,
+        *,
+        course_code: str | None,
+        resource_type: str | None,
+    ) -> list[ResourceCard]:
+        if resource_type and resource_type != "video":
+            return []
+        if course_code and course_code not in {"software_engineering_4th", "se_practice_4th"}:
+            return []
+        return list(cls._builtin_video_resources.values())
 
     @staticmethod
     def _sanitize_card(card: ResourceCard, *, course_code: str, source_titles: list[str]) -> ResourceCard:

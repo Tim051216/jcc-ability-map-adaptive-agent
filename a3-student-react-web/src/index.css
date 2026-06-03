@@ -1,43 +1,86 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700&family=Playfair+Display:wght@400;700;900&display=swap');
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Playfair Display", serif;
-  --font-mono: "JetBrains Mono", monospace;
-
-  --color-primary: #00c17b;
-  --color-primary-container: #f0fdf4;
-  --color-on-primary-container: #00603d;
-  
-  --color-secondary: #ff7043;
-  --color-background: #f5f7f9;
-  --color-surface: #ffffff;
-  --color-on-surface: #333333;
-  --color-on-surface-variant: #6b7280;
-  --color-outline-variant: #e1e7ec;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-@layer base {
-  body {
-    @apply bg-background text-on-surface font-sans antialiased;
+/* Danmaku Bullet Comments Animation */
+@keyframes danmaku {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(calc(-100vw - 240px), 0, 0);
   }
 }
 
-.glass-card {
-  @apply bg-white/80 backdrop-blur-md border border-outline-variant/30;
+@keyframes danmaku-fixed {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
 }
 
-.ai-glow {
-  box-shadow: 0 0 20px 0 rgba(0, 74, 198, 0.1);
-  border: 1px solid rgba(0, 74, 198, 0.1);
+.danmaku-item {
+  will-change: transform;
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.72),
+    1px -1px 0 rgba(0, 0, 0, 0.72),
+    -1px 1px 0 rgba(0, 0, 0, 0.72),
+    1px 1px 0 rgba(0, 0, 0, 0.72),
+    0 1px 3px rgba(0, 0, 0, 0.18);
+  animation-name: danmaku;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
 
+.danmaku-fixed-item {
+  will-change: opacity, transform;
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.76),
+    1px -1px 0 rgba(0, 0, 0, 0.76),
+    -1px 1px 0 rgba(0, 0, 0, 0.76),
+    1px 1px 0 rgba(0, 0, 0, 0.76),
+    0 1px 3px rgba(0, 0, 0, 0.18);
+  animation-name: danmaku-fixed;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+/* Helper to suppress scroll displays */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-
 .no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none; /* IE & Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Action animations shake elements on error triggers */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shake 0.3s ease-in-out;
 }

@@ -1,0 +1,15 @@
+node_modules
+dist
+*.md
+*.log
+*.err
+*.out
+*.png
+*.jpg
+*.jpeg
+tmp_*
+vite-*.log
+README.md
+metadata.json
+.env
+.env.*

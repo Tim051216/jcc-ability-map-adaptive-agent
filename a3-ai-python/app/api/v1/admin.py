@@ -22,6 +22,7 @@ from app.schemas.admin import (
     AgentStatusListResponse,
     AuditLogListResponse,
     AuditLogSummaryResponse,
+    MCPOverviewResponse,
     DeploymentListResponse,
     DeploymentRollbackRequest,
     DeploymentRecordResponse,
@@ -153,6 +154,11 @@ async def ping_embedding() -> dict:
 @router.get("/aiops/overview", response_model=AIOpsOverviewResponse)
 async def get_aiops_overview() -> AIOpsOverviewResponse:
     return AdminDemoStore.get_aiops_overview()
+
+
+@router.get("/mcp/overview", response_model=MCPOverviewResponse)
+async def get_mcp_overview() -> MCPOverviewResponse:
+    return AdminDemoStore.get_mcp_overview()
 
 
 @router.get("/deployments", response_model=DeploymentListResponse)

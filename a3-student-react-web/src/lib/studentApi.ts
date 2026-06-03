@@ -325,6 +325,57 @@ export interface EvaluationPaperSummaryResponse {
   latest_paper_at?: string | null;
 }
 
+export interface EvaluationPaperQuestion {
+  question_id: string;
+  question_type: string;
+  prompt: string;
+  options: string[];
+  correct_answer: string;
+  explanation: string;
+  knowledge_point: string;
+  difficulty: string;
+}
+
+export interface EvaluationPaperResponse {
+  paper_id: number;
+  user_id: number;
+  course_code: string;
+  paper_type: string;
+  status: string;
+  questions: EvaluationPaperQuestion[];
+}
+
+export interface EvaluationMetricItem {
+  metric_name: string;
+  score: number;
+  comment: string;
+}
+
+export interface EvaluationLayerResultItem {
+  level: string;
+  score: number;
+  status: string;
+  comment: string;
+}
+
+export interface EvaluationResultResponse {
+  record_id?: number | null;
+  paper_id?: number | null;
+  overall_score: number;
+  evaluation_type: string;
+  mastery_level: string;
+  report_summary: string;
+  strengths: string[];
+  weak_points: string[];
+  suggestions: string[];
+  layered_results: EvaluationLayerResultItem[];
+  metrics: EvaluationMetricItem[];
+  knowledge_points: string[];
+  recommended_actions: string[];
+  path_feedback: Record<string, unknown>;
+  profile_feedback: Record<string, unknown>;
+}
+
 export interface WrongQuestionItem {
   question_id: string;
   prompt: string;
@@ -350,6 +401,13 @@ export interface ProfileSummaryResponse {
   current_stage?: string | null;
 }
 
+export interface ProfileBehaviorUpdateResponse {
+  updated_dimensions: Record<string, Record<string, unknown>>;
+  new_tags: string[];
+  removed_tags: string[];
+  summary: string;
+}
+
 export interface ChatCitation {
   title?: string | null;
   url?: string | null;
@@ -371,6 +429,163 @@ export interface ChatResponse {
   generated_evaluation?: Record<string, unknown> | null;
 }
 
+export interface TutoringVideoRecommendation {
+  video_id: number;
+  title: string;
+  url: string;
+  thumbnail?: string | null;
+  duration?: number | null;
+  relevance_score?: number | null;
+  recommendation_reason?: string | null;
+  source_platform?: string | null;
+  bv_id?: string | null;
+  external_link?: boolean;
+  segments?: Array<{
+    start_sec?: number;
+    end_sec?: number;
+    reason?: string;
+  }>;
+}
+
+export interface TutoringAnswerDetail {
+  status: string;
+  question_id: string;
+  session_id?: string | null;
+  answer_id?: string | null;
+  answer_text: string;
+  diagrams?: unknown[] | null;
+  videos?: TutoringVideoRecommendation[] | null;
+  reference_sources?: Array<Record<string, unknown>> | null;
+  confidence_score?: number | null;
+  generation_time?: number | null;
+  should_escalate?: boolean;
+  question_type?: string | null;
+  knowledge_points?: string[] | null;
+}
+
+export interface TutoringQuestionSubmitResponse {
+  question_id: string;
+  session_id?: string | null;
+}
+
+export interface TutoringTaskSubmitResponse {
+  task_id: string;
+  status: string;
+  question_id: string;
+  session_id?: string | null;
+  poll_interval_ms?: number;
+}
+
+export interface TutoringTaskStatusResponse {
+  task_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  question_id?: string | null;
+  session_id?: string | null;
+  result?: TutoringAnswerDetail | null;
+  error_message?: string | null;
+}
+
+export interface TutoringHistoryQuestion {
+  id: string;
+  session_id: string;
+  question_text: string;
+  persona?: "haibara" | "usagi" | null;
+  course_id?: number | null;
+  section_id?: number | null;
+  question_type?: string | null;
+  knowledge_points?: string[] | null;
+  create_time: string;
+  update_time: string;
+}
+
+export interface TutoringHistoryAnswer {
+  id: string;
+  question_id: string;
+  session_id: string;
+  answer_text: string;
+  answer_diagrams?: unknown[] | null;
+  answer_videos?: TutoringVideoRecommendation[] | null;
+  reference_sources?: Array<Record<string, unknown>> | null;
+  confidence_score?: number | null;
+  generation_time?: number | null;
+  create_time: string;
+  update_time: string;
+}
+
+export interface TutoringHistoryItem {
+  question: TutoringHistoryQuestion;
+  answer?: TutoringHistoryAnswer | null;
+  is_favorited?: boolean;
+}
+
+export interface TutoringHistoryResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: TutoringHistoryItem[];
+}
+
+export interface VideoDanmakuItem {
+  id: number;
+  video_key: string;
+  user_id: number;
+  user_name: string;
+  course_id?: number | null;
+  section_id?: number | null;
+  content: string;
+  color: string;
+  mode: "scroll" | "top" | "bottom";
+  start_time: number;
+  created_at?: string | null;
+}
+
+export interface VideoDanmakuListResponse {
+  total: number;
+  items: VideoDanmakuItem[];
+}
+
+export interface CourseCommentReplyInfo {
+  id: number;
+  author: string;
+}
+
+export interface CourseCommentItem {
+  id: number;
+  course_key: string;
+  section_index?: number | null;
+  user_id: number;
+  author: string;
+  content: string;
+  created_at?: string | null;
+  likes: number;
+  liked: boolean;
+  badge?: string | null;
+  parent_comment_id?: number | null;
+  reply_to?: CourseCommentReplyInfo | null;
+}
+
+export interface CourseCommentListResponse {
+  total: number;
+  items: CourseCommentItem[];
+}
+
+export interface CourseCommentLikeResponse {
+  comment_id: number;
+  liked: boolean;
+  likes: number;
+}
+
+function parseJsonPreservingLargeIds<T>(rawText: string): T {
+  if (!rawText) {
+    return JSON.parse("null") as T;
+  }
+  const normalized = rawText.replace(
+    /"((?:question|session|answer)_id)"\s*:\s*(-?\d{16,})/g,
+    (_, key: string, value: string) => `"${key}":"${value}"`,
+  );
+  return JSON.parse(normalized) as T;
+}
+
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${AI_BASE_URL}${path}`, {
     headers: {
@@ -381,7 +596,7 @@ async function request<T>(path: string): Promise<T> {
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
-  return response.json() as Promise<T>;
+  return parseJsonPreservingLargeIds<T>(await response.text());
 }
 
 async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
@@ -397,7 +612,7 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
     try {
-      const payload = (await response.json()) as { detail?: string };
+      const payload = parseJsonPreservingLargeIds<{ detail?: string }>(await response.text());
       if (payload?.detail) {
         detail = payload.detail;
       }
@@ -406,7 +621,7 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
     }
     throw new Error(detail);
   }
-  return response.json() as Promise<T>;
+  return parseJsonPreservingLargeIds<T>(await response.text());
 }
 
 export function resolveCourseCoverUrl(coverUrl: string) {
@@ -621,11 +836,63 @@ export const studentApi = {
   getEvaluationPaperSummary(userId: number, courseCode: string) {
     return request<EvaluationPaperSummaryResponse>(`/evaluation/papers/summary?user_id=${userId}&course_code=${encodeURIComponent(courseCode)}`);
   },
+  generateEvaluationPaper(payload: {
+    user_id: number;
+    course_id?: number;
+    course_code?: string;
+    target?: string;
+    knowledge_points?: string[];
+    paper_type?: string;
+    question_count?: number;
+  }) {
+    return requestJson<EvaluationPaperResponse>("/evaluation/papers/generate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getEvaluationPaper(paperId: number) {
+    return request<EvaluationPaperResponse>(`/evaluation/papers/${paperId}`);
+  },
+  submitEvaluationPaper(
+    paperId: number,
+    payload: {
+      user_id: number;
+      answers: Array<{ question_id: string; answer: string }>;
+      scene?: string;
+      profile?: Record<string, unknown> | null;
+      plan?: Record<string, unknown> | null;
+      resources?: Array<Record<string, unknown>>;
+      learning_duration_minutes?: number;
+      resource_usage_count?: number;
+    },
+  ) {
+    return requestJson<EvaluationResultResponse>(`/evaluation/papers/${paperId}/submit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getEvaluationResult(recordId: number) {
+    return request<EvaluationResultResponse>(`/evaluation/results/${recordId}`);
+  },
   getWrongQuestions(recordId: number) {
     return request<WrongQuestionListResponse>(`/evaluation/results/${recordId}/wrong-questions`);
   },
   getProfileSummary(userId: number) {
     return request<ProfileSummaryResponse>(`/profile/conversation/profile/${userId}/summary`);
+  },
+  reportProfileBehavior(payload: {
+    user_id: number;
+    behavior_type: number;
+    behavior_data: Record<string, unknown>;
+    resource_type?: string;
+    resource_id?: number;
+    result?: string;
+    duration?: number;
+  }) {
+    return requestJson<ProfileBehaviorUpdateResponse>("/profile/conversation/behavior", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
   chat(payload: {
     user_id: number;
@@ -638,6 +905,115 @@ export const studentApi = {
     return requestJson<ChatResponse>("/chat", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+  submitTutoringQuestion(payload: {
+    question_text: string;
+    question_images?: string[];
+    course_id?: number;
+    section_id?: number;
+    session_id?: string | number | null;
+    persona?: "haibara" | "usagi";
+  }) {
+    return requestJson<TutoringQuestionSubmitResponse>("/tutoring/question", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getTutoringAnswer(questionId: string | number) {
+    return request<TutoringAnswerDetail>(`/tutoring/answer/${questionId}`);
+  },
+  submitTutoringTask(payload: {
+    question_text: string;
+    question_images?: string[];
+    course_id?: number;
+    section_id?: number;
+    session_id?: string | number | null;
+    persona?: "haibara" | "usagi";
+  }) {
+    return requestJson<TutoringTaskSubmitResponse>("/tutoring/tasks", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getTutoringTaskStatus(taskId: string | number) {
+    return request<TutoringTaskStatusResponse>(`/tutoring/tasks/${taskId}`);
+  },
+  getTutoringStreamUrl(questionId: string | number) {
+    const wsOrigin = AI_ORIGIN.replace(/^http/i, "ws");
+    return `${wsOrigin}/api/v1/tutoring/stream/${questionId}?access_token=${encodeURIComponent("student-demo")}`;
+  },
+  listTutoringHistory(params?: {
+    course_id?: number;
+    page?: number;
+    page_size?: number;
+    keyword?: string;
+  }) {
+    const search = new URLSearchParams();
+    if (params?.course_id) {
+      search.set("course_id", String(params.course_id));
+    }
+    if (params?.page) {
+      search.set("page", String(params.page));
+    }
+    if (params?.page_size) {
+      search.set("page_size", String(params.page_size));
+    }
+    if (params?.keyword) {
+      search.set("keyword", params.keyword);
+    }
+    const suffix = search.size ? `?${search.toString()}` : "";
+    return request<TutoringHistoryResponse>(`/tutoring/history${suffix}`);
+  },
+  listVideoDanmaku(videoKey: string, limit = 200) {
+    const search = new URLSearchParams({
+      video_key: videoKey,
+      limit: String(limit),
+    });
+    return request<VideoDanmakuListResponse>(`/danmaku?${search.toString()}`);
+  },
+  createVideoDanmaku(payload: {
+    video_key: string;
+    content: string;
+    color: string;
+    mode: "scroll" | "top" | "bottom";
+    start_time: number;
+    course_id?: number;
+    section_id?: number;
+  }) {
+    return requestJson<VideoDanmakuItem>("/danmaku", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  listCourseComments(params: {
+    course_key: string;
+    section_index?: number;
+    limit?: number;
+  }) {
+    const search = new URLSearchParams({
+      course_key: params.course_key,
+      limit: String(params.limit ?? 100),
+    });
+    if (typeof params.section_index === "number") {
+      search.set("section_index", String(params.section_index));
+    }
+    return request<CourseCommentListResponse>(`/course-comments?${search.toString()}`);
+  },
+  createCourseComment(payload: {
+    course_key: string;
+    section_index?: number;
+    content: string;
+    parent_comment_id?: number;
+  }) {
+    return requestJson<CourseCommentItem>("/course-comments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  toggleCourseCommentLike(commentId: number) {
+    return requestJson<CourseCommentLikeResponse>(`/course-comments/${commentId}/like`, {
+      method: "POST",
     });
   },
   buildResourceSourceFileUrl(path: string) {

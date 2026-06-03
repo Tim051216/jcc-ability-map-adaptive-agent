@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     auth_bearer_tokens: str = Field(default="student-demo:1001,admin-demo:9001", alias="AUTH_BEARER_TOKENS")
 
     postgres_dsn: str = Field(alias="POSTGRES_DSN")
+    local_postgres_dsn: str | None = Field(default=None, alias="LOCAL_POSTGRES_DSN")
     redis_dsn: str = Field(alias="REDIS_DSN")
     celery_broker_url: str = Field(alias="CELERY_BROKER_URL")
     celery_result_backend: str = Field(alias="CELERY_RESULT_BACKEND")
@@ -49,6 +50,7 @@ class Settings(BaseSettings):
 
     llm_provider: str = Field(alias="LLM_PROVIDER")
     llm_model: str = Field(alias="LLM_MODEL")
+    llm_fallback_models: str = Field(default="", alias="LLM_FALLBACK_MODELS")
     llm_api_key: str = Field(alias="LLM_API_KEY")
     llm_base_url: str = Field(alias="LLM_BASE_URL")
     llm_timeout_seconds: int = Field(default=30, alias="LLM_TIMEOUT_SECONDS")

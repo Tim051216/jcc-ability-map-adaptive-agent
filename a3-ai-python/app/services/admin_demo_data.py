@@ -24,11 +24,16 @@ from app.schemas.admin import (
     AgentRuntimeSummaryResponse,
     AgentStatusListResponse,
     AgentStatusResponse,
+    MCPOverviewResponse,
+    MCPSessionResponse,
+    MCPServerStatusResponse,
+    MCPToolStatResponse,
     ReviewTaskListResponse,
     ReviewTaskResponse,
     ReviewTaskSummaryResponse,
     SystemConfigSummaryResponse,
 )
+from app.services.agent_registry_service import AgentRegistryService
 
 
 def should_use_admin_demo_data(exc: Exception) -> bool:
@@ -134,7 +139,7 @@ class AdminDemoStore:
             "review_id": 303,
             "entity_type": "learning_plan",
             "entity_id": 8803,
-            "source_scene": "planner_agent",
+            "source_scene": "learning_planning_agent",
             "priority": "high",
             "status": "rejected",
             "submitted_content": "Plan references a deprecated prerequisite path and needs adjustment.",
@@ -151,37 +156,37 @@ class AdminDemoStore:
             "agent_name": "profile_agent",
             "level": "info",
             "status": "ok",
-            "message": "Profile sync completed for latest learner segment.",
+            "message": "学习画像智能体已完成最新一批学习者画像同步。",
             "payload": {"batch": "profile-nightly"},
             "created_at": "2026-05-16T07:16:00+00:00",
             "updated_at": "2026-05-16T07:16:00+00:00",
         },
         {
             "log_id": 502,
-            "agent_name": "resource_agent",
+            "agent_name": "resource_generation_agent",
             "level": "warning",
             "status": "degraded",
-            "message": "Resource generation switched to cached templates because PostgreSQL is unavailable.",
+            "message": "资源生成智能体因数据库暂不可用，已切换到缓存模板降级输出。",
             "payload": {"topic": "regression-testing"},
             "created_at": "2026-05-16T07:12:00+00:00",
             "updated_at": "2026-05-16T07:12:00+00:00",
         },
         {
             "log_id": 503,
-            "agent_name": "planner_agent",
+            "agent_name": "learning_planning_agent",
             "level": "error",
             "status": "degraded",
-            "message": "Planner could not persist progress snapshot and entered retry mode.",
+            "message": "学习规划智能体写入进度快照失败，已进入自动重试模式。",
             "payload": {"retry_in_seconds": 30},
             "created_at": "2026-05-16T07:08:00+00:00",
             "updated_at": "2026-05-16T07:08:00+00:00",
         },
         {
             "log_id": 504,
-            "agent_name": "evaluator_agent",
+            "agent_name": "evaluation_feedback_agent",
             "level": "info",
             "status": "ok",
-            "message": "Evaluation report generation completed.",
+            "message": "测评反馈智能体已完成本轮测评报告生成。",
             "payload": {"reports": 3},
             "created_at": "2026-05-16T06:58:00+00:00",
             "updated_at": "2026-05-16T06:58:00+00:00",
@@ -215,6 +220,96 @@ class AdminDemoStore:
             "updated_at": "2026-05-16T05:18:00+00:00",
         }
     ]
+    _DEFAULT_MCP_SERVERS: list[dict] = [
+        {
+            "server_id": "knowledge-retrieval-mcp",
+            "display_name": "知识检索 MCP",
+            "transport": "http",
+            "status": "ok",
+            "endpoint": "http://127.0.0.1:18080/mcp/retrieval",
+            "connected_clients": 3,
+            "error_rate": 0.4,
+            "avg_latency_ms": 186,
+            "latest_error": None,
+            "updated_at": "2026-05-29T08:42:00+00:00",
+            "tools": [
+                {"tool_name": "search_chunks", "display_name": "检索知识分片", "call_count": 168, "error_count": 1, "avg_latency_ms": 172},
+                {"tool_name": "fetch_source", "display_name": "获取原始资料", "call_count": 92, "error_count": 0, "avg_latency_ms": 201},
+            ],
+        },
+        {
+            "server_id": "planner-mcp",
+            "display_name": "学习规划 MCP",
+            "transport": "stdio",
+            "status": "warning",
+            "endpoint": "local://planner-mcp",
+            "connected_clients": 2,
+            "error_rate": 1.7,
+            "avg_latency_ms": 428,
+            "latest_error": "阶段重排请求在高峰时段出现超时重试。",
+            "updated_at": "2026-05-29T08:41:00+00:00",
+            "tools": [
+                {"tool_name": "build_plan", "display_name": "生成学习规划", "call_count": 74, "error_count": 2, "avg_latency_ms": 516},
+                {"tool_name": "adjust_plan", "display_name": "动态调整规划", "call_count": 49, "error_count": 1, "avg_latency_ms": 371},
+            ],
+        },
+        {
+            "server_id": "evaluation-mcp",
+            "display_name": "测评评估 MCP",
+            "transport": "http",
+            "status": "error",
+            "endpoint": "http://127.0.0.1:18080/mcp/evaluation",
+            "connected_clients": 1,
+            "error_rate": 6.3,
+            "avg_latency_ms": 902,
+            "latest_error": "报告生成工具最近 10 分钟连续出现下游依赖失败。",
+            "updated_at": "2026-05-29T08:39:00+00:00",
+            "tools": [
+                {"tool_name": "generate_questions", "display_name": "生成题目", "call_count": 56, "error_count": 2, "avg_latency_ms": 688},
+                {"tool_name": "score_answers", "display_name": "批改答案", "call_count": 41, "error_count": 1, "avg_latency_ms": 521},
+                {"tool_name": "build_report", "display_name": "生成报告", "call_count": 27, "error_count": 5, "avg_latency_ms": 1184},
+            ],
+        },
+    ]
+    _DEFAULT_MCP_SESSIONS: list[dict] = [
+        {
+            "session_id": "mcp-sess-001",
+            "server_id": "knowledge-retrieval-mcp",
+            "client_name": "student-resource-center",
+            "status": "active",
+            "tool_name": "search_chunks",
+            "duration_ms": 144,
+            "started_at": "2026-05-29T08:41:38+00:00",
+            "updated_at": "2026-05-29T08:41:39+00:00",
+        },
+        {
+            "session_id": "mcp-sess-002",
+            "server_id": "planner-mcp",
+            "client_name": "student-learning-path",
+            "status": "retrying",
+            "tool_name": "adjust_plan",
+            "duration_ms": 732,
+            "started_at": "2026-05-29T08:40:58+00:00",
+            "updated_at": "2026-05-29T08:41:00+00:00",
+        },
+        {
+            "session_id": "mcp-sess-003",
+            "server_id": "evaluation-mcp",
+            "client_name": "admin-ai-ops",
+            "status": "failed",
+            "tool_name": "build_report",
+            "duration_ms": 1934,
+            "started_at": "2026-05-29T08:38:12+00:00",
+            "updated_at": "2026-05-29T08:38:14+00:00",
+        },
+    ]
+
+    _AGENT_MESSAGE_MAP = {
+        "Profile sync completed for latest learner segment.": "学习画像智能体已完成最新一批学习者画像同步。",
+        "Resource generation switched to cached templates because PostgreSQL is unavailable.": "资源生成智能体因数据库暂不可用，已切换到缓存模板降级输出。",
+        "Planner could not persist progress snapshot and entered retry mode.": "学习规划智能体写入进度快照失败，已进入自动重试模式。",
+        "Evaluation report generation completed.": "测评反馈智能体已完成本轮测评报告生成。",
+    }
 
     @classmethod
     def get_dashboard_summary(cls) -> AdminDashboardSummaryResponse:
@@ -325,36 +420,93 @@ class AdminDemoStore:
     def list_agent_status(cls) -> AgentStatusListResponse:
         grouped: dict[str, AgentStatusResponse] = {}
         for item in cls._agent_log_items():
-            existing = grouped.get(item.agent_name)
+            canonical_name = AgentRegistryService.canonical_name(item.agent_name)
+            if not AgentRegistryService.is_core_agent(canonical_name):
+                continue
+            existing = grouped.get(canonical_name)
             if existing is None:
-                grouped[item.agent_name] = AgentStatusResponse(
-                    agent_name=item.agent_name,
+                grouped[canonical_name] = AgentStatusResponse(
+                    agent_name=canonical_name,
                     latest_status=item.status,
                     latest_message=item.message,
                     error_count=1 if item.level == "error" else 0,
                     updated_at=item.updated_at,
+                    display_name=AgentRegistryService.display_name_for(canonical_name),
+                    category=AgentRegistryService.category_for(canonical_name),
+                    source_path=AgentRegistryService.source_path_for(canonical_name),
                 )
                 continue
             if item.level == "error":
                 existing.error_count += 1
+        for agent in AgentRegistryService.discover():
+            if agent["agent_name"] in grouped:
+                continue
+            grouped[agent["agent_name"]] = AgentStatusResponse(
+                agent_name=agent["agent_name"],
+                latest_status="unreported",
+                latest_message="尚未收到该核心智能体的运行状态上报",
+                error_count=0,
+                updated_at=None,
+                display_name=agent["display_name"],
+                category=agent["category"],
+                source_path=agent["source_path"],
+                status_source="registry",
+            )
         items = list(grouped.values())
+        items.sort(key=lambda item: (0 if item.status_source != "registry" else 1, item.agent_name))
         return AgentStatusListResponse(items=items, total=len(items))
 
     @classmethod
-    def list_agent_logs(cls) -> AgentRuntimeLogListResponse:
+    def list_agent_logs(
+        cls,
+        *,
+        agent_name: str | None = None,
+        level: str | None = None,
+    ) -> AgentRuntimeLogListResponse:
+        filter_names = AgentRegistryService.expand_filter_names(agent_name)
         items = cls._agent_log_items()
-        return AgentRuntimeLogListResponse(items=items, total=len(items))
+        if filter_names:
+            items = [item for item in items if item.agent_name in filter_names]
+        items = [item for item in items if AgentRegistryService.is_core_agent(item.agent_name)]
+        if level:
+            items = [item for item in items if item.level == level]
+        normalized_items = [
+            AgentRuntimeLogResponse(
+                log_id=item.log_id,
+                agent_name=AgentRegistryService.canonical_name(item.agent_name),
+                level=item.level,
+                status=item.status,
+                message=item.message,
+                payload=item.payload,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in items
+        ]
+        return AgentRuntimeLogListResponse(items=normalized_items, total=len(normalized_items))
 
     @classmethod
-    def get_agent_runtime_summary(cls) -> AgentRuntimeSummaryResponse:
+    def get_agent_runtime_summary(
+        cls,
+        *,
+        agent_name: str | None = None,
+        level: str | None = None,
+    ) -> AgentRuntimeSummaryResponse:
+        filter_names = AgentRegistryService.expand_filter_names(agent_name)
         items = cls._agent_log_items()
+        if filter_names:
+            items = [item for item in items if item.agent_name in filter_names]
+        items = [item for item in items if AgentRegistryService.is_core_agent(item.agent_name)]
+        if level:
+            items = [item for item in items if item.level == level]
         by_agent: dict[str, int] = {}
         by_level: dict[str, int] = {}
         latest_by_agent: dict[str, str] = {}
         for item in items:
-            by_agent[item.agent_name] = by_agent.get(item.agent_name, 0) + 1
+            canonical_name = AgentRegistryService.canonical_name(item.agent_name)
+            by_agent[canonical_name] = by_agent.get(canonical_name, 0) + 1
             by_level[item.level] = by_level.get(item.level, 0) + 1
-            latest_by_agent.setdefault(item.agent_name, item.status)
+            latest_by_agent.setdefault(canonical_name, item.status)
         return AgentRuntimeSummaryResponse(
             total=len(items),
             error_count=by_level.get("error", 0),
@@ -403,7 +555,7 @@ class AdminDemoStore:
                 avg_latency_ms=1280 if int(rag_value or "8") > 7 else 960,
                 p95_latency_ms=2140 if int(rag_value or "8") > 7 else 1680,
                 error_rate=0.8,
-                related_agents=["question_analyzer_agent", "retriever_agent", "answer_generator_agent"],
+                related_agents=["knowledge_tutoring_agent"],
             ),
             AIOpsChainMetricResponse(
                 chain_id="planner-evaluator",
@@ -412,7 +564,7 @@ class AdminDemoStore:
                 avg_latency_ms=1720,
                 p95_latency_ms=2860,
                 error_rate=1.2,
-                related_agents=["planner_agent", "path_planner_agent", "evaluator_agent"],
+                related_agents=["learning_planning_agent", "evaluation_feedback_agent"],
             ),
         ]
 
@@ -469,6 +621,33 @@ class AdminDemoStore:
             parameters=parameters,
             experiments=experiments,
             latest_deployment=deployments[0] if deployments else None,
+        )
+
+    @classmethod
+    def get_mcp_overview(cls) -> MCPOverviewResponse:
+        state = cls._load_state()
+        servers = [MCPServerStatusResponse(**deepcopy(item)) for item in state.get("mcp_servers", [])]
+        sessions = [MCPSessionResponse(**deepcopy(item)) for item in state.get("mcp_sessions", [])]
+
+        healthy = sum(1 for item in servers if item.status == "ok")
+        warning = sum(1 for item in servers if item.status in {"warning", "degraded"})
+        error = sum(1 for item in servers if item.status == "error")
+        total_tool_calls = sum(tool.call_count for server in servers for tool in server.tools)
+        error_tool_calls = sum(tool.error_count for server in servers for tool in server.tools)
+        avg_latency_ms = round(sum(item.avg_latency_ms for item in servers) / len(servers)) if servers else 0
+        latest_updated_at = max((item.updated_at for item in servers if item.updated_at), default=None)
+
+        return MCPOverviewResponse(
+            total_servers=len(servers),
+            healthy_servers=healthy,
+            warning_servers=warning,
+            error_servers=error,
+            total_tool_calls=total_tool_calls,
+            error_tool_calls=error_tool_calls,
+            avg_latency_ms=avg_latency_ms,
+            latest_updated_at=latest_updated_at,
+            servers=servers,
+            sessions=sessions,
         )
 
     @classmethod
@@ -576,8 +755,19 @@ class AdminDemoStore:
     @classmethod
     def _agent_log_items(cls) -> list[AgentRuntimeLogResponse]:
         state = cls._load_state()
-        items = [AgentRuntimeLogResponse(**deepcopy(item)) for item in state["agent_logs"]]
+        normalized_logs = []
+        for item in state["agent_logs"]:
+            copied = deepcopy(item)
+            copied["message"] = cls._normalize_agent_message(copied.get("message"))
+            normalized_logs.append(copied)
+        items = [AgentRuntimeLogResponse(**item) for item in normalized_logs]
         return sorted(items, key=lambda item: item.created_at or "", reverse=True)
+
+    @classmethod
+    def _normalize_agent_message(cls, message: str | None) -> str | None:
+        if not message:
+            return message
+        return cls._AGENT_MESSAGE_MAP.get(message, message)
 
     @staticmethod
     def _recompute_risk(item: dict) -> str:
@@ -609,6 +799,8 @@ class AdminDemoStore:
             return state
         state = json.loads(cls._STATE_FILE.read_text(encoding="utf-8"))
         state.setdefault("deployments", deepcopy(cls._DEFAULT_DEPLOYMENTS))
+        state.setdefault("mcp_servers", deepcopy(cls._DEFAULT_MCP_SERVERS))
+        state.setdefault("mcp_sessions", deepcopy(cls._DEFAULT_MCP_SESSIONS))
         if not any(item.get("status") == "failed" for item in state["deployments"]):
             state["deployments"].append(
                 {
@@ -649,4 +841,6 @@ class AdminDemoStore:
             "agent_logs": deepcopy(cls._DEFAULT_AGENT_LOGS),
             "configs": deepcopy(cls._DEFAULT_CONFIGS),
             "deployments": deepcopy(cls._DEFAULT_DEPLOYMENTS),
+            "mcp_servers": deepcopy(cls._DEFAULT_MCP_SERVERS),
+            "mcp_sessions": deepcopy(cls._DEFAULT_MCP_SESSIONS),
         }

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,6 +8,7 @@ from fastapi.responses import ORJSONResponse
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
+from app.services.resource_service import ResourceService
 
 configure_logging()
 logger = get_logger(__name__)
@@ -15,7 +17,19 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("ai_service.starting", env=settings.app_env)
+    prebuild_task = None
+    try:
+        prebuild_task = asyncio.create_task(ResourceService().ensure_default_resource_index())
+        logger.info("ai_service.resource_index_scheduled")
+    except Exception as exc:
+        logger.warning("ai_service.resource_index_failed", error=repr(exc))
     yield
+    if prebuild_task is not None:
+        try:
+            await prebuild_task
+            logger.info("ai_service.resource_index_ready")
+        except Exception as exc:
+            logger.warning("ai_service.resource_index_failed", error=repr(exc))
     logger.info("ai_service.stopping")
 
 

@@ -15,12 +15,23 @@ from app.services.rag_service import RagService
 
 
 class ChatService:
+    STUDENT_EVALUATION_CHAT_TIMEOUT_SECONDS = 12
+
     async def chat(self, request: ChatRequest) -> ChatResponse:
+        if getattr(request, "scene", "") == "evaluation_followup":
+            course_context = await CourseContextService().resolve(
+                course_id=getattr(request, "course_id", None),
+                course_code=getattr(request, "course_code", None),
+            )
+            return self._build_evaluation_followup_response(request, course_context=course_context)
+
         direct_response = await self._build_direct_course_guidance_response(request)
         if direct_response is not None:
             return direct_response
 
         timeout_seconds = max(int(settings.llm_timeout_seconds or 0), 30) + 12
+        if getattr(request, "scene", "") == "evaluation_followup":
+            timeout_seconds = min(timeout_seconds, self.STUDENT_EVALUATION_CHAT_TIMEOUT_SECONDS)
         try:
             return await asyncio.wait_for(self._chat_live(request), timeout=timeout_seconds)
         except Exception:
@@ -126,9 +137,9 @@ class ChatService:
     ) -> ChatResponse:
         course_label = course_context.course_name or course_context.course_code
         answer = (
-            f"I could not finish the full live tutoring workflow just now, but I did keep the course context on "
-            f"{course_label}. Your last question was: {request.message}. Try asking a narrower question around one "
-            f"chapter or one resource card, and the tutor will have a better chance to respond quickly."
+            f"我已经保留了你当前的课程上下文：{course_label}。"
+            f"刚才没有在时限内完成全链路答疑，但你这次问题“{request.message}”已经纳入后续辅导上下文。"
+            "建议先围绕当前薄弱点做一轮错题复盘，再针对单一知识点继续追问，这样会更快拿到更聚焦的讲解。"
         )
         return ChatResponse(
             answer=answer,
@@ -143,11 +154,11 @@ class ChatService:
             agent_trace=["fallback:static"],
             generated_plan={
                 "course_code": course_context.course_code,
-                "summary": f"Fallback study plan placeholder for {course_label}.",
+                "summary": f"{course_label} 的兜底学习建议已生成。",
             },
             generated_resources=[
-                {"title": f"{course_label} overview"},
-                {"title": f"{course_label} practice guide"},
+                {"title": f"{course_label} 课程总览"},
+                {"title": f"{course_label} 薄弱点练习指南"},
             ],
             generated_evaluation={
                 "course_code": course_context.course_code,
@@ -163,6 +174,44 @@ class ChatService:
             course_name=course_code,
         )
         return self._build_static_fallback_response(request, course_context=course_context)
+
+    def _build_evaluation_followup_response(
+        self,
+        request: ChatRequest,
+        *,
+        course_context: ResolvedCourseContext,
+    ) -> ChatResponse:
+        course_label = course_context.course_name or course_context.course_code
+        answer = (
+            f"本次测评结果已接入 {course_label} 的学习闭环。"
+            "建议先完成一轮错题复盘，重点解释自己为什么会错；"
+            "然后围绕当前薄弱点补做 1 组针对性练习；"
+            "最后回到学习路径页查看系统刚生成的下一阶段任务。"
+        )
+        return ChatResponse(
+            answer=answer,
+            citations=[
+                Citation(
+                    source=course_context.course_code,
+                    chunk_id=0,
+                    score=0.0,
+                )
+            ],
+            intent=request.scene,
+            agent_trace=["evaluation_followup:fast_path"],
+            generated_plan={
+                "course_code": course_context.course_code,
+                "summary": f"{course_label} 的测评后续学习建议已生成。",
+            },
+            generated_resources=[
+                {"title": f"{course_label} 错题复盘清单"},
+                {"title": f"{course_label} 薄弱点强化练习"},
+            ],
+            generated_evaluation={
+                "course_code": course_context.course_code,
+                "status": "followup_ready",
+            },
+        )
 
     async def _build_direct_course_guidance_response(self, request: ChatRequest) -> ChatResponse | None:
         message = (getattr(request, "message", None) or "").strip()

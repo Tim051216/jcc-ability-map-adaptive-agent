@@ -333,6 +333,52 @@ class AIOpsOverviewResponse(BaseModel):
     latest_deployment: DeploymentRecordResponse | None = None
 
 
+class MCPToolStatResponse(BaseModel):
+    tool_name: str
+    display_name: str
+    call_count: int = 0
+    error_count: int = 0
+    avg_latency_ms: int = 0
+
+
+class MCPServerStatusResponse(BaseModel):
+    server_id: str
+    display_name: str
+    transport: str
+    status: str
+    endpoint: str | None = None
+    connected_clients: int = 0
+    error_rate: float = 0.0
+    avg_latency_ms: int = 0
+    latest_error: str | None = None
+    updated_at: str | None = None
+    tools: list[MCPToolStatResponse] = Field(default_factory=list)
+
+
+class MCPSessionResponse(BaseModel):
+    session_id: str
+    server_id: str
+    client_name: str
+    status: str
+    tool_name: str | None = None
+    duration_ms: int = 0
+    started_at: str | None = None
+    updated_at: str | None = None
+
+
+class MCPOverviewResponse(BaseModel):
+    total_servers: int = 0
+    healthy_servers: int = 0
+    warning_servers: int = 0
+    error_servers: int = 0
+    total_tool_calls: int = 0
+    error_tool_calls: int = 0
+    avg_latency_ms: int = 0
+    latest_updated_at: str | None = None
+    servers: list[MCPServerStatusResponse] = Field(default_factory=list)
+    sessions: list[MCPSessionResponse] = Field(default_factory=list)
+
+
 class AdminUserOverviewResponse(BaseModel):
     user_id: int
     course_code: str | None = None

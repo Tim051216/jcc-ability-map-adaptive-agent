@@ -23,9 +23,29 @@ class EmbeddingService:
     def _remote_enabled(self) -> bool:
         return settings.embedding_provider == "openai_compat" and bool(settings.embedding_base_url)
 
+    @staticmethod
+    def _is_multimodal_embedding_model(model: str) -> bool:
+        normalized = (model or "").strip().lower()
+        return normalized.startswith("tongyi-embedding-vision") or normalized in {
+            "multimodal-embedding-v1",
+            "qwen2.5-vl-embedding",
+            "qwen3-vl-embedding",
+        }
+
+    def _native_dashscope_base_url(self) -> str:
+        base = settings.embedding_base_url.rstrip("/")
+        if "/compatible-mode/" in base:
+            return base.split("/compatible-mode/", 1)[0]
+        if base.endswith("/compatible-mode"):
+            return base[: -len("/compatible-mode")]
+        return base
+
     async def _request_remote_embedding(self, text: str) -> list[float]:
         if not self._remote_enabled():
             raise ValueError("embedding remote provider is not enabled")
+
+        if self._is_multimodal_embedding_model(settings.embedding_model):
+            return await self._request_multimodal_remote_embedding(text)
 
         async with httpx.AsyncClient(timeout=settings.embedding_timeout_seconds) as client:
             response = await client.post(
@@ -37,6 +57,7 @@ class EmbeddingService:
                 json={
                     "model": settings.embedding_model,
                     "input": text,
+                    "dimensions": settings.milvus_dimension,
                 },
             )
             response.raise_for_status()
@@ -44,6 +65,48 @@ class EmbeddingService:
             embedding = payload["data"][0]["embedding"]
             if not isinstance(embedding, list) or not embedding:
                 raise ValueError("embedding payload is empty")
+
+            vector = [float(value) for value in embedding]
+            if len(vector) != settings.milvus_dimension:
+                raise ValueError(
+                    f"embedding dimension mismatch: remote={len(vector)}, milvus={settings.milvus_dimension}"
+                )
+            return vector
+
+    async def _request_multimodal_remote_embedding(self, text: str) -> list[float]:
+        endpoint = (
+            f"{self._native_dashscope_base_url()}/api/v1/services/embeddings/"
+            "multimodal-embedding/multimodal-embedding"
+        )
+        payload = {
+            "model": settings.embedding_model,
+            "input": {
+                "contents": [
+                    {"text": text},
+                ]
+            },
+            "parameters": {
+                "dimension": settings.milvus_dimension,
+            },
+        }
+
+        async with httpx.AsyncClient(timeout=settings.embedding_timeout_seconds) as client:
+            response = await client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {settings.embedding_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            embeddings = ((payload.get("output") or {}).get("embeddings") or [])
+            if not embeddings:
+                raise ValueError("multimodal embedding payload is empty")
+            embedding = embeddings[0].get("embedding")
+            if not isinstance(embedding, list) or not embedding:
+                raise ValueError("multimodal embedding vector is empty")
 
             vector = [float(value) for value in embedding]
             if len(vector) != settings.milvus_dimension:

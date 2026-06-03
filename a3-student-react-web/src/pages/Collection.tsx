@@ -1,171 +1,133 @@
-import React, { useEffect, useMemo, useState } from "react";
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  ArrowRight,
+  Heart,
   Bookmark,
-  Clock3,
-  ExternalLink,
-  Filter,
-  FolderOpen,
-  ListChecks,
-  Search,
-  SlidersHorizontal,
-  Sparkles,
+  FileText,
+  Star,
+  PlayCircle,
   Trash2,
+  ListRestart
 } from "lucide-react";
-import { studentApi, type ResourceCard, type ResourceFavoriteSummaryResponse } from "../lib/studentApi";
-import { cn } from "../lib/utils";
+import { COURSES } from "../constants";
+import { studentApi, type ResourceCard } from "../lib/studentApi";
 
-const DEFAULT_USER_ID = 1001;
-const DEFAULT_COURSE_ID = 401;
-const VIEW_TABS = [
-  { label: "全部收藏", value: "all" },
-  { label: "继续学习", value: "continue" },
-  { label: "分类整理", value: "organized" },
-] as const;
-const SORT_OPTIONS = [
-  { label: "推荐顺序", value: "recommended" },
-  { label: "标题 A-Z", value: "title" },
-  { label: "资料类型", value: "type" },
-] as const;
+type FavoriteHandout = {
+  id: string;
+  title: string;
+  format: string;
+  size: string;
+  courseTitle: string;
+  resourceId: string;
+  courseId: string;
+  fileId: string;
+  previewUrl?: string;
+  excerpt?: string;
+  type: "pdf" | "text" | "image" | "video";
+  rawResource?: ResourceCard | null;
+};
 
-type ViewTab = (typeof VIEW_TABS)[number]["value"];
-type SortMode = (typeof SORT_OPTIONS)[number]["value"];
-
-function getCourseIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const value = Number(params.get("courseId") || DEFAULT_COURSE_ID);
-  return Number.isFinite(value) ? value : DEFAULT_COURSE_ID;
+function inferFileTypeFromExtension(extension?: string | null): FavoriteHandout["type"] {
+  const normalized = (extension || "").toLowerCase();
+  if (normalized === ".pdf") return "pdf";
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(normalized)) return "image";
+  if ([".mp4", ".webm", ".mov", ".m3u8"].includes(normalized)) return "video";
+  return "text";
 }
 
-function formatResourceType(type: string) {
-  const map: Record<string, string> = {
-    lecture_note: "课程笔记",
-    lecture_notes: "课程笔记",
-    mind_map: "思维导图",
-    quiz_set: "练习题",
-    practice_set: "练习题",
-    extended_reading: "拓展阅读",
-    coding_lab: "编码实验",
-    case_study: "案例分析",
-    assessment_guide: "测评指南",
-    teaching_plan: "教学计划",
-    course_overview: "课程导览",
+function inferFormatFromMime(extension?: string | null, mimeType?: string | null) {
+  if (mimeType?.includes("pdf")) return "PDF Document";
+  if (mimeType?.startsWith("image/")) return "PNG Graphic";
+  if (mimeType?.startsWith("video/")) return "Video File";
+  return `${(extension || ".txt").replace(/^\./, "").toUpperCase()} File`;
+}
+
+function formatFileSize(fileSize?: number | null) {
+  if (!fileSize || fileSize <= 0) return "Unknown";
+  if (fileSize >= 1024 * 1024) return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  if (fileSize >= 1024) return `${Math.round(fileSize / 1024)} KB`;
+  return `${fileSize} B`;
+}
+
+function mapFavoriteResourcesToHandouts(items: ResourceCard[]): FavoriteHandout[] {
+  return items.flatMap((resource) =>
+    (resource.source_files || []).map((file) => ({
+      id: `${resource.resource_id || resource.title}-${file.file_id}`,
+      title: file.display_name,
+      format: inferFormatFromMime(file.file_extension, file.mime_type),
+      size: formatFileSize(file.file_size),
+      courseTitle: resource.title,
+      resourceId: String(resource.resource_id || ""),
+      courseId: "series-1",
+      fileId: String(file.file_id),
+      previewUrl: file.preview_url || file.open_url || undefined,
+      excerpt: file.preview_text || resource.summary,
+      type: inferFileTypeFromExtension(file.file_extension),
+      rawResource: resource,
+    })),
+  );
+}
+
+function inferSyntheticFileExtension(file: FavoriteHandout) {
+  if (file.type === "pdf") return ".pdf";
+  if (file.type === "image") return ".png";
+  if (file.type === "video") return ".mp4";
+  return ".md";
+}
+
+function inferSyntheticMimeType(file: FavoriteHandout) {
+  if (file.type === "pdf") return "application/pdf";
+  if (file.type === "image") return "image/png";
+  if (file.type === "video") return "video/mp4";
+  return "text/markdown";
+}
+
+export default function Collection() {
+  const navigate = useNavigate();
+
+  // Selected filter state
+  const [activeTab, setActiveTab] = useState<"All" | "Courses" | "Handouts">("All");
+
+  // Local state for interactive items representing favorite nodes
+  const [favoriteCourses, setFavoriteCourses] = useState([COURSES[0], COURSES[1]]);
+  const [favoriteHandouts, setFavoriteHandouts] = useState<FavoriteHandout[]>([]);
+  const [loadingHandouts, setLoadingHandouts] = useState(true);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Search filter query state
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2850);
   };
-  return map[type] || type;
-}
-
-function formatTimeLabel(value?: string | null) {
-  if (!value) {
-    return "最近未记录";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsed);
-}
-
-function buildResourceDetailUrl(courseId: number, resourceId?: number | null) {
-  if (!resourceId) {
-    return `/resources?courseId=${courseId}`;
-  }
-  return `/resources?courseId=${courseId}&resourceId=${resourceId}`;
-}
-
-function getSearchableText(item: ResourceCard) {
-  return [item.title, item.summary, item.study_suggestion || "", item.resource_type, ...item.source_titles].join(" ").toLowerCase();
-}
-
-function getContinuePriority(item: ResourceCard) {
-  const scoreMap: Record<string, number> = {
-    course_overview: 100,
-    lecture_note: 90,
-    lecture_notes: 90,
-    mind_map: 80,
-    practice_set: 70,
-    quiz_set: 70,
-    case_study: 60,
-    coding_lab: 55,
-    assessment_guide: 45,
-    extended_reading: 35,
-    teaching_plan: 20,
-  };
-  return scoreMap[item.resource_type] || 10;
-}
-
-function getLearningStageLabel(type: string) {
-  const stageMap: Record<string, string> = {
-    course_overview: "先建立全局认识",
-    lecture_note: "先建立基础理解",
-    lecture_notes: "先建立基础理解",
-    mind_map: "适合快速串联知识点",
-    practice_set: "适合练习和自测",
-    quiz_set: "适合练习和自测",
-    case_study: "适合理解真实场景",
-    coding_lab: "适合动手应用",
-    assessment_guide: "适合考前过重点",
-    extended_reading: "适合扩展补充",
-    teaching_plan: "适合了解课程安排",
-  };
-  return stageMap[type] || "适合作为本轮学习补充";
-}
-
-function sortResources(items: ResourceCard[], mode: SortMode) {
-  const next = [...items];
-  if (mode === "title") {
-    next.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
-    return next;
-  }
-  if (mode === "type") {
-    next.sort((a, b) => formatResourceType(a.resource_type).localeCompare(formatResourceType(b.resource_type), "zh-CN"));
-    return next;
-  }
-  next.sort((a, b) => getContinuePriority(b) - getContinuePriority(a));
-  return next;
-}
-
-export function Collection() {
-  const courseId = useMemo(() => getCourseIdFromUrl(), []);
-  const [resources, setResources] = useState<ResourceCard[]>([]);
-  const [summary, setSummary] = useState<ResourceFavoriteSummaryResponse | null>(null);
-  const [selectedType, setSelectedType] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<ViewTab>("all");
-  const [sortMode, setSortMode] = useState<SortMode>("recommended");
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [updatingIds, setUpdatingIds] = useState<number[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadFavorites() {
+      setLoadingHandouts(true);
       try {
-        setLoading(true);
-        setError(null);
-        const [favoriteResponse, summaryResponse] = await Promise.all([
-          studentApi.listFavoriteResources(DEFAULT_USER_ID),
-          studentApi.getFavoriteSummary(DEFAULT_USER_ID),
-        ]);
-        if (!cancelled) {
-          setResources(favoriteResponse.items || []);
-          setSummary(summaryResponse);
+        const response = await studentApi.listFavoriteResources(1001);
+        if (cancelled) {
+          return;
         }
-      } catch (loadError) {
-        if (!cancelled) {
-          const message = loadError instanceof Error ? loadError.message : "收藏资源加载失败";
-          setError(message);
-          setResources([]);
-          setSummary(null);
+        setFavoriteHandouts(mapFavoriteResourcesToHandouts(response.items));
+      } catch {
+        if (cancelled) {
+          return;
         }
+        setFavoriteHandouts([]);
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setLoadingHandouts(false);
         }
       }
     }
@@ -176,519 +138,332 @@ export function Collection() {
     };
   }, []);
 
-  async function handleToggleFavorite(resourceId?: number | null) {
-    if (!resourceId || updatingIds.includes(resourceId)) {
-      return;
-    }
+  const handleResetPresets = () => {
+    setFavoriteCourses([COURSES[0], COURSES[1]]);
+    setSearchQuery("");
+    showToast("已重置筛选条件。");
+  };
 
-    try {
-      setUpdatingIds((prev) => [...prev, resourceId]);
-      const result = await studentApi.favoriteResource(resourceId, DEFAULT_USER_ID);
-      if (result.favorite === false) {
-        setResources((prev) => prev.filter((item) => item.resource_id !== resourceId));
-        setSummary((prev) => {
-          if (!prev) {
-            return prev;
-          }
-          const target = resources.find((item) => item.resource_id === resourceId);
-          const nextByType = { ...prev.by_type };
-          if (target?.resource_type && nextByType[target.resource_type]) {
-            nextByType[target.resource_type] = Math.max(0, nextByType[target.resource_type] - 1);
-            if (nextByType[target.resource_type] === 0) {
-              delete nextByType[target.resource_type];
-            }
-          }
-          return {
-            ...prev,
-            total: Math.max(0, prev.total - 1),
-            by_type: nextByType,
-          };
-        });
-      }
-    } catch (toggleError) {
-      const message = toggleError instanceof Error ? toggleError.message : "收藏状态更新失败";
-      setError(message);
-    } finally {
-      setUpdatingIds((prev) => prev.filter((id) => id !== resourceId));
-    }
-  }
+  const handleRemoveCourse = (id: string) => {
+    setFavoriteCourses(favoriteCourses.filter((c) => c.id !== id));
+    showToast("已成功为您移出微课视频收藏。");
+  };
 
-  const categories = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of resources) {
-      counts.set(item.resource_type, (counts.get(item.resource_type) || 0) + 1);
-    }
-    return [
-      { name: "全部", value: "all", count: resources.length },
-      ...Array.from(counts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([type, count]) => ({
-          name: formatResourceType(type),
-          value: type,
-          count,
-        })),
-    ];
-  }, [resources]);
+  const handleRemoveHandout = (id: string) => {
+    setFavoriteHandouts(favoriteHandouts.filter((h) => h.id !== id));
+    showToast("已成功为您移出文献课件收藏。");
+  };
 
-  const filteredResources = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const matched = resources.filter((item) => {
-      const matchesType = selectedType === "all" || item.resource_type === selectedType;
-      const matchesSearch = !term || getSearchableText(item).includes(term);
-      return matchesType && matchesSearch;
+  const handleOpenHandout = (file: FavoriteHandout) => {
+    navigate(`/resources/preview?courseId=${file.courseId}&resourceId=${file.resourceId}&fileId=${file.fileId}`, {
+      state: {
+        initialResource: file.rawResource || null,
+        initialFileId: Number.isFinite(Number(file.fileId)) ? Number(file.fileId) : null,
+        initialPreviewFile: {
+          file_id: Number.isFinite(Number(file.fileId)) ? Number(file.fileId) : -1,
+          display_name: file.title,
+          relative_path: file.previewUrl || file.title,
+          top_level_category: "收藏资料",
+          file_extension: inferSyntheticFileExtension(file),
+          mime_type: inferSyntheticMimeType(file),
+          file_size: null,
+          preview_text: file.excerpt || null,
+          is_inline_previewable: true,
+          preview_mode: file.type === "text" ? "text" : file.type,
+          preview_url:
+            file.previewUrl && (file.previewUrl.startsWith("/") || /^https?:\/\//i.test(file.previewUrl))
+              ? file.previewUrl
+              : null,
+          open_url:
+            file.previewUrl && (file.previewUrl.startsWith("/") || /^https?:\/\//i.test(file.previewUrl))
+              ? file.previewUrl
+              : "",
+        },
+      },
     });
-    return sortResources(matched, sortMode);
-  }, [resources, search, selectedType, sortMode]);
+  };
 
-  const highlightedResources = useMemo(
-    () => sortResources(filteredResources, "recommended").slice(0, 2),
-    [filteredResources],
-  );
+  const tabMap = {
+    All: "全部收藏",
+    Courses: "精品微课视频",
+    Handouts: "随堂幻灯课件"
+  };
 
-  const compactTypes = useMemo(
-    () =>
-      Object.entries(summary?.by_type || ({} as Record<string, number>))
-        .sort((a, b) => Number(b[1]) - Number(a[1]))
-        .slice(0, 3),
-    [summary],
-  );
+  // Perform multi-dimensional search filtering
+  const filteredCourses = favoriteCourses.filter(course => {
+    const courseTitleZh = course.title + " 前沿机器学习实战：极深反向传播与梯度策略 现代化 React 架构：极致组件虚拟化与 Context 多维切片";
+    return courseTitleZh.toLowerCase().includes(searchQuery.toLowerCase()) || 
+           course.subtitle?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
-  const continueResources = useMemo(
-    () => sortResources(filteredResources, "recommended").slice(0, 6),
-    [filteredResources],
-  );
-
-  const organizedSections = useMemo(
-    () => [
-      {
-        title: "先学这里",
-        desc: "参考 LinkedIn Learning 的 My Learning，把最适合起步的收藏放在前面。",
-        items: filteredResources.filter((item) =>
-          ["course_overview", "lecture_note", "lecture_notes", "mind_map"].includes(item.resource_type),
-        ),
-      },
-      {
-        title: "练习强化",
-        desc: "参考 Udemy 愿望单的待学逻辑，这一组适合学完就立刻做题或应用。",
-        items: filteredResources.filter((item) =>
-          ["practice_set", "quiz_set", "coding_lab", "case_study"].includes(item.resource_type),
-        ),
-      },
-      {
-        title: "考前和补充",
-        desc: "参考 Skillshare 列表分组，把冲刺和补充资料单独放在一起。",
-        items: filteredResources.filter((item) =>
-          ["assessment_guide", "extended_reading", "teaching_plan"].includes(item.resource_type),
-        ),
-      },
-    ].filter((section) => section.items.length > 0),
-    [filteredResources],
-  );
-
-  const nextRecommendation = continueResources[0] || null;
-  const visibleResources =
-    activeTab === "continue"
-      ? continueResources
-      : activeTab === "organized"
-        ? []
-        : filteredResources;
+  const filteredHandouts = favoriteHandouts.filter(file => {
+    return file.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+           file.courseTitle.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
-    <div className="space-y-8 pb-24">
-      <section className="overflow-hidden rounded-[36px] border border-outline-variant/50 bg-gradient-to-br from-[#0b2239] via-[#103557] to-[#136f63] p-8 text-white shadow-xl shadow-slate-900/10 md:p-10">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/80">
-              <Bookmark className="h-4 w-4" />
-              我的收藏
-            </div>
-            <h1 className="mt-5 text-4xl font-bold tracking-tight">把收藏变成待学清单，而不是资料说明页</h1>
-            <p className="mt-4 text-sm leading-8 text-white/80">
-              这里参考了 Saved、Wishlist、My Learning 这类学习产品页面的写法，重点是先看什么、怎么继续、怎么快速回到学习流。
+    <div className="space-y-6 select-none" id="collection-workspace">
+      
+      {/* 1. Header Hero detailing collection parameters */}
+      <section className="bg-white rounded-3xl border border-[#E3E8EC] p-6 lg:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm">
+        <div className="space-y-2">
+          <span className="text-[10px] uppercase font-bold text-[#fb7299] tracking-wider font-mono">
+            Personal Study Binder • 个人随堂知识夹
+          </span>
+          <h1 className="font-sans text-2xl lg:text-3xl font-extrabold text-[#171c22]">
+            我的综合研学收藏夹
+          </h1>
+          <p className="text-sm text-[#564145] font-sans">
+            分类汇集、检索与复习您在各个微课堂及精品研学中添加收藏的微课视频、随堂文献讲义，帮助您随时温旧知新。
+          </p>
+        </div>
+
+        {/* Global item counts wrapper */}
+        <div className="p-4 bg-[#fb7299]/5 border border-[#fb7299]/20 rounded-2xl flex items-center gap-3 shrink-0">
+          <Heart className="w-8 h-8 text-[#fb7299] shrink-0 fill-[#fb7299]" />
+          <div>
+            <p className="text-[9px] text-[#564145] font-bold uppercase font-sans">已收藏条目总数</p>
+            <p className="text-sm font-extrabold text-[#171c22]">
+              共 {favoriteCourses.length + favoriteHandouts.length} 个研学资源
             </p>
           </div>
-
-          <div className="grid w-full gap-3 sm:grid-cols-3 lg:max-w-xl">
-            <div className="rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/65">收藏总数</div>
-              <div className="mt-3 text-3xl font-bold">{summary?.total ?? resources.length}</div>
-            </div>
-            <div className="rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/65">最近收藏</div>
-              <div className="mt-3 text-sm font-semibold leading-6">{formatTimeLabel(summary?.latest_favorite_at)}</div>
-            </div>
-            <div className="rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/65">常收藏类型</div>
-              <div className="mt-3 text-sm font-semibold leading-6">
-                {compactTypes.length ? compactTypes.map(([type]) => formatResourceType(type)).join(" / ") : "还没有分类偏好"}
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
-      {error ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-700">{error}</div>
-      ) : null}
-
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-[30px] border border-outline-variant/40 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <label className="relative flex-1">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/60" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜索标题、摘要、学习建议、来源"
-                className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container-low px-11 py-3.5 text-sm text-on-surface outline-none transition-colors focus:border-primary"
-              />
-            </label>
-            <a
-              href={`/resources?courseId=${courseId}`}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-white px-5 text-sm font-bold text-on-surface transition-colors hover:border-primary/35 hover:text-primary"
-            >
-              <FolderOpen className="h-4 w-4" />
-              去资料中心
-            </a>
-          </div>
-        </div>
-
-        <div className="rounded-[30px] border border-outline-variant/40 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-primary">快速筛选</div>
-              <div className="mt-1 text-sm text-on-surface-variant">先按类型收缩范围，再决定先学哪条。</div>
-            </div>
-            <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Filter className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {categories.map((cat) => (
+      {/* 2. Selection Tabs filter bar with live search & restore actions */}
+      <section className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-white p-4.5 rounded-3xl border border-[#E3E8EC] shadow-sm">
+        {/* Tab Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          {(["All", "Courses", "Handouts"] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
               <button
-                key={cat.value}
-                onClick={() => setSelectedType(cat.value)}
-                className={cn(
-                  "rounded-full border px-4 py-2 text-sm font-bold transition-colors",
-                  selectedType === cat.value
-                    ? "border-on-surface bg-on-surface text-white"
-                    : "border-outline-variant/40 bg-surface-container-low text-on-surface-variant hover:border-primary/35 hover:text-primary",
-                )}
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-[#fb7299] text-white shadow-xs"
+                    : "bg-[#eaeef6]/45 text-[#564145] hover:bg-[#eaeef6]/80"
+                }`}
               >
-                {cat.name}
-                <span className="ml-2 opacity-60">{cat.count}</span>
+                {tabMap[tab]}
               </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div className="space-y-4">
-          <div className="rounded-[30px] border border-outline-variant/40 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap gap-2">
-                {VIEW_TABS.map((tab) => (
-                  <button
-                    key={tab.value}
-                    onClick={() => setActiveTab(tab.value)}
-                    className={cn(
-                      "rounded-2xl px-4 py-3 text-sm font-bold transition-colors",
-                      activeTab === tab.value ? "bg-on-surface text-white" : "bg-surface-container-low text-on-surface-variant hover:text-primary",
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <label className="inline-flex items-center gap-3 rounded-2xl bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
-                <SlidersHorizontal className="h-4 w-4" />
-                <span className="font-semibold">排序</span>
-                <select
-                  value={sortMode}
-                  onChange={(event) => setSortMode(event.target.value as SortMode)}
-                  className="bg-transparent font-semibold text-on-surface outline-none"
-                >
-                  {SORT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
-          {!loading && highlightedResources.length ? (
-            <section className="space-y-5">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.18em] text-primary">优先打开</div>
-                  <h2 className="mt-2 text-2xl font-bold text-on-surface">先看这几条，最快进入状态</h2>
-                </div>
-                <div className="text-sm text-on-surface-variant">{filteredResources.length} 条符合当前筛选</div>
-              </div>
-
-              <div className="grid gap-5 lg:grid-cols-2">
-                {highlightedResources.map((item, index) => (
-                  <article
-                    key={`${item.resource_id || item.title}-${index}`}
-                    className="overflow-hidden rounded-[30px] bg-gradient-to-br from-[#f6f1df] via-[#fff9ef] to-[#ecf8f2] p-7 shadow-sm ring-1 ring-black/5"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-xs font-black uppercase tracking-[0.18em] text-primary">{formatResourceType(item.resource_type)}</div>
-                        <h3 className="mt-3 text-2xl font-bold text-on-surface">{item.title}</h3>
-                      </div>
-                      <div className="rounded-full bg-white p-2 text-primary shadow-sm">
-                        <Sparkles className="h-5 w-5" />
-                      </div>
-                    </div>
-
-                    <p className="mt-4 line-clamp-3 text-sm leading-7 text-on-surface-variant">{item.summary}</p>
-
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {item.source_titles.slice(0, 4).map((source) => (
-                        <span key={source} className="rounded-full bg-white/85 px-3 py-1 text-xs text-on-surface-variant ring-1 ring-black/5">
-                          {source}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="mt-6 rounded-3xl bg-white/80 p-4 ring-1 ring-black/5">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-primary">
-                        <Clock3 className="h-4 w-4" />
-                        学习建议
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-on-surface">
-                        {item.study_suggestion || "建议把这条资料作为本轮学习的第一入口，先过一遍再进入细节。"}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 inline-flex rounded-full bg-on-surface/5 px-3 py-1 text-xs font-semibold text-on-surface-variant">
-                      {getLearningStageLabel(item.resource_type)}
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap gap-3">
-                      <a
-                        href={buildResourceDetailUrl(courseId, item.resource_id)}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-on-surface px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90"
-                      >
-                        继续学习
-                        <ArrowRight className="h-4 w-4" />
-                      </a>
-                      <button
-                        onClick={() => void handleToggleFavorite(item.resource_id)}
-                        disabled={item.resource_id ? updatingIds.includes(item.resource_id) : true}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-outline-variant/50 bg-white px-5 py-3 text-sm font-bold text-on-surface transition-colors hover:border-rose-300 hover:text-rose-600 disabled:opacity-60"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        取消收藏
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <section className="space-y-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-primary">收藏列表</div>
-                <h2 className="mt-2 text-2xl font-bold text-on-surface">
-                  {activeTab === "continue" ? "先处理这些最值得继续的资料" : activeTab === "organized" ? "按学习场景整理你的收藏" : "所有收藏都能直接操作"}
-                </h2>
-              </div>
-              <div className="text-sm text-on-surface-variant">
-                {activeTab === "continue"
-                  ? "把收藏页做成待学队列，更接近真实学习产品。"
-                  : activeTab === "organized"
-                    ? "把收藏按任务场景重排，而不是只按时间堆在一起。"
-                    : "打开资料、查看摘要、移出收藏，都在卡片上直接完成。"}
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="rounded-[28px] border border-outline-variant/40 bg-white px-6 py-10 text-sm text-on-surface-variant shadow-sm">
-                正在加载你的收藏资料...
-              </div>
-            ) : null}
-
-            {!loading && activeTab === "organized" && organizedSections.length ? (
-              <div className="space-y-5">
-                {organizedSections.map((section) => (
-                  <div key={section.title} className="rounded-[28px] border border-outline-variant/40 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-2 border-b border-outline-variant/20 pb-4 sm:flex-row sm:items-end sm:justify-between">
-                      <div>
-                        <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-primary">
-                          <ListChecks className="h-4 w-4" />
-                          {section.title}
-                        </div>
-                        <p className="mt-2 text-sm leading-7 text-on-surface-variant">{section.desc}</p>
-                      </div>
-                      <div className="text-sm font-semibold text-on-surface-variant">{section.items.length} 条资料</div>
-                    </div>
-
-                    <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                      {section.items.map((item, index) => {
-                        const isUpdating = item.resource_id ? updatingIds.includes(item.resource_id) : false;
-                        return (
-                          <article
-                            key={`${section.title}-${item.resource_id || item.title}-${index}`}
-                            className="rounded-3xl bg-surface-container-low p-5"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-xs font-black uppercase tracking-[0.16em] text-primary">{formatResourceType(item.resource_type)}</div>
-                                <h3 className="mt-3 text-lg font-bold text-on-surface">{item.title}</h3>
-                              </div>
-                              <button
-                                onClick={() => void handleToggleFavorite(item.resource_id)}
-                                disabled={isUpdating || !item.resource_id}
-                                className="rounded-full bg-white p-2 text-on-surface-variant transition-colors hover:text-rose-600 disabled:opacity-60"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-
-                            <p className="mt-3 line-clamp-2 text-sm leading-7 text-on-surface-variant">{item.summary}</p>
-                            <div className="mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-on-surface-variant">
-                              {getLearningStageLabel(item.resource_type)}
-                            </div>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {item.source_titles.slice(0, 3).map((source) => (
-                                <span key={source} className="rounded-full bg-white px-3 py-1 text-xs text-on-surface-variant">
-                                  {source}
-                                </span>
-                              ))}
-                            </div>
-                            <a href={buildResourceDetailUrl(courseId, item.resource_id)} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-primary">
-                              打开资料
-                              <ArrowRight className="h-4 w-4" />
-                            </a>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {!loading && activeTab !== "organized" && visibleResources.length ? (
-              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                {visibleResources.map((item, index) => {
-                  const isUpdating = item.resource_id ? updatingIds.includes(item.resource_id) : false;
-                  return (
-                    <article
-                      key={`${item.resource_id || item.title}-${index}`}
-                      className="rounded-[28px] border border-outline-variant/40 bg-white p-6 shadow-sm transition-shadow hover:shadow-lg"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <div className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-primary">
-                            {formatResourceType(item.resource_type)}
-                          </div>
-                          <h3 className="mt-4 text-xl font-bold text-on-surface">{item.title}</h3>
-                        </div>
-                        <div className="rounded-full bg-primary text-white p-2 shadow-sm">
-                          <Bookmark className="h-4 w-4" />
-                        </div>
-                      </div>
-
-                      <p className="mt-4 line-clamp-3 text-sm leading-7 text-on-surface-variant">{item.summary}</p>
-
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        {item.source_titles.slice(0, 4).map((source) => (
-                          <span key={source} className="rounded-full bg-surface-variant/35 px-3 py-1 text-xs text-on-surface-variant">
-                            {source}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="mt-5 rounded-2xl bg-surface-container-low p-4">
-                        <div className="text-xs font-black uppercase tracking-[0.16em] text-primary">怎么用这条资料</div>
-                        <p className="mt-2 text-sm leading-7 text-on-surface">
-                          {item.study_suggestion || "建议作为当前知识点的补充材料，先看摘要，再进入完整内容。"}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 inline-flex rounded-full bg-primary/8 px-3 py-1 text-xs font-semibold text-primary">
-                        {getLearningStageLabel(item.resource_type)}
-                      </div>
-
-                      <div className="mt-6 flex flex-wrap gap-3">
-                        <a
-                          href={buildResourceDetailUrl(courseId, item.resource_id)}
-                          className="inline-flex items-center gap-2 rounded-2xl bg-on-surface px-4 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90"
-                        >
-                          打开资料
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                        <button
-                          onClick={() => void handleToggleFavorite(item.resource_id)}
-                          disabled={isUpdating || !item.resource_id}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-outline-variant/50 bg-white px-4 py-3 text-sm font-bold text-on-surface transition-colors hover:border-rose-300 hover:text-rose-600 disabled:opacity-60"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {isUpdating ? "处理中..." : "移出收藏"}
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {!loading &&
-            ((activeTab === "organized" && organizedSections.length === 0) || (activeTab !== "organized" && visibleResources.length === 0)) ? (
-              <div className="rounded-[28px] border border-dashed border-outline-variant/50 bg-white px-6 py-12 text-center shadow-sm">
-                <div className="text-2xl font-bold text-on-surface">当前筛选下没有收藏资料</div>
-                <p className="mt-3 text-sm leading-7 text-on-surface-variant">换个类型、清空搜索，或者去资料中心把常用内容收进来。</p>
-                <a href={`/resources?courseId=${courseId}`} className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-white">
-                  去资料中心找资料
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </div>
-            ) : null}
-          </section>
+            );
+          })}
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-[30px] border border-outline-variant/40 bg-white p-6 shadow-sm">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-primary">下一步建议</div>
-            {nextRecommendation ? (
-              <>
-                <h3 className="mt-3 text-xl font-bold text-on-surface">{nextRecommendation.title}</h3>
-                <p className="mt-3 text-sm leading-7 text-on-surface-variant">{nextRecommendation.summary}</p>
-                <div className="mt-4 inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                  {getLearningStageLabel(nextRecommendation.resource_type)}
-                </div>
-                <a
-                  href={buildResourceDetailUrl(courseId, nextRecommendation.resource_id)}
-                  className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-primary"
-                >
-                  现在去学
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </>
-            ) : (
-              <p className="mt-3 text-sm leading-7 text-on-surface-variant">先收藏几条资料，这里就会开始给你推荐下一步。</p>
+        {/* Live Search Input & Reset Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-grow lg:max-w-xl">
+          <div className="relative flex-grow">
+            <input
+              type="text"
+              placeholder="全域搜索收藏夹 (关键词, 关联讲课, 课件等)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-50/70 hover:bg-slate-50 text-xs text-[#171c22] placeholder-slate-400 border border-[#E3E8EC] focus:border-[#fb7299] focus:bg-white rounded-xl pl-3.5 pr-8 py-2 focus:outline-hidden transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-xs"
+              >
+                ×
+              </button>
             )}
           </div>
 
-          <div className="rounded-[30px] border border-outline-variant/40 bg-white p-6 shadow-sm">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-primary">这个页像什么</div>
-            <div className="mt-4 space-y-3 text-sm leading-7 text-on-surface-variant">
-              <p>像 LinkedIn Learning 的 My Learning：先看待继续内容。</p>
-              <p>像 Udemy 的 Wishlist：先把想学的收起来，再统一进入。</p>
-              <p>像 Skillshare 的 Lists：允许按学习场景重新整理收藏。</p>
+          <button
+            onClick={handleResetPresets}
+            className="bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] border border-[#E3E8EC] rounded-xl px-3.5 py-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+            title="复置收藏夹为学术示范初始配置"
+          >
+            <ListRestart className="w-3.5 h-3.5 text-[#fb7299]" />
+            <span>重置恢复范本</span>
+          </button>
+        </div>
+      </section>
+
+      {/* 3. Render lists of bookmarked items in grid layout */}
+      <section className="space-y-6">
+        
+        {/* Render Saved Courses if selected */}
+        {(activeTab === "All" || activeTab === "Courses") && (
+          <div className="space-y-4">
+            {filteredCourses.length > 0 && (
+              <h3 className="font-sans text-xs font-extrabold tracking-wider uppercase text-[#564145] pl-1">
+                已收藏的高性能微课视频 ({filteredCourses.length})
+              </h3>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredCourses.map((course) => {
+                let courseTitleZh = course.title;
+                if (course.title.includes("Advanced Machine Learning")) courseTitleZh = "前沿机器学习实战：极深反向传播与梯度策略";
+                if (course.title.includes("Modern React Architecture")) courseTitleZh = "现代化 React 架构：极致组件虚拟化与 Context 多维切片";
+
+                let courseSubtitleZh = course.subtitle;
+                if (course.subtitle?.includes("Dive deep into deep neural networks")) courseSubtitleZh = "深度剥丝抽茧梯度传播误差与调优公式原理";
+                if (course.subtitle?.includes("Master virtual rendering")) courseSubtitleZh = "全面理解 React Fiber 树的级联调度与拦截策略";
+
+                return (
+                  <div
+                    id={`favorite-course-${course.id}`}
+                    key={course.id}
+                    className="bg-white border border-[#E3E8EC] rounded-3xl overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-shadow group shrink-0"
+                  >
+                    {/* Image container */}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/learn?courseId=${course.id}`)}
+                      className="sm:w-44 aspect-video sm:aspect-square bg-slate-100 shrink-0 relative overflow-hidden text-left cursor-pointer"
+                    >
+                      <img
+                        src={course.image}
+                        alt={courseTitleZh}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute bottom-2 right-2 bg-black/75 text-white font-mono text-[9px] px-1.5 py-0.5 rounded">
+                        {course.duration}
+                      </div>
+                    </button>
+
+                    {/* Metadata and Actions section */}
+                    <div className="p-5 flex flex-col justify-between flex-grow gap-4 min-w-0">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="bg-[#fb7299]/15 text-[#fb7299] text-[9px] font-extrabold px-2 py-0.2 rounded font-mono uppercase">
+                            {course.category === "Machine Learning" ? "机器学习" : "前端开发"}
+                          </span>
+                          <button
+                            onClick={() => handleRemoveCourse(course.id)}
+                            className="text-slate-400 hover:text-red-500 p-1 rounded-lg transition-colors cursor-pointer"
+                            title="取消收藏"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/learn?courseId=${course.id}`)}
+                          className="block text-left font-sans text-sm font-extrabold text-[#171c22] leading-snug truncate group-hover:text-[#fb7299] transition-colors cursor-pointer"
+                        >
+                          {courseTitleZh}
+                        </button>
+                        <p className="text-[11px] text-[#564145] leading-snug truncate opacity-90">{courseSubtitleZh}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 border-t border-gray-50 text-[10px] text-[#564145]">
+                        <span className="flex items-center gap-1">
+                          <Star className="w-3.5 h-3.5 fill-amber-500 stroke-none" />
+                          <strong>{course.rating}</strong> ({course.views}次精听)
+                        </span>
+                        <button
+                          onClick={() => navigate(`/learn?courseId=${course.id}`)}
+                          className="text-xs font-bold text-[#006689] hover:underline flex items-center gap-0.5 font-sans cursor-pointer"
+                        >
+                          <PlayCircle className="w-4 h-4 shrink-0" />
+                          进入研习
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </aside>
+        )}
+
+        {/* Render Saved Handouts if selected */}
+        {(activeTab === "All" || activeTab === "Handouts") && (
+          <div className="space-y-4">
+            {filteredHandouts.length > 0 && (
+              <h3 className="font-sans text-xs font-extrabold tracking-wider uppercase text-[#564145] pl-1 pt-2">
+                已收藏的随堂文献讲义与代码包 ({filteredHandouts.length})
+              </h3>
+            )}
+
+            <div className="space-y-3">
+              {loadingHandouts ? (
+                <div className="rounded-2xl border border-[#E3E8EC] bg-white px-4 py-6 text-sm text-[#564145]">
+                  正在加载资料收藏...
+                </div>
+              ) : null}
+              {filteredHandouts.map((file) => (
+                <div
+                  id={`favorite-handout-${file.id}`}
+                  key={file.id}
+                  className="p-4 bg-white border border-[#E3E8EC] rounded-2xl hover:border-gray-300 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0 border border-red-100 text-red-500">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-extrabold text-[#171c22] truncate">{file.title}</p>
+                      <p className="text-[10px] text-[#564145]/70 font-mono mt-0.5">
+                        {file.format} • {file.size} • 关联讲课: <strong className="text-[#006689]">{file.courseTitle}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3.5 shrink-0 select-none">
+                    <button
+                    onClick={() => handleRemoveHandout(file.id)}
+                      className="text-slate-400 hover:text-red-500 p-1 rounded-lg transition-colors cursor-pointer"
+                      title="取消收藏"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleOpenHandout(file)}
+                      className="bg-[#006689] hover:bg-[#006689]/95 text-white font-bold text-xs px-4 py-1.8 rounded-xl flex items-center gap-1 shadow transition-all cursor-pointer"
+                    >
+                      <span>预览文献</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty status check */}
+        {((activeTab === "Courses" && filteredCourses.length === 0) ||
+          (activeTab === "Handouts" && filteredHandouts.length === 0) ||
+          (filteredCourses.length === 0 && filteredHandouts.length === 0)) && (
+          <div className="bg-white border rounded-3xl p-16 text-center select-none">
+            <Bookmark className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+            <h4 className="font-sans text-sm font-bold text-[#171c22]">未匹配到符合您检索或筛选条件的书签信息</h4>
+            <p className="text-xs text-[#564145] mt-1">请尝试修改您的检索关键字，或者点击上方“重置恢复范本”一键载入学术默认列表。</p>
+            <div className="mt-4 flex gap-2 justify-center">
+              <button
+                onClick={handleResetPresets}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold px-4 py-2 rounded-xl border cursor-pointer"
+              >
+                重置列表
+              </button>
+              <button
+                onClick={() => navigate("/")}
+                className="bg-[#fb7299] hover:bg-[#fb7299]/90 text-white text-xs font-extrabold px-4 py-2 rounded-xl cursor-pointer"
+              >
+                去微课堂找灵感
+              </button>
+            </div>
+          </div>
+        )}
+
       </section>
+
+      {/* Beautiful In-App Toast Feedback */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#171c22]/95 text-white text-xs font-bold px-5 py-3 rounded-full shadow-2xl z-50 flex items-center gap-2 border border-white/10 animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <span className="w-2 h-2 rounded-full bg-[#fb7299] animate-ping" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
     </div>
   );
 }

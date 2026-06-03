@@ -80,6 +80,7 @@ class TutoringQuestionBase(BaseModel):
 class TutoringQuestionCreate(TutoringQuestionBase):
     """创建问题请求"""
     session_id: Optional[int] = Field(None, description="会话ID，如果为空则创建新会话")
+    persona: Optional[str] = Field(None, description="导师人设标识，如 haibara / usagi")
 
 
 class TutoringQuestionResponse(TutoringQuestionBase):
@@ -89,6 +90,7 @@ class TutoringQuestionResponse(TutoringQuestionBase):
     id: int
     session_id: int
     user_id: int
+    persona: Optional[str] = None
     question_type: Optional[str] = None
     knowledge_points: Optional[list[str]] = None
     difficulty_level: Optional[int] = None

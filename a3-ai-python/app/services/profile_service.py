@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import httpx
 from pydantic import ValidationError
 
+from app.core.logging import logger
 from app.db.repositories.profile_repository import ProfileRepository
 from app.db.session import async_session_factory
 from app.integrations.java_clients.user_client import UserClient
@@ -31,7 +32,12 @@ class ProfileService:
     async def build_profile(self, request: ProfileBuildRequest) -> ProfileResponse:
         try:
             user_profile = await UserClient().get_user(request.user_id)
-        except (httpx.HTTPError, ValidationError, ValueError):
+        except (httpx.HTTPError, ValidationError, ValueError, OSError) as exc:
+            logger.warning(
+                "profile_service.user_client_unavailable",
+                user_id=request.user_id,
+                error=repr(exc),
+            )
             user_profile = None
 
         payload = build_profile_payload(

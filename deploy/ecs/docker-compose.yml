@@ -1,4 +1,11 @@
 services:
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
   a3-learning-service:
     build:
       context: ../..
@@ -8,6 +15,44 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       EVALUATION_AI_BASE_URL: http://a3-ai-python:18080
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  a3-user-service:
+    build:
+      context: ../..
+      dockerfile: a3-user/Dockerfile
+    env_file:
+      - ./env/user.env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  a3-course-service:
+    build:
+      context: ../..
+      dockerfile: a3-resource/Dockerfile
+    env_file:
+      - ./env/course.env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  a3-exam-service:
+    build:
+      context: ../..
+      dockerfile: a3-assessment/Dockerfile
+    env_file:
+      - ./env/exam.env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      - redis
     restart: unless-stopped
 
   a3-ai-python:
@@ -16,6 +61,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./env/ai.env
+    depends_on:
+      - redis
     restart: unless-stopped
 
   a3-gateway:
@@ -29,8 +76,12 @@ services:
       AI_SERVICE_BASE_URL: http://a3-ai-python:18080
       LEARNING_SERVICE_BASE_URL: http://a3-learning-service:8090
     depends_on:
+      - redis
       - a3-learning-service
       - a3-ai-python
+      - a3-user-service
+      - a3-course-service
+      - a3-exam-service
     restart: unless-stopped
 
   a3-student-web:
@@ -42,7 +93,7 @@ services:
     restart: unless-stopped
 
   a3-nginx:
-    image: nginx:1.27-alpine
+    image: docker.m.daocloud.io/library/nginx:1.27-alpine
     depends_on:
       - a3-gateway
       - a3-student-web
@@ -51,3 +102,6 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
+
+volumes:
+  redis-data:

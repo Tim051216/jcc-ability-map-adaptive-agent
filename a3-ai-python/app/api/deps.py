@@ -4,13 +4,13 @@ from fastapi import Header, HTTPException, Query, WebSocket
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.session import async_session_factory
+from app.db.session import get_db
 
 logger = get_logger(__name__)
 
 
 async def get_db_session() -> AsyncGenerator:
-    async with async_session_factory() as session:
+    async with get_db() as session:
         yield session
 
 

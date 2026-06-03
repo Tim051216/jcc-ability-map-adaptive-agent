@@ -11,21 +11,12 @@
         <module>a3-common</module>
         <module>a3-auth</module>
         <module>a3-api</module>
-        <module>a3-gateway</module>
-        <module>a3-user</module>
         <module>a3-message</module>
-        <module>a3-media</module>
-        <module>a3-resource</module>
-        <module>a3-recommend</module>
+        <module>a3-gateway</module>
         <module>a3-learning</module>
-        <module>a3-payment</module>
-        <module>a3-subscription</module>
+        <module>a3-user</module>
+        <module>a3-resource</module>
         <module>a3-assessment</module>
-        <module>a3-analytics</module>
-        <module>a3-feedback</module>
-        <module>a3-scheduler-demo</module>
-        <module>a3-operations</module>
-        <module>a3-aop-demo</module>
     </modules>
     <packaging>pom</packaging>
 
