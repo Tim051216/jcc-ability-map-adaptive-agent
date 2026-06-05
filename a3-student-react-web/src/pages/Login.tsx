@@ -39,7 +39,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const haibaraSpeech = {
     default: "哼，又是需要重构的难题吗？稍微动一动脑筋，倒也是不错的消遣。",
-    idFocus: "这是你真实的学籍号吗？卡号包含年份和身份编码，别输错了。",
+    idFocus: "这是你的学籍号吗？卡号包含年份和身份编码，别输错了。",
     pwdFocus: "登录密钥就像配方里的最后一环，顺序错了，整个流程都会中断。",
     typing: "敲击键盘的节奏还不错。保持专注，系统会配合你的速度。",
     error: "无效的密码或学籍。第一步验证就崩掉的话，后面可谈不上推进。",
@@ -63,7 +63,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setUsagiText(usagiSpeech[activePreset]);
   }, [activePreset]);
 
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/";
+  const fromState = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+  const fromPathname = fromState?.pathname || "/";
+  const fromSearch = fromState?.search || "";
+  const from = fromPathname === "/login" ? "/" : `${fromPathname}${fromSearch}`;
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();

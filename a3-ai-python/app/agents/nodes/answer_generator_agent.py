@@ -551,13 +551,35 @@ class AnswerGeneratorAgent:
 
         persona_meta = self._persona_meta(persona)
         social_hint = persona_meta["social_hint"] if self._detect_social_topic(question_text) != "general_social" else persona_meta["social_general"]
+        tone_label = _zh("\\u53e3\\u543b\\uff1a")
+        social_instruction = _zh(
+            "\\u9047\\u5230\\u95f2\\u804a\\u3001\\u8eab\\u4efd\\u3001\\u5173\\u7cfb\\u3001"
+            "\\u65e5\\u5e38\\u8fd9\\u7c7b\\u7b80\\u5355\\u95ee\\u9898\\uff0c\\u76f4\\u63a5"
+            "\\u50cf\\u89d2\\u8272\\u672c\\u4eba\\u4e00\\u6837\\u81ea\\u7136\\u56de\\u7b54"
+            "\\uff0c\\u4e0d\\u8981\\u6559\\u5b66\\u6a21\\u677f\\u3002"
+        )
+        no_fabrication_instruction = _zh(
+            "\\u4e0d\\u8981\\u7f16\\u9020\\u8bbe\\u5b9a\\uff0c\\u4e0d\\u786e\\u5b9a\\u5c31"
+            "\\u8c28\\u614e\\u8bf4\\u3002"
+        )
+        no_external_links_instruction = _zh(
+            "\\u9664\\u975e\\u7528\\u6237\\u8981\\u6c42\\uff0c\\u4e0d\\u8981\\u63a8\\u89c6"
+            "\\u9891\\u6216\\u5916\\u94fe\\u3002"
+        )
+        short_answer_instruction = _zh(
+            "\\u7528 1 \\u5230 3 \\u53e5\\u4e2d\\u6587\\u76f4\\u63a5\\u4f5c\\u7b54\\u3002"
+        )
+        light_question_type = _zh("\\u8f7b\\u95ee\\u7b54")
+        question_type_label = _zh("\\u95ee\\u9898\\u7c7b\\u578b\\uff1a")
+        persona_hint_label = _zh("\\u4eba\\u8bbe\\u63d0\\u793a\\uff1a")
+        user_question_label = _zh("\\u7528\\u6237\\u95ee\\u9898\\uff1a")
         system_prompt = (
             f"{persona_meta['learning_prompt']}"
-            f"{_zh('\\u53e3\\u543b\\uff1a')}{persona_meta['style']}"
-            f"{_zh('\\u9047\\u5230\\u95f2\\u804a\\u3001\\u8eab\\u4efd\\u3001\\u5173\\u7cfb\\u3001\\u65e5\\u5e38\\u8fd9\\u7c7b\\u7b80\\u5355\\u95ee\\u9898\\uff0c\\u76f4\\u63a5\\u50cf\\u89d2\\u8272\\u672c\\u4eba\\u4e00\\u6837\\u81ea\\u7136\\u56de\\u7b54\\uff0c\\u4e0d\\u8981\\u6559\\u5b66\\u6a21\\u677f\\u3002')}"
-            f"{_zh('\\u4e0d\\u8981\\u7f16\\u9020\\u8bbe\\u5b9a\\uff0c\\u4e0d\\u786e\\u5b9a\\u5c31\\u8c28\\u614e\\u8bf4\\u3002')}"
-            f"{_zh('\\u9664\\u975e\\u7528\\u6237\\u8981\\u6c42\\uff0c\\u4e0d\\u8981\\u63a8\\u89c6\\u9891\\u6216\\u5916\\u94fe\\u3002')}"
-            f"{_zh('\\u7528 1 \\u5230 3 \\u53e5\\u4e2d\\u6587\\u76f4\\u63a5\\u4f5c\\u7b54\\u3002')}"
+            f"{tone_label}{persona_meta['style']}"
+            f"{social_instruction}"
+            f"{no_fabrication_instruction}"
+            f"{no_external_links_instruction}"
+            f"{short_answer_instruction}"
         )
 
         messages = [
@@ -565,9 +587,9 @@ class AnswerGeneratorAgent:
             {
                 "role": "user",
                 "content": (
-                    f"{_zh('\\u95ee\\u9898\\u7c7b\\u578b\\uff1a')}{question_type or _zh('\\u8f7b\\u95ee\\u7b54')}\\n"
-                    f"{_zh('\\u4eba\\u8bbe\\u63d0\\u793a\\uff1a')}{social_hint}\\n"
-                    f"{_zh('\\u7528\\u6237\\u95ee\\u9898\\uff1a')}{question_text}"
+                    f"{question_type_label}{question_type or light_question_type}\n"
+                    f"{persona_hint_label}{social_hint}\n"
+                    f"{user_question_label}{question_text}"
                 ),
             },
         ]
@@ -800,12 +822,15 @@ class AnswerGeneratorAgent:
 
         similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
         if similar_qa_pairs:
+            question_label = _zh("\\u95ee\\u9898\\uff1a")
+            history_answer_label = _zh("\\u5386\\u53f2\\u7b54\\u6848\\u6458\\u8981\\uff1a")
+            similarity_label = _zh("\\u76f8\\u4f3c\\u5ea6\\uff1a")
             context_parts.append(_zh("\\u5386\\u53f2\\u76f8\\u4f3c\\u95ee\\u7b54\\uff1a"))
             for idx, pair in enumerate(similar_qa_pairs[: self.SIMILAR_QA_LIMIT], start=1):
                 context_parts.append(
-                    f"{idx}. {_zh('\\u95ee\\u9898\\uff1a')}{pair['question']}\\n"
-                    f"   {_zh('\\u5386\\u53f2\\u7b54\\u6848\\u6458\\u8981\\uff1a')}{pair['answer_excerpt'][:120]}\\n"
-                    f"   {_zh('\\u76f8\\u4f3c\\u5ea6\\uff1a')}{pair['score']}"
+                    f"{idx}. {question_label}{pair['question']}\n"
+                    f"   {history_answer_label}{pair['answer_excerpt'][:120]}\n"
+                    f"   {similarity_label}{pair['score']}"
                 )
 
         context = "\\n\\n".join(context_parts) if context_parts else _zh("\\u6682\\u65e0\\u53ef\\u76f4\\u63a5\\u5f15\\u7528\\u7684\\u8bfe\\u7a0b\\u53c2\\u8003\\u3002")
@@ -814,24 +839,68 @@ class AnswerGeneratorAgent:
         difficulty = question_analysis.get("difficulty_level") or 2
         persona_meta = self._persona_meta(persona)
 
+        answer_requirements_label = _zh("\\u56de\\u7b54\\u8981\\u6c42\\uff1a")
+        direct_answer_rule = _zh(
+            "\\u5148\\u76f4\\u63a5\\u56de\\u7b54\\u7528\\u6237\\u771f\\u6b63\\u95ee\\u7684"
+            "\\u95ee\\u9898\\uff0c\\u4e0d\\u8981\\u5148\\u94fa\\u57ab\\u5e9f\\u8bdd\\u3002"
+        )
+        persona_style_label = _zh("\\u8bed\\u6c14\\u8981\\u7b26\\u5408\\u5f53\\u524d\\u4eba\\u8bbe\\uff1a")
+        persona_style_rule_suffix = _zh(
+            " \\u540c\\u65f6\\u4fdd\\u6301\\u81ea\\u7136\\uff0c\\u50cf\\u771f\\u4eba\\u5728"
+            "\\u56de\\u7b54\\uff0c\\u4e0d\\u50cf\\u7cfb\\u7edf\\u6a21\\u677f\\u3002"
+        )
+        no_fixed_sections_rule = _zh(
+            "\\u4e0d\\u8981\\u4f7f\\u7528\\u201c\\u6838\\u5fc3\\u7ed3\\u8bba / \\u8be6\\u7ec6"
+            "\\u89e3\\u6790 / \\u603b\\u7ed3\\u201d\\u8fd9\\u7c7b\\u56fa\\u5b9a\\u680f\\u76ee\\u3002"
+        )
+        no_process_mentions_rule = _zh(
+            "\\u4e0d\\u8981\\u63d0\\u5230\\u63d0\\u793a\\u8bcd\\u3001\\u68c0\\u7d22\\u3001"
+            "\\u6d41\\u7a0b\\u3001\\u6a21\\u578b\\u3001\\u5de5\\u4f5c\\u6d41\\u3002"
+        )
+        no_resource_push_rule = _zh(
+            "\\u9664\\u975e\\u7528\\u6237\\u660e\\u786e\\u8981\\u6c42\\u8d44\\u6e90\\uff0c"
+            "\\u5426\\u5219\\u4e0d\\u8981\\u63a8\\u8350\\u89c6\\u9891\\u3001\\u8bfe\\u7a0b"
+            "\\u6216\\u5916\\u94fe\\u3002"
+        )
+        compare_concepts_rule = _zh(
+            "\\u5982\\u679c\\u662f\\u6982\\u5ff5\\u5bf9\\u6bd4\\u9898\\uff0c\\u5148\\u8bb2"
+            "\\u672c\\u8d28\\u533a\\u522b\\uff0c\\u518d\\u8865 2 \\u5230 3 \\u4e2a\\u5173\\u952e"
+            "\\u70b9\\u3002"
+        )
+        low_context_rule = _zh(
+            "\\u5982\\u679c\\u53c2\\u8003\\u8d44\\u6599\\u4e0d\\u8db3\\uff0c\\u4e5f\\u8981"
+            "\\u5148\\u57fa\\u4e8e\\u5e38\\u8bc6\\u7ed9\\u51fa\\u5c3d\\u91cf\\u9760\\u8c31\\u7684"
+            "\\u56de\\u7b54\\uff0c\\u4e0d\\u8981\\u6577\\u884d\\u3002"
+        )
+        answer_length_rule = _zh(
+            "\\u63a7\\u5236\\u5728 120 \\u5230 260 \\u5b57\\uff0c\\u5fc5\\u8981\\u65f6"
+            "\\u53ef\\u4ee5\\u66f4\\u77ed\\uff0c\\u4f46\\u4e0d\\u8981\\u7a7a\\u6cdb\\u3002"
+        )
+        user_question_label = _zh("\\u7528\\u6237\\u95ee\\u9898\\uff1a")
+        analysis_label = _zh("\\u95ee\\u9898\\u5206\\u6790\\uff1a")
+        type_label = _zh("\\u7c7b\\u578b\\uff1a")
+        knowledge_points_label = _zh("\\u77e5\\u8bc6\\u70b9\\uff1a")
+        difficulty_label = _zh("\\u96be\\u5ea6\\uff1a")
+        reference_info_label = _zh("\\u53c2\\u8003\\u4fe1\\u606f\\uff1a")
+        final_answer_instruction = _zh("\\u73b0\\u5728\\u76f4\\u63a5\\u7ed9\\u51fa\\u6700\\u7ec8\\u56de\\u7b54\\u3002")
         prompt = (
-            f"{persona_meta['learning_prompt']}\\n\\n"
-            f"{_zh('\\u56de\\u7b54\\u8981\\u6c42\\uff1a')}\\n"
-            f"1. {_zh('\\u5148\\u76f4\\u63a5\\u56de\\u7b54\\u7528\\u6237\\u771f\\u6b63\\u95ee\\u7684\\u95ee\\u9898\\uff0c\\u4e0d\\u8981\\u5148\\u94fa\\u57ab\\u5e9f\\u8bdd\\u3002')}\\n"
-            f"2. {_zh('\\u8bed\\u6c14\\u8981\\u7b26\\u5408\\u5f53\\u524d\\u4eba\\u8bbe\\uff1a')}{persona_meta['style']}{_zh(' \\u540c\\u65f6\\u4fdd\\u6301\\u81ea\\u7136\\uff0c\\u50cf\\u771f\\u4eba\\u5728\\u56de\\u7b54\\uff0c\\u4e0d\\u50cf\\u7cfb\\u7edf\\u6a21\\u677f\\u3002')}\\n"
-            f"3. {_zh('\\u4e0d\\u8981\\u4f7f\\u7528\\u201c\\u6838\\u5fc3\\u7ed3\\u8bba / \\u8be6\\u7ec6\\u89e3\\u6790 / \\u603b\\u7ed3\\u201d\\u8fd9\\u7c7b\\u56fa\\u5b9a\\u680f\\u76ee\\u3002')}\\n"
-            f"4. {_zh('\\u4e0d\\u8981\\u63d0\\u5230\\u63d0\\u793a\\u8bcd\\u3001\\u68c0\\u7d22\\u3001\\u6d41\\u7a0b\\u3001\\u6a21\\u578b\\u3001\\u5de5\\u4f5c\\u6d41\\u3002')}\\n"
-            f"5. {_zh('\\u9664\\u975e\\u7528\\u6237\\u660e\\u786e\\u8981\\u6c42\\u8d44\\u6e90\\uff0c\\u5426\\u5219\\u4e0d\\u8981\\u63a8\\u8350\\u89c6\\u9891\\u3001\\u8bfe\\u7a0b\\u6216\\u5916\\u94fe\\u3002')}\\n"
-            f"6. {_zh('\\u5982\\u679c\\u662f\\u6982\\u5ff5\\u5bf9\\u6bd4\\u9898\\uff0c\\u5148\\u8bb2\\u672c\\u8d28\\u533a\\u522b\\uff0c\\u518d\\u8865 2 \\u5230 3 \\u4e2a\\u5173\\u952e\\u70b9\\u3002')}\\n"
-            f"7. {_zh('\\u5982\\u679c\\u53c2\\u8003\\u8d44\\u6599\\u4e0d\\u8db3\\uff0c\\u4e5f\\u8981\\u5148\\u57fa\\u4e8e\\u5e38\\u8bc6\\u7ed9\\u51fa\\u5c3d\\u91cf\\u9760\\u8c31\\u7684\\u56de\\u7b54\\uff0c\\u4e0d\\u8981\\u6577\\u884d\\u3002')}\\n"
-            f"8. {_zh('\\u63a7\\u5236\\u5728 120 \\u5230 260 \\u5b57\\uff0c\\u5fc5\\u8981\\u65f6\\u53ef\\u4ee5\\u66f4\\u77ed\\uff0c\\u4f46\\u4e0d\\u8981\\u7a7a\\u6cdb\\u3002')}\\n\\n"
-            f"{_zh('\\u7528\\u6237\\u95ee\\u9898\\uff1a')}{question_text}\\n\\n"
-            f"{_zh('\\u95ee\\u9898\\u5206\\u6790\\uff1a')}\\n"
-            f"- {_zh('\\u7c7b\\u578b\\uff1a')}{question_type}\\n"
-            f"- {_zh('\\u77e5\\u8bc6\\u70b9\\uff1a')}{knowledge_points}\\n"
-            f"- {_zh('\\u96be\\u5ea6\\uff1a')}{difficulty}\\n\\n"
-            f"{_zh('\\u53c2\\u8003\\u4fe1\\u606f\\uff1a')}\\n{context}\\n\\n"
-            f"{_zh('\\u73b0\\u5728\\u76f4\\u63a5\\u7ed9\\u51fa\\u6700\\u7ec8\\u56de\\u7b54\\u3002')}"
+            f"{persona_meta['learning_prompt']}\n\n"
+            f"{answer_requirements_label}\n"
+            f"1. {direct_answer_rule}\n"
+            f"2. {persona_style_label}{persona_meta['style']}{persona_style_rule_suffix}\n"
+            f"3. {no_fixed_sections_rule}\n"
+            f"4. {no_process_mentions_rule}\n"
+            f"5. {no_resource_push_rule}\n"
+            f"6. {compare_concepts_rule}\n"
+            f"7. {low_context_rule}\n"
+            f"8. {answer_length_rule}\n\n"
+            f"{user_question_label}{question_text}\n\n"
+            f"{analysis_label}\n"
+            f"- {type_label}{question_type}\n"
+            f"- {knowledge_points_label}{knowledge_points}\n"
+            f"- {difficulty_label}{difficulty}\n\n"
+            f"{reference_info_label}\n{context}\n\n"
+            f"{final_answer_instruction}"
         )
 
         try:
@@ -937,10 +1006,11 @@ class AnswerGeneratorAgent:
                 }
             )
         for pair in retrieved_knowledge.get("similar_qa_pairs", []):
+            similar_qa_title_prefix = _zh("\\u5386\\u53f2\\u76f8\\u4f3c\\u95ee\\u7b54 #")
             sources.append(
                 {
                     "source_type": "similar_qa",
-                    "title": f"{_zh('\\u5386\\u53f2\\u76f8\\u4f3c\\u95ee\\u7b54 #')}{pair.get('question_id')}",
+                    "title": f"{similar_qa_title_prefix}{pair.get('question_id')}",
                     "url": None,
                     "excerpt": pair.get("answer_excerpt", ""),
                     "relevance_score": pair.get("score", 0.0),

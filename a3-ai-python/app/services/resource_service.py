@@ -34,86 +34,7 @@ class ResourceService:
     _archived_cache: ClassVar[dict[int, dict[str, str | int | None]]] = {}
     _resource_index_warmed: ClassVar[bool] = False
     _next_resource_id: ClassVar[int] = 1
-    _builtin_video_resources: ClassVar[dict[int, ResourceCard]] = {
-        900001: ResourceCard(
-            resource_id=900001,
-            resource_type="video",
-            title="软件工程课程项目演示视频",
-            summary="站内托管的课程项目演示视频，适合作为进入学习流程前的整体导览材料。",
-            content_markdown="# 视频资源\n站内托管的课程项目演示视频，适合作为进入学习流程前的整体导览材料。",
-            source_titles=["项目演示", "软件工程"],
-            study_suggestion="建议先观看本视频，快速建立课程项目背景和整体业务场景认知。",
-            source_file_count=1,
-            source_files=[
-                {
-                    "file_id": 901,
-                    "display_name": "project-demo.mp4",
-                    "relative_path": "/videos/software-engineering-4th/project-demo.mp4",
-                    "top_level_category": "视频",
-                    "file_extension": ".mp4",
-                    "mime_type": "video/mp4",
-                    "file_size": 13631541,
-                    "preview_text": "软件工程课程项目演示视频",
-                    "is_inline_previewable": True,
-                    "preview_mode": "video",
-                    "preview_url": "/videos/software-engineering-4th/project-demo.mp4",
-                    "open_url": "/videos/software-engineering-4th/project-demo.mp4",
-                }
-            ],
-        ),
-        900002: ResourceCard(
-            resource_id=900002,
-            resource_type="video",
-            title="系统流程设计演示视频",
-            summary="站内托管的流程建模演示视频，适合配合系统分析与设计章节一起学习。",
-            content_markdown="# 视频资源\n站内托管的流程建模演示视频，适合配合系统分析与设计章节一起学习。",
-            source_titles=["流程设计", "系统分析"],
-            study_suggestion="建议在复习业务流程图、系统结构图或设计迁移关系时观看本视频。",
-            source_file_count=1,
-            source_files=[
-                {
-                    "file_id": 902,
-                    "display_name": "visio-flow-demo.mp4",
-                    "relative_path": "/videos/software-engineering-4th/visio-flow-demo.mp4",
-                    "top_level_category": "视频",
-                    "file_extension": ".mp4",
-                    "mime_type": "video/mp4",
-                    "file_size": 24477668,
-                    "preview_text": "系统流程设计演示视频",
-                    "is_inline_previewable": True,
-                    "preview_mode": "video",
-                    "preview_url": "/videos/software-engineering-4th/visio-flow-demo.mp4",
-                    "open_url": "/videos/software-engineering-4th/visio-flow-demo.mp4",
-                }
-            ],
-        ),
-        900003: ResourceCard(
-            resource_id=900003,
-            resource_type="video",
-            title="云端应用集成演示视频",
-            summary="站内托管的系统集成演示视频，展示从前端到服务端的联动流程。",
-            content_markdown="# 视频资源\n站内托管的系统集成演示视频，展示从前端到服务端的联动流程。",
-            source_titles=["系统集成", "云端应用"],
-            study_suggestion="建议在看完项目演示后继续观看，帮助理解端到端的系统集成顺序。",
-            source_file_count=1,
-            source_files=[
-                {
-                    "file_id": 903,
-                    "display_name": "cloud-app-demo.mp4",
-                    "relative_path": "/videos/software-engineering-4th/cloud-app-demo.mp4",
-                    "top_level_category": "视频",
-                    "file_extension": ".mp4",
-                    "mime_type": "video/mp4",
-                    "file_size": 78228810,
-                    "preview_text": "云端应用集成演示视频",
-                    "is_inline_previewable": True,
-                    "preview_mode": "video",
-                    "preview_url": "/videos/software-engineering-4th/cloud-app-demo.mp4",
-                    "open_url": "/videos/software-engineering-4th/cloud-app-demo.mp4",
-                }
-            ],
-        ),
-    }
+
 
     async def generate_resources(
         self,
@@ -154,10 +75,6 @@ class ResourceService:
             resolved_course_code = (
                 await CourseContextService().resolve(course_id=course_id, course_code=course_code)
             ).course_code
-        builtin_items = self._list_builtin_video_resources(
-            course_code=resolved_course_code,
-            resource_type=resource_type,
-        )
         try:
             async with async_session_factory() as session:
                 await self._ensure_seed_resources(
@@ -175,9 +92,9 @@ class ResourceService:
                 items,
                 preview_limit=ResourceSourceFileService.LIST_PREVIEW_FILE_LIMIT,
             )
-            return ResourceListResponse(items=builtin_items + result_items, total=total + len(builtin_items))
+            return ResourceListResponse(items=result_items, total=total)
         except Exception:
-            return ResourceListResponse(items=builtin_items, total=len(builtin_items))
+            return ResourceListResponse(items=[], total=0)
 
     async def list_archived_resources(
         self,
@@ -209,9 +126,6 @@ class ResourceService:
         )
 
     async def get_resource(self, resource_id: int) -> ResourceCard:
-        builtin = self._builtin_video_resources.get(resource_id)
-        if builtin is not None:
-            return builtin
         async with async_session_factory() as session:
             await self._ensure_seed_resources(session=session, user_id=1001, course_code="software_engineering_4th")
             resource = await ResourceRepository().get_resource(session, resource_id)
@@ -671,18 +585,17 @@ class ResourceService:
             )
         return cards
 
-    @classmethod
-    def _list_builtin_video_resources(
-        cls,
-        *,
-        course_code: str | None,
-        resource_type: str | None,
-    ) -> list[ResourceCard]:
-        if resource_type and resource_type != "video":
-            return []
-        if course_code and course_code not in {"software_engineering_4th", "se_practice_4th"}:
-            return []
-        return list(cls._builtin_video_resources.values())
+    @staticmethod
+    def _normalize_resource_type(resource_type: str | None) -> str:
+        mapping = {
+            "lecture_notes": "lecture_note",
+            "mind_map": "mindmap",
+            "quiz_set": "practice_set",
+        }
+        normalized = str(resource_type or "").strip()
+        return mapping.get(normalized, normalized)
+
+
 
     @staticmethod
     def _sanitize_card(card: ResourceCard, *, course_code: str, source_titles: list[str]) -> ResourceCard:

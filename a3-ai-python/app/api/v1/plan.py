@@ -30,7 +30,17 @@ async def get_latest_plan(
     course_context = await CourseContextService().resolve(course_id=course_id, course_code=course_code)
     plan = await service.get_latest_plan(user_id=user_id, course_code=course_context.course_code)
     if plan is None:
-        raise HTTPException(status_code=404, detail="learning plan not found")
+        target = f"围绕 {course_context.course_name or course_context.course_code} 建立当前阶段学习路径"
+        return await service.generate_plan(
+            LearningPlanRequest(
+                user_id=user_id,
+                course_id=course_context.course_id,
+                course_code=course_context.course_code,
+                target=target,
+                available_days=7,
+                daily_study_minutes=35,
+            )
+        )
     return plan
 
 

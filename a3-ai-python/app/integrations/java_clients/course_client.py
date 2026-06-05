@@ -1,5 +1,5 @@
 from app.integrations.java_clients.base import BaseJavaClient
-from app.schemas.java_models import JavaCourseDetail
+from app.schemas.java_models import JavaCourseAndSection, JavaCourseDetail
 
 
 class CourseClient(BaseJavaClient):
@@ -16,3 +16,17 @@ class CourseClient(BaseJavaClient):
         if not payload:
             return None
         return JavaCourseDetail.model_validate(payload)
+
+    async def get_course_catalog_with_progress(
+        self,
+        course_id: int,
+        *,
+        user_id: int | None = None,
+    ) -> JavaCourseAndSection | None:
+        payload = await self.get(
+            f"/cs/courses/{course_id}/catalogs",
+            user_id=user_id,
+        )
+        if not payload:
+            return None
+        return JavaCourseAndSection.model_validate(payload)

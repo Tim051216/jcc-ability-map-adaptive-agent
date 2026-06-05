@@ -108,13 +108,16 @@ async function checkVideoFlow(page: Page, expectation: VideoExpectation): Promis
 
     const video = page.locator("#classroom-video-tag");
     if (await video.count()) {
-      result.videoState = await video.evaluate((node) => ({
-        currentSrc: node.currentSrc,
-        currentTime: Number(node.currentTime.toFixed(2)),
-        paused: node.paused,
-        muted: node.muted,
-        readyState: node.readyState,
-      }));
+      result.videoState = await video.evaluate((node) => {
+        const element = node as HTMLVideoElement;
+        return {
+          currentSrc: element.currentSrc,
+          currentTime: Number(element.currentTime.toFixed(2)),
+          paused: element.paused,
+          muted: element.muted,
+          readyState: element.readyState,
+        };
+      });
     }
   } catch (error) {
     result.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);

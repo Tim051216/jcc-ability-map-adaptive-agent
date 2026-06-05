@@ -17,7 +17,7 @@ async def resource_node(state: LearningAgentState) -> LearningAgentState:
         return state
 
     recommended_resource_types = (
-        (state.get("profile") or {}).get("recommended_resource_types") or ["lecture_note", "quiz_set"]
+        (state.get("profile") or {}).get("recommended_resource_types") or ["lecture_note", "practice_set"]
     )
     response = await ResourceService().generate_resources(
         ResourceGenerationRequest(

@@ -135,6 +135,7 @@ export interface CourseSectionPlayInfo {
   play_enabled: boolean;
   file_id?: string;
   signature?: string;
+  playback_url?: string;
   message?: string;
 }
 
@@ -408,6 +409,95 @@ export interface ProfileBehaviorUpdateResponse {
   summary: string;
 }
 
+export interface ProfileConversationMessage {
+  message_id: number;
+  role: string;
+  content: string;
+  round_number: number;
+  message_type: number;
+  related_dimension?: string | null;
+  created_at: string;
+}
+
+export interface ProfileConversationSessionResponse {
+  session_id: number;
+  user_id: number;
+  status: number;
+  session_type: number;
+  total_rounds: number;
+  collected_dimensions: string[];
+  completeness: number;
+  start_time: string;
+  end_time?: string | null;
+  messages: ProfileConversationMessage[];
+}
+
+export interface ProfileGuideQuestion {
+  question: string;
+  related_dimension?: string | null;
+  question_type: number;
+  suggestions: string[];
+}
+
+export interface ProfileExtractedInfoItem {
+  dimension: string;
+  info_key: string;
+  info_value: string;
+  confidence: number;
+}
+
+export interface ProfileExtractionResult {
+  extracted_info: ProfileExtractedInfoItem[];
+  missing_dimensions: string[];
+  completeness: number;
+}
+
+export interface ProfileConversationFlowResponse {
+  session_id: number;
+  assistant_message: ProfileConversationMessage;
+  guide_question?: ProfileGuideQuestion | null;
+  extraction_result?: ProfileExtractionResult | null;
+  profile_summary?: ProfileSummaryResponse | null;
+  should_continue: boolean;
+  completeness: number;
+}
+
+export interface ProfileDimensionData {
+  dimension_code: string;
+  dimension_name: string;
+  data: Record<string, unknown>;
+  completeness: number;
+}
+
+export interface StudentProfileDetailResponse {
+  profile_id?: number | null;
+  user_id: number;
+  version: number;
+  dimensions: ProfileDimensionData[];
+  tags: string[];
+  completeness: number;
+  summary?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ProfileHistoryItemResponse {
+  history_id: number;
+  profile_id: number;
+  version: number;
+  change_type: number;
+  change_description?: string | null;
+  changed_dimensions: string[];
+  created_at: string;
+}
+
+export interface ProfileHistoryResponse {
+  user_id: number;
+  profile_id: number;
+  history: ProfileHistoryItemResponse[];
+  total: number;
+}
+
 export interface ChatCitation {
   title?: string | null;
   url?: string | null;
@@ -575,6 +665,73 @@ export interface CourseCommentLikeResponse {
   likes: number;
 }
 
+export interface PortalMetricItem {
+  key: string;
+  label: string;
+  value: string;
+  note?: string | null;
+  hint?: string | null;
+}
+
+export interface PortalActivityItem {
+  id: string;
+  time: string;
+  title: string;
+  gain: string;
+  badge?: string | null;
+}
+
+export interface PortalDashboardResponse {
+  featured_courses: CourseCard[];
+  current_course?: LearningCourseDetail | null;
+  metrics: PortalMetricItem[];
+  activities: PortalActivityItem[];
+  profile_summary?: ProfileSummaryResponse | null;
+  latest_plan?: LearningPlanResponse | null;
+  evaluation_trend?: EvaluationTrendResponse | null;
+  latest_evaluations: EvaluationHistoryItem[];
+}
+
+export interface CapabilityAxisItem {
+  label: string;
+  score: number;
+  benchmark: number;
+  note?: string | null;
+}
+
+export interface CapabilityAchievementItem {
+  id: string;
+  title: string;
+  status: string;
+}
+
+export interface CapabilityProfileResponse {
+  overall_score: number;
+  strongest_axis: string;
+  axes: CapabilityAxisItem[];
+  recent_activities: PortalActivityItem[];
+  achievements: CapabilityAchievementItem[];
+  diagnosis_summary: string;
+  recommendations: string[];
+}
+
+export interface StudyWeekItem {
+  day: string;
+  hours: number;
+  focus: string;
+}
+
+export interface StudyReportResponse {
+  overall_score: number;
+  total_hours: number;
+  average_hours: number;
+  best_day: string;
+  weekly_study: StudyWeekItem[];
+  metrics: PortalMetricItem[];
+  diagnosis_feed: PortalActivityItem[];
+  recommendations: string[];
+}
+
 function parseJsonPreservingLargeIds<T>(rawText: string): T {
   if (!rawText) {
     return JSON.parse("null") as T;
@@ -638,6 +795,27 @@ export function resolveCourseCoverUrl(coverUrl: string) {
 }
 
 export const studentApi = {
+  getStudentDashboard(userId: number, courseId?: number) {
+    const params = new URLSearchParams({ user_id: String(userId) });
+    if (courseId) {
+      params.set("course_id", String(courseId));
+    }
+    return request<PortalDashboardResponse>(`/student-portal/dashboard?${params.toString()}`);
+  },
+  getStudentCapabilityProfile(userId: number, courseId?: number) {
+    const params = new URLSearchParams({ user_id: String(userId) });
+    if (courseId) {
+      params.set("course_id", String(courseId));
+    }
+    return request<CapabilityProfileResponse>(`/student-portal/capability-profile?${params.toString()}`);
+  },
+  getStudentStudyReport(userId: number, courseId?: number) {
+    const params = new URLSearchParams({ user_id: String(userId) });
+    if (courseId) {
+      params.set("course_id", String(courseId));
+    }
+    return request<StudyReportResponse>(`/student-portal/study-report?${params.toString()}`);
+  },
   listCategories() {
     return request<CourseCategory[]>("/course/categories");
   },
@@ -879,6 +1057,62 @@ export const studentApi = {
   },
   getProfileSummary(userId: number) {
     return request<ProfileSummaryResponse>(`/profile/conversation/profile/${userId}/summary`);
+  },
+  async getProfileSummaryOrNull(userId: number) {
+    try {
+      return await request<ProfileSummaryResponse>(`/profile/conversation/profile/${userId}/summary`);
+    } catch (error) {
+      if (error instanceof Error && /画像不存在|HTTP 404/i.test(error.message)) {
+        return null;
+      }
+      throw error;
+    }
+  },
+  startProfileConversation(payload: {
+    user_id: number;
+    session_type?: number;
+  }) {
+    return requestJson<ProfileConversationSessionResponse>("/profile/conversation/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  sendProfileConversationMessage(payload: {
+    session_id: number;
+    content: string;
+  }) {
+    return requestJson<ProfileConversationFlowResponse>("/profile/conversation/message", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  completeProfileConversation(payload: {
+    session_id: number;
+    force_complete?: boolean;
+  }) {
+    return requestJson<StudentProfileDetailResponse>("/profile/conversation/complete", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getProfileConversationSession(sessionId: number) {
+    return request<ProfileConversationSessionResponse>(`/profile/conversation/session/${sessionId}`);
+  },
+  getProfileDetail(userId: number) {
+    return request<StudentProfileDetailResponse>(`/profile/conversation/profile/${userId}`);
+  },
+  async getProfileDetailOrNull(userId: number) {
+    try {
+      return await request<StudentProfileDetailResponse>(`/profile/conversation/profile/${userId}`);
+    } catch (error) {
+      if (error instanceof Error && /画像不存在|HTTP 404/i.test(error.message)) {
+        return null;
+      }
+      throw error;
+    }
+  },
+  getProfileHistory(userId: number, limit = 10) {
+    return request<ProfileHistoryResponse>(`/profile/conversation/profile/${userId}/history?limit=${limit}`);
   },
   reportProfileBehavior(payload: {
     user_id: number;

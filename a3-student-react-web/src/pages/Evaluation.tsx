@@ -35,9 +35,17 @@ import {
   type ResourceCard,
   type WrongQuestionItem,
 } from "../lib/studentApi";
+import {
+  ACTIVE_COURSE_ID,
+  ACTIVE_USER_ID,
+  buildPathRoute,
+  buildResourcesRoute,
+  buildTutorRoute,
+  resolveCourseId,
+} from "../lib/courseContext";
 
-const USER_ID = 1001;
-const ACTIVE_COURSE_KEY = "software-engineering";
+const USER_ID = ACTIVE_USER_ID;
+const ACTIVE_COURSE_KEY = String(ACTIVE_COURSE_ID);
 
 type CourseOption = {
   key: string;
@@ -54,16 +62,16 @@ const COURSE_OPTIONS: CourseOption[] = [
     key: ACTIVE_COURSE_KEY,
     title: "软件工程",
     subtitle: "软件工程与实践（第 4 版）",
-    description: "当前已接入真实课程资料、真实测评题目与完整学习闭环。",
+    description: "当前已接入课程资料、测评题目与完整学习闭环。",
     status: "available",
-    courseId: 401,
-    routeCourseId: "series-2",
+    courseId: ACTIVE_COURSE_ID,
+    routeCourseId: String(ACTIVE_COURSE_ID),
   },
   {
     key: "data-structure",
     title: "数据结构",
     subtitle: "课程资料接入中",
-    description: "后续将接入真实教材、阶段测评与错题复盘能力。",
+    description: "后续将接入教材、阶段测评与错题复盘能力。",
     status: "updating",
     courseId: 0,
     routeCourseId: "updating-data-structure",
@@ -72,7 +80,7 @@ const COURSE_OPTIONS: CourseOption[] = [
     key: "operating-system",
     title: "操作系统",
     subtitle: "课程资料接入中",
-    description: "后续将支持真实章节诊断、路径调整与资源推荐。",
+    description: "后续将支持章节诊断、路径调整与资源推荐。",
     status: "updating",
     courseId: 0,
     routeCourseId: "updating-operating-system",
@@ -81,7 +89,7 @@ const COURSE_OPTIONS: CourseOption[] = [
     key: "database",
     title: "数据库系统",
     subtitle: "课程资料接入中",
-    description: "后续将开放真实测评、画像回写与专项强化建议。",
+    description: "后续将开放测评、画像回写与专项强化建议。",
     status: "updating",
     courseId: 0,
     routeCourseId: "updating-database",
@@ -191,9 +199,12 @@ export default function Evaluation() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const rawCourseKey = searchParams.get("courseId") || "";
+  const rawCourseKey = searchParams.get("courseId") || String(ACTIVE_COURSE_ID);
+  const resolvedCourseId = resolveCourseId(rawCourseKey, ACTIVE_COURSE_ID);
   const selectedCourse =
-    COURSE_OPTIONS.find((item) => item.key === rawCourseKey || item.routeCourseId === rawCourseKey) ?? null;
+    COURSE_OPTIONS.find(
+      (item) => item.key === rawCourseKey || item.routeCourseId === rawCourseKey || item.courseId === resolvedCourseId,
+    ) ?? null;
   const activeCourse = selectedCourse?.status === "available" ? selectedCourse : null;
   const numericCourseId = activeCourse?.courseId ?? null;
 
@@ -273,7 +284,7 @@ export default function Evaluation() {
 
   const handleChooseCourse = (course: CourseOption) => {
     if (course.status !== "available") {
-      showToast(`${course.title}资料更新中，当前仅开放软件工程真实测评。`);
+      showToast(`${course.title}资料更新中，当前仅开放软件工程测评。`);
       return;
     }
 
@@ -294,7 +305,7 @@ export default function Evaluation() {
       const [historyResult, trendResult, profileResult, planResult] = await Promise.allSettled([
         studentApi.getEvaluationHistory(USER_ID, numericCourseId),
         studentApi.getEvaluationTrend(USER_ID, numericCourseId),
-        studentApi.getProfileSummary(USER_ID),
+        studentApi.getProfileSummaryOrNull(USER_ID),
         studentApi.getLatestLearningPlan(USER_ID, numericCourseId),
       ]);
 
@@ -315,7 +326,7 @@ export default function Evaluation() {
 
   const handleStartPaper = async () => {
     if (!activeCourse || !numericCourseId) {
-      showToast("请先选择课程，再开始真实测评。");
+      showToast("请先选择课程，再开始测评。");
       return;
     }
 
@@ -338,7 +349,7 @@ export default function Evaluation() {
       setRefreshedPlan(null);
       setGeneratedResources([]);
       setTutorFollowup(null);
-      showToast("已生成真实测评试卷。");
+      showToast("已生成测评试卷。");
     } catch (paperError) {
       setError(paperError instanceof Error ? paperError.message : "试卷生成失败");
     } finally {
@@ -722,7 +733,7 @@ export default function Evaluation() {
         <div className="rounded-[32px] border border-[#E3E8EC] bg-white p-8 text-sm text-[#564145] shadow-[0_16px_40px_rgba(23,28,34,0.05)]">
           <div className="flex items-center gap-3">
             <LoaderCircle className="h-5 w-5 animate-spin text-[#fb7299]" />
-            <span>正在读取真实测评数据与学习上下文...</span>
+            <span>正在读取测评数据与学习上下文...</span>
           </div>
         </div>
       ) : null}
@@ -760,7 +771,7 @@ export default function Evaluation() {
                   <StatCard
                     label="历史测评次数"
                     value={String(historyItems.length)}
-                    hint="来自真实测评记录"
+                    hint="来自测评记录"
                     icon={<BookOpen className="h-5 w-5" />}
                   />
                   <StatCard
@@ -793,7 +804,7 @@ export default function Evaluation() {
                     disabled={paperLoading}
                     className="mt-5 rounded-2xl bg-[#111827] px-5 py-3 text-xs font-bold text-white shadow-[0_18px_32px_rgba(17,24,39,0.16)] transition hover:scale-[1.01] hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {paperLoading ? "正在生成真实试卷..." : "开始一次真实测评"}
+                    {paperLoading ? "正在生成试卷..." : "开始一次测评"}
                   </button>
                 </div>
 
@@ -820,7 +831,7 @@ export default function Evaluation() {
                     ))
                   ) : (
                     <div className="rounded-[22px] border border-black/[0.06] bg-slate-50 px-4 py-6 text-sm text-[#564145]">
-                      当前还没有真实测评记录，点击上方按钮即可生成并完成第一份试卷。
+                      当前还没有测评记录，点击上方按钮即可生成并完成第一份试卷。
                     </div>
                   )}
                 </div>
@@ -830,7 +841,7 @@ export default function Evaluation() {
                 <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between">
                   <div>
                     <span className="rounded-full border border-black/[0.06] bg-[#f6f7fb] px-2.5 py-1 font-mono text-[9px] font-extrabold uppercase text-[#111827]">
-                      真实试卷
+                      测评试卷
                     </span>
                     <h3 className="mt-2 font-sans text-xl font-extrabold text-[#171c22]">
                       {activeCourse.title}
@@ -878,7 +889,7 @@ export default function Evaluation() {
                     className="w-full rounded-2xl bg-[#111827] py-3 text-xs font-bold text-white shadow-[0_18px_32px_rgba(17,24,39,0.16)] transition hover:scale-[1.01] hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {submitting
-                      ? "正在提交真实测评并触发学习闭环..."
+                      ? "正在提交测评并触发学习闭环..."
                       : `提交本次测评（已完成 ${selectedAnswerCount}/${activePaper.questions.length} 题）`}
                   </button>
                 ) : (
@@ -943,7 +954,7 @@ export default function Evaluation() {
                         type="button"
                         onClick={() =>
                           navigate(
-                            `/tutor?courseId=${activeCourse.routeCourseId}&query=${encodeURIComponent(buildFollowupQuestion(latestResult))}`,
+                            buildTutorRoute(activeCourse.courseId, { query: buildFollowupQuestion(latestResult) }),
                           )
                         }
                         className="flex items-center gap-2 rounded-xl bg-[#111827] px-4 py-2.5 text-xs font-bold text-white shadow-[0_14px_28px_rgba(17,24,39,0.16)] transition hover:bg-[#1f2937]"
@@ -953,7 +964,7 @@ export default function Evaluation() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => navigate(`/path?courseId=${activeCourse.routeCourseId}`)}
+                        onClick={() => navigate(buildPathRoute(activeCourse.courseId))}
                         className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-[#171c22] transition hover:bg-slate-50"
                       >
                         查看更新后的学习路径
@@ -961,7 +972,7 @@ export default function Evaluation() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => navigate(`/resources?courseId=${activeCourse.routeCourseId}`)}
+                        onClick={() => navigate(buildResourcesRoute(activeCourse.courseId))}
                         className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-[#171c22] transition hover:bg-slate-50"
                       >
                         查看生成资源

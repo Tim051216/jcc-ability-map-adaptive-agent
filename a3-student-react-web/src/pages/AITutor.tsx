@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CheckCircle2, ChevronDown, ChevronUp, Clock3, History, LoaderCircle, RefreshCw, Send, Sparkles, UserRound } from "lucide-react";
+import { ACTIVE_COURSE_ID, resolveCourseIdFromSearchParams } from "../lib/courseContext";
 import {
   studentApi,
   type TutoringAnswerDetail,
@@ -88,13 +89,6 @@ const PERSONA_META: Record<
   },
 };
 
-const COURSE_ID_MAP: Record<string, number> = {
-  "series-1": 401,
-  "series-2": 401,
-  "series-3": 401,
-  "course-4": 401,
-};
-
 const QUICK_PROMPTS = [
   "你好",
   "需求分析和概要设计有什么区别？",
@@ -158,9 +152,9 @@ function parseInlineBold(inputText: string) {
 function buildFailureMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (message) {
-    return `这次没有顺利拿到真实答复：${message}。你可以再问一次，或者把问题说得更具体一点。`;
+    return `这次没有顺利拿到答复：${message}。你可以再问一次，或者把问题说得更具体一点。`;
   }
-  return "这次没有顺利拿到真实答复。你可以再问一次，或者把问题说得更具体一点。";
+  return "这次没有顺利拿到答复。你可以再问一次，或者把问题说得更具体一点。";
 }
 
 function replaceLatestStreamingMessage(
@@ -206,7 +200,7 @@ function buildStatusCopy(taskState: TutorTaskState, elapsedMs: number) {
   if (taskState.phase === "completed" && taskState.completedAt && taskState.startedAt) {
     return {
       title: "答复已完成",
-      subtitle: `本轮真实答复已返回，总耗时 ${formatElapsed(taskState.completedAt - taskState.startedAt)}。`,
+      subtitle: `本轮答复已返回，总耗时 ${formatElapsed(taskState.completedAt - taskState.startedAt)}。`,
       tone: "emerald",
     } as const;
   }
@@ -342,7 +336,26 @@ async function waitForTutoringResult(
 
         if (payload.chunk_type === "saved") {
           onProgress?.("completed");
-          finishResolve((completedPayload ?? payload.content) as TutoringAnswerDetail);
+          const savedPayload = payload.content as TutoringAnswerDetail;
+          finishResolve(
+            completedPayload
+              ? {
+                  ...completedPayload,
+                  ...savedPayload,
+                  diagrams: savedPayload.diagrams ?? completedPayload.diagrams,
+                  videos: savedPayload.videos ?? completedPayload.videos,
+                  reference_sources:
+                    savedPayload.reference_sources ?? completedPayload.reference_sources,
+                  confidence_score:
+                    savedPayload.confidence_score ?? completedPayload.confidence_score,
+                  should_escalate:
+                    savedPayload.should_escalate ?? completedPayload.should_escalate,
+                  question_type: savedPayload.question_type ?? completedPayload.question_type,
+                  knowledge_points:
+                    savedPayload.knowledge_points ?? completedPayload.knowledge_points,
+                }
+              : savedPayload,
+          );
           return;
         }
 
@@ -370,7 +383,7 @@ async function waitForTutoringResult(
 
 export default function AITutor({ user }: AITutorProps = {}) {
   const [searchParams] = useSearchParams();
-  const initialCourseId = searchParams.get("courseId") || "series-2";
+  const initialCourseId = resolveCourseIdFromSearchParams(searchParams, ACTIVE_COURSE_ID);
   const initialQuery = searchParams.get("query") || "";
 
   const [activeCourseId] = useState(initialCourseId);
@@ -395,7 +408,7 @@ export default function AITutor({ user }: AITutorProps = {}) {
 
   const activePersonaMeta = useMemo(() => PERSONA_META[activePersona], [activePersona]);
   const statusCopy = useMemo(() => buildStatusCopy(taskState, elapsedMs), [taskState, elapsedMs]);
-  const numericCourseId = useMemo(() => COURSE_ID_MAP[activeCourseId] ?? 401, [activeCourseId]);
+  const numericCourseId = useMemo(() => activeCourseId || ACTIVE_COURSE_ID, [activeCourseId]);
 
   const sessionGroups = useMemo(() => {
     const grouped = new Map<string, TutoringHistoryItem[]>();
@@ -778,7 +791,7 @@ export default function AITutor({ user }: AITutorProps = {}) {
       setMessages((prev) =>
         replaceLatestStreamingMessage(prev, (item) => ({
           ...item,
-          text: item.text || finalText,
+          text: finalText,
           videos: finalVideos,
           referenceSources: (answerResult.reference_sources || []) as Array<Record<string, unknown>>,
           isStreaming: false,
@@ -902,7 +915,7 @@ export default function AITutor({ user }: AITutorProps = {}) {
               <div className="space-y-2">
                 <h1 className="text-2xl font-black text-slate-900">AI 导师答疑台</h1>
                 <p className="max-w-2xl text-sm font-semibold leading-6 text-slate-600">
-                  当前优先使用真实后端答复，并保留同一会话的历史记录。刷新页面后，也可以从左侧继续之前的提问。
+                  当前优先使用后端答复，并保留同一会话的历史记录。刷新页面后，也可以从左侧继续之前的提问。
                 </p>
               </div>
             </div>
@@ -1084,7 +1097,7 @@ export default function AITutor({ user }: AITutorProps = {}) {
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">答疑模式</div>
-                    <div className="mt-1 text-xs font-bold text-slate-700">真实后端答复优先</div>
+                    <div className="mt-1 text-xs font-bold text-slate-700">后端答复优先</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">历史状态</div>

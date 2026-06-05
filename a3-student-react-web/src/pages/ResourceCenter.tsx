@@ -14,6 +14,12 @@ import {
   Search,
   User,
 } from "lucide-react";
+import {
+  ACTIVE_COURSE_ID,
+  ACTIVE_USER_ID,
+  buildResourcePreviewRoute,
+  resolveCourseIdFromSearchParams,
+} from "../lib/courseContext";
 import { studentApi, type ResourceCard, type ResourceSourceFileRef } from "../lib/studentApi";
 
 type ResourceTab = "All" | "Lecture Slides" | "Notes" | "Videos";
@@ -162,6 +168,7 @@ function mapApiResourcesToUi(items: ResourceCard[], courseId: string): UiResourc
         excerpt: item.summary,
         previewUrl: item.content_markdown,
         studyAdvice: item.study_suggestion || undefined,
+        openUrl: "",
       });
     }
 
@@ -179,29 +186,6 @@ function mapApiResourcesToUi(items: ResourceCard[], courseId: string): UiResourc
     };
   });
 }
-
-const COURSE_VIDEO_ROUTES: Record<string, string[]> = {
-  "series-1": [
-    "/videos/software-engineering-4th/project-demo.mp4",
-    "/videos/software-engineering-4th/visio-flow-demo.mp4",
-    "/videos/software-engineering-4th/cloud-app-demo.mp4",
-  ],
-  "series-2": [
-    "/videos/software-engineering-4th/visio-flow-demo.mp4",
-    "/videos/software-engineering-4th/project-demo.mp4",
-    "/videos/software-engineering-4th/cloud-app-demo.mp4",
-  ],
-  "series-3": [
-    "/videos/software-engineering-4th/cloud-app-demo.mp4",
-    "/videos/software-engineering-4th/project-demo.mp4",
-    "/videos/software-engineering-4th/visio-flow-demo.mp4",
-  ],
-  "course-4": [
-    "/videos/software-engineering-4th/project-demo.mp4",
-    "/videos/software-engineering-4th/cloud-app-demo.mp4",
-    "/videos/software-engineering-4th/visio-flow-demo.mp4",
-  ],
-};
 
 function normalizeVideoPath(path?: string) {
   if (!path) {
@@ -221,22 +205,17 @@ function buildCourseVideoTarget(courseId: string, file?: UiFile) {
   if (!file || file.type !== "video") {
     return null;
   }
-  const candidates = [file.openUrl, file.previewUrl].map(normalizeVideoPath).filter(Boolean);
-  if (!candidates.length) {
+  const fileId = Number(file.fileId);
+  if (!Number.isFinite(fileId)) {
     return null;
   }
-  const orderedVideos = COURSE_VIDEO_ROUTES[courseId] || COURSE_VIDEO_ROUTES["series-2"] || [];
-  const sectionIndex = orderedVideos.findIndex((item) => candidates.includes(item));
-  if (sectionIndex < 0) {
-    return null;
-  }
-  return `/learn?courseId=${courseId}&sectionId=${sectionIndex}&startAt=0&autoplay=1&muted=1`;
+  return `/resources/preview?courseId=${courseId}&fileId=${fileId}`;
 }
 
 export default function ResourceCenter() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const courseId = searchParams.get("courseId") || "series-1";
+  const courseId = resolveCourseIdFromSearchParams(searchParams, ACTIVE_COURSE_ID);
   const focusedResourceId = searchParams.get("resourceId");
   const searchParamText = searchParams.get("search") || "";
 
@@ -259,12 +238,11 @@ export default function ResourceCenter() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const numericCourseId = 401;
-        const response = await studentApi.listResources(1001, numericCourseId);
+        const response = await studentApi.listResources(ACTIVE_USER_ID, activeCourseContext);
         if (cancelled) {
           return;
         }
-        setResourceGroups(mapApiResourcesToUi(response.items, activeCourseContext));
+        setResourceGroups(mapApiResourcesToUi(response.items, String(activeCourseContext)));
       } catch (error) {
         if (cancelled) {
           return;
@@ -332,7 +310,7 @@ export default function ResourceCenter() {
       navigate(courseVideoTarget);
       return;
     }
-    navigate(`/resources/preview?courseId=${resGroup.courseId}&resourceId=${resGroup.resourceId}&fileId=${fileId}`, {
+    navigate(buildResourcePreviewRoute(Number(resGroup.courseId), { resourceId: resGroup.resourceId, fileId }), {
       state: {
         initialResource: resGroup.rawResource || null,
         initialFileId: Number.isFinite(numericFileId) ? numericFileId : null,
@@ -352,27 +330,13 @@ export default function ResourceCenter() {
             备课资料与学术讲义下载
           </h1>
           <p className="text-sm text-[#564145] font-sans max-w-2xl">
-            这里集中展示课程讲义、实践笔记与站内视频资源。系统会优先读取真实后端资源，并结合当前学习进度，为你整理更适合当前阶段的资料入口。
+            这里集中展示课程讲义、实践笔记与站内视频资源。系统会优先读取后端资源，并结合当前学习进度，为你整理更适合当前阶段的资料入口。
           </p>
         </div>
 
-        <div className="p-1 px-1.5 bg-[#F1F2F3] rounded-2xl flex flex-wrap gap-1 border border-slate-200">
-          <button
-            onClick={() => navigate("/resources?courseId=series-1")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeCourseContext === "series-1" ? "bg-white text-[#fb7299] shadow" : "text-[#564145] hover:text-[#fb7299]"
-            }`}
-          >
-            软件工程课程
-          </button>
-          <button
-            onClick={() => navigate("/resources?courseId=series-2&resourceId=900001")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeCourseContext === "series-2" ? "bg-white text-[#fb7299] shadow" : "text-[#564145] hover:text-[#fb7299]"
-            }`}
-          >
-            A3 联调演示
-          </button>
+        <div className="rounded-2xl border border-slate-200 bg-[#F1F2F3] px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#564145]/70">Current Course</p>
+          <p className="mt-1 text-sm font-extrabold text-[#171c22]">软件工程与实践（第4版）</p>
         </div>
       </section>
 

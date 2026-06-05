@@ -94,6 +94,7 @@ class CourseSectionPlayResponse(BaseModel):
     file_id: str | None = None
     signature: str | None = None
     message: str | None = None
+    playback_url: str | None = None
 
 
 class LearningProgressUpdateRequest(BaseModel):

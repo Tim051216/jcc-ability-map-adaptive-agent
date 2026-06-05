@@ -20,6 +20,7 @@ import { AnimatePresence } from "motion/react";
 import Header from "./components/Header";
 import WelcomeScreen from "./components/WelcomeScreen";
 import Login from "./pages/Login";
+import { buildEvaluationRoute, buildLearnRoute, buildPathRoute, buildResourcesRoute, buildTutorRoute } from "./lib/courseContext";
 
 const Overview = lazy(() => import("./pages/Overview"));
 const LearningPath = lazy(() => import("./pages/LearningPath"));
@@ -27,6 +28,7 @@ const CourseLearning = lazy(() => import("./pages/CourseLearning"));
 const ResourceCenter = lazy(() => import("./pages/ResourceCenter"));
 import ResourceSourcePreview from "./pages/ResourceSourcePreview";
 const CapabilityModel = lazy(() => import("./pages/CapabilityModel"));
+const ProfileConversation = lazy(() => import("./pages/ProfileConversation"));
 const Evaluation = lazy(() => import("./pages/Evaluation"));
 const StudyReport = lazy(() => import("./pages/StudyReport"));
 const Collection = lazy(() => import("./pages/Collection"));
@@ -59,6 +61,8 @@ function MainLayout({
   const location = useLocation();
   const isLoginPage = location.pathname === "/login";
   const currentPath = location.pathname;
+  const routeCourseId = Number(new URLSearchParams(location.search).get("courseId") || "");
+  const activeCourseId = Number.isFinite(routeCourseId) && routeCourseId > 0 ? routeCourseId : undefined;
 
   const navItems = [
     { label: "摘要", id: "overview", path: "/", icon: Layers },
@@ -92,7 +96,19 @@ function MainLayout({
             return (
               <Link
                 key={item.path}
-                to={item.path}
+                to={
+                  item.id === "path"
+                    ? buildPathRoute(activeCourseId)
+                    : item.id === "learn"
+                      ? buildLearnRoute(activeCourseId)
+                      : item.id === "resources"
+                        ? buildResourcesRoute(activeCourseId)
+                        : item.id === "evaluation"
+                          ? buildEvaluationRoute(activeCourseId)
+                          : item.id === "tutor"
+                            ? buildTutorRoute(activeCourseId)
+                            : item.path
+                }
                 className={`flex flex-col items-center gap-1 text-[10px] font-extrabold shrink-0 pb-1.5 pt-0.5 px-3 rounded-xl transition-all ${
                   isActive ? "text-[#fb7299] bg-[#fb7299]/5 scale-105" : "text-[#564145]/80 hover:text-[#fb7299]"
                 }`}
@@ -179,8 +195,9 @@ export default function App() {
 
   // Protected route wrapper
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+    const location = useLocation();
     if (!user.loggedIn) {
-      return <Navigate to="/login" replace />;
+      return <Navigate to="/login" replace state={{ from: location }} />;
     }
     return <>{children}</>;
   };
@@ -214,7 +231,7 @@ export default function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <Overview user={user} />
+                  <Overview />
                 </ProtectedRoute>
               }
             />
@@ -222,7 +239,15 @@ export default function App() {
               path="/profile"
               element={
                 <ProtectedRoute>
-                  <CapabilityModel user={user} />
+                  <CapabilityModel />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile/conversation"
+              element={
+                <ProtectedRoute>
+                  <ProfileConversation />
                 </ProtectedRoute>
               }
             />

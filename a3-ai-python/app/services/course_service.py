@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
+import httpx
 
+from app.integrations.java_clients.course_client import CourseClient
 from app.integrations.java_clients.learning_client import LearningClient
 from app.integrations.java_clients.media_client import MediaClient
-from fastapi import HTTPException
+from app.integrations.java_clients.user_client import UserClient
+from app.schemas.java_models import JavaCourseAndSection, JavaCourseDetail, JavaCourseSection
 
 from app.schemas.course import (
     CourseSectionPlayResponse,
@@ -298,8 +301,10 @@ class CourseService:
     ]
 
     def __init__(self) -> None:
+        self.course_client = CourseClient()
         self.learning_client = LearningClient()
         self.media_client = MediaClient()
+        self.user_client = UserClient()
     RECOMMEND_BUCKETS = {
         "free": [101, 302],
         "best": [101, 102, 201, 301],
@@ -359,6 +364,26 @@ class CourseService:
         return CourseSearchResponse(list=[self._to_course_card(item) for item in paged_items], total=total)
 
     async def get_course_detail(self, course_id: int) -> CourseDetailResponse:
+        java_course = await self._get_java_course_detail(course_id)
+        if java_course is not None:
+            teacher_name = await self._resolve_teacher_name(java_course.teacher_ids)
+            return CourseDetailResponse(
+                id=java_course.id,
+                course_code=self._resolve_course_code(java_course.id),
+                name=java_course.name or f"课程-{java_course.id}",
+                cover_url=java_course.cover_url or self._resolve_course_cover(java_course.id),
+                price=java_course.price or 0,
+                sold=0,
+                teacher=teacher_name,
+                teacher_name=teacher_name,
+                cata_total_num=java_course.section_num or self._count_java_sections(java_course.chapters),
+                valid_duration=java_course.valid_duration or 0,
+                score=0,
+                cate_names="",
+                introduce=java_course.brief or java_course.introduction or "",
+                use_people="",
+                detail=java_course.introduction or java_course.brief or "",
+            )
         course = self._get_course_or_404(course_id)
         return CourseDetailResponse(
             id=course["id"],
@@ -379,24 +404,56 @@ class CourseService:
         )
 
     async def list_course_teachers(self, course_id: int) -> list[CourseTeacherResponse]:
+        java_course = await self._get_java_course_detail(course_id)
+        if java_course is not None:
+            teachers = await self._resolve_teachers(java_course.teacher_ids)
+            if teachers:
+                return teachers
         course = self._get_course_or_404(course_id)
         return [CourseTeacherResponse.model_validate(item) for item in course["teachers"]]
 
     async def list_course_catalog(self, course_id: int) -> list[CourseChapterResponse]:
+        java_catalog = await self._get_java_course_catalog_with_progress(course_id)
+        if java_catalog is not None:
+            return [self._to_java_course_chapter(item) for item in java_catalog.chapters]
         course = self._get_course_or_404(course_id)
         return [self._to_course_chapter(item) for item in course["chapters"]]
 
     async def list_course_chapters(self, course_id: int) -> list[dict]:
+        java_catalog = await self._get_java_course_catalog_with_progress(course_id)
+        if java_catalog is not None:
+            return [
+                {
+                    "id": chapter.id,
+                    "index": self._format_chapter_index(chapter.index, default_order=index + 1),
+                    "name": chapter.name or f"第{index + 1}章",
+                }
+                for index, chapter in enumerate(java_catalog.chapters)
+            ]
         course = self._get_course_or_404(course_id)
         return [{"id": chapter["id"], "index": chapter["index"], "name": chapter["name"]} for chapter in course["chapters"]]
 
     async def get_learning_course_detail(self, course_id: int, user_id: int | None = None) -> LearningCourseDetailResponse:
+        effective_user_id = user_id or self.DEFAULT_USER_ID
+        java_catalog = await self._get_java_course_catalog_with_progress(course_id, user_id=effective_user_id)
+        if java_catalog is not None:
+            first_section = self._first_java_playable_section(java_catalog.chapters)
+            return LearningCourseDetailResponse(
+                id=java_catalog.id,
+                course_code=self._resolve_course_code(java_catalog.id),
+                name=java_catalog.name or f"课程-{java_catalog.id}",
+                cover_url=java_catalog.cover_url or self._resolve_course_cover(java_catalog.id),
+                teacher_name=java_catalog.teacher_name or "课程教师",
+                lesson_id=java_catalog.lesson_id or java_catalog.id * 100,
+                latest_section_id=java_catalog.latest_section_id or (first_section.id if first_section and first_section.id else None),
+                moment=first_section.moment if first_section and first_section.moment else 0,
+                chapters=[self._to_java_course_chapter(item) for item in java_catalog.chapters],
+            )
         course = self._get_course_or_404(course_id)
         first_section = next(
             (section for chapter in course["chapters"] for section in chapter["sections"] if section["type"] in (2, 3)),
             None,
         )
-        effective_user_id = user_id or self.DEFAULT_USER_ID
         learning_record = await self._get_learning_record(course_id, effective_user_id)
         latest_section_id = learning_record.latest_section_id if learning_record and learning_record.latest_section_id else first_section["id"] if first_section else None
         lesson_id = learning_record.lesson_id if learning_record and learning_record.lesson_id else course["id"] * 100
@@ -413,22 +470,33 @@ class CourseService:
         )
 
     async def get_section_play_info(self, course_id: int, section_id: int, user_id: int | None = None) -> CourseSectionPlayResponse:
-        course = self._get_course_or_404(course_id)
-        self._get_section_or_404(course, section_id)
         effective_user_id = user_id or self.DEFAULT_USER_ID
+        java_catalog = await self._get_java_course_catalog_with_progress(course_id, user_id=effective_user_id)
+        if java_catalog is not None:
+            section = self._get_java_section_or_404(java_catalog, section_id)
+            playback_url = self._build_fallback_playback_url(
+                course_id=course_id,
+                section={"index": section.index or 1},
+            )
+        else:
+            course = self._get_course_or_404(course_id)
+            section = self._get_section_or_404(course, section_id)
+            playback_url = self._build_fallback_playback_url(course_id=course_id, section=section)
         try:
             payload = await self.media_client.get_play_signature(section_id=section_id, user_id=effective_user_id)
         except Exception as exc:
             return CourseSectionPlayResponse(
                 section_id=section_id,
-                play_enabled=False,
+                play_enabled=bool(playback_url),
+                playback_url=playback_url,
                 message=f"播放签名暂时不可用: {exc}",
             )
         return CourseSectionPlayResponse(
             section_id=section_id,
-            play_enabled=bool(payload and payload.get("signature") and payload.get("fileId")),
+            play_enabled=bool((payload and payload.get("signature") and payload.get("fileId")) or playback_url),
             file_id=payload.get("fileId") if payload else None,
             signature=payload.get("signature") if payload else None,
+            playback_url=playback_url,
             message=None if payload else "未获取到播放签名",
         )
 
@@ -439,9 +507,13 @@ class CourseService:
         *,
         user_id: int | None = None,
     ) -> LearningProgressUpdateResponse:
-        course = self._get_course_or_404(course_id)
-        self._get_section_or_404(course, payload.section_id)
         effective_user_id = user_id or self.DEFAULT_USER_ID
+        java_catalog = await self._get_java_course_catalog_with_progress(course_id, user_id=effective_user_id)
+        if java_catalog is not None:
+            self._get_java_section_or_404(java_catalog, payload.section_id)
+        else:
+            course = self._get_course_or_404(course_id)
+            self._get_section_or_404(course, payload.section_id)
         learning_record = await self._get_learning_record(course_id, effective_user_id)
         lesson_id = payload.lesson_id or (learning_record.lesson_id if learning_record and learning_record.lesson_id else None)
         if lesson_id is None:
@@ -457,6 +529,111 @@ class CourseService:
             recorded=True,
         )
 
+    async def _get_java_course_detail(self, course_id: int) -> JavaCourseDetail | None:
+        try:
+            return await self.course_client.get_course_detail(course_id)
+        except (httpx.HTTPError, ValueError, OSError):
+            return None
+
+    async def _get_java_course_catalog_with_progress(
+        self,
+        course_id: int,
+        *,
+        user_id: int | None = None,
+    ) -> JavaCourseAndSection | None:
+        try:
+            return await self.course_client.get_course_catalog_with_progress(
+                course_id,
+                user_id=user_id or self.DEFAULT_USER_ID,
+            )
+        except (httpx.HTTPError, ValueError, OSError):
+            return None
+
+    async def _resolve_teacher_name(self, teacher_ids: list[int]) -> str:
+        if not teacher_ids:
+            return "课程教师"
+        try:
+            teacher = await self.user_client.get_user(int(teacher_ids[0]))
+        except (httpx.HTTPError, ValueError, OSError):
+            teacher = None
+        return teacher.name if teacher and teacher.name else "课程教师"
+
+    async def _resolve_teachers(self, teacher_ids: list[int]) -> list[CourseTeacherResponse]:
+        teachers: list[CourseTeacherResponse] = []
+        for teacher_id in teacher_ids:
+            try:
+                teacher = await self.user_client.get_user(int(teacher_id))
+            except (httpx.HTTPError, ValueError, OSError):
+                teacher = None
+            if teacher is None:
+                continue
+            teachers.append(
+                CourseTeacherResponse(
+                    id=teacher.id,
+                    name=teacher.name or f"教师-{teacher.id}",
+                    role="课程教师",
+                    intro="",
+                    icon=teacher.icon,
+                    is_show=True,
+                )
+            )
+        return teachers
+
+    @staticmethod
+    def _count_java_sections(chapters: list[JavaCourseSection]) -> int:
+        return sum(len(chapter.sections) for chapter in chapters)
+
+    @staticmethod
+    def _resolve_course_code(course_id: int) -> str:
+        for item in CourseService.COURSE_FIXTURES:
+            if item["id"] == course_id:
+                return item["course_code"]
+        return str(course_id)
+
+    @staticmethod
+    def _resolve_course_cover(course_id: int) -> str:
+        for item in CourseService.COURSE_FIXTURES:
+            if item["id"] == course_id:
+                return item["cover_url"]
+        return "/src/assets/course-covers/course-cover-bootcamp.jpg"
+
+    @staticmethod
+    def _format_chapter_index(index: int | None, *, default_order: int) -> str:
+        numeric = index or default_order
+        return f"第{numeric}章"
+
+    @staticmethod
+    def _first_java_playable_section(chapters: list[JavaCourseSection]) -> JavaCourseSection | None:
+        for chapter in chapters:
+            for section in chapter.sections:
+                if section.type in (2, 3):
+                    return section
+        return None
+
+    def _to_java_course_chapter(self, chapter: JavaCourseSection) -> CourseChapterResponse:
+        sections = [self._to_java_course_section(item) for item in chapter.sections]
+        total_duration = sum(item.media_duration for item in sections)
+        return CourseChapterResponse(
+            id=chapter.id or 0,
+            index=self._format_chapter_index(chapter.index, default_order=1),
+            name=chapter.name or "未命名章节",
+            media_duration=chapter.media_duration or total_duration,
+            sections=sections,
+        )
+
+    @staticmethod
+    def _to_java_course_section(section: JavaCourseSection) -> CourseSectionResponse:
+        return CourseSectionResponse(
+            id=section.id or 0,
+            index=section.index or 0,
+            name=section.name or "未命名小节",
+            type=section.type or 2,
+            media_duration=section.media_duration or 0,
+            trailer=bool(section.trailer),
+            subject_num=section.subject_num or 0,
+            moment=section.moment or 0,
+        )
+
     def _get_course_or_404(self, course_id: int) -> dict:
         for item in self.COURSE_FIXTURES:
             if item["id"] == course_id:
@@ -470,12 +647,23 @@ class CourseService:
             return None
 
     @staticmethod
+    def _get_java_section_or_404(course: JavaCourseAndSection, section_id: int) -> JavaCourseSection:
+        for chapter in course.chapters:
+            for section in chapter.sections:
+                if section.id == section_id:
+                    return section
+        raise HTTPException(status_code=404, detail="section not found")
+
+    @staticmethod
     def _get_section_or_404(course: dict, section_id: int) -> dict:
         for chapter in course["chapters"]:
             for section in chapter["sections"]:
                 if section["id"] == section_id:
                     return section
         raise HTTPException(status_code=404, detail="section not found")
+
+    def _build_fallback_playback_url(self, *, course_id: int, section: dict) -> str | None:
+        return None
 
     @staticmethod
     def _to_course_card(course: dict) -> CourseCardResponse:

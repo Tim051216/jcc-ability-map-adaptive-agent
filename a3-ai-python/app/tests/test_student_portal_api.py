@@ -1,0 +1,78 @@
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.v1 import student_portal
+from app.services.student_portal_service import StudentPortalService
+
+
+app = FastAPI()
+app.include_router(student_portal.router, prefix="/api/v1/student-portal")
+client = TestClient(app)
+
+
+def test_get_student_dashboard_returns_payload(monkeypatch) -> None:
+    async def fake_get_dashboard(self, *, user_id: int, course_id: int | None = None):
+        assert user_id == 1001
+        assert course_id == 401
+        return {
+            "featured_courses": [],
+            "current_course": None,
+            "metrics": [{"key": "course", "label": "当前课程", "value": "软件工程"}],
+            "activities": [{"id": "a1", "time": "实时", "title": "已接入课程", "gain": "课程链路"}],
+            "profile_summary": None,
+            "latest_plan": None,
+            "evaluation_trend": None,
+            "latest_evaluations": [],
+        }
+
+    monkeypatch.setattr(StudentPortalService, "get_dashboard", fake_get_dashboard)
+
+    response = client.get("/api/v1/student-portal/dashboard", params={"user_id": 1001, "course_id": 401})
+
+    assert response.status_code == 200
+    assert response.json()["metrics"][0]["key"] == "course"
+
+
+def test_get_capability_profile_returns_payload(monkeypatch) -> None:
+    async def fake_get_capability_profile(self, *, user_id: int, course_id: int | None = None):
+        assert user_id == 1001
+        assert course_id == 401
+        return {
+            "overall_score": 88,
+            "strongest_axis": "执行效率",
+            "axes": [{"label": "执行效率", "score": 88, "benchmark": 70, "note": "真实测评"}],
+            "recent_activities": [{"id": "a1", "time": "最近", "title": "完成测评", "gain": "88 分"}],
+            "achievements": [{"id": "streak", "title": "阶段学习打卡", "status": "achieved"}],
+            "diagnosis_summary": "画像、路径与测评数据已联动。",
+            "recommendations": ["继续推进当前阶段学习路径。"],
+        }
+
+    monkeypatch.setattr(StudentPortalService, "get_capability_profile", fake_get_capability_profile)
+
+    response = client.get("/api/v1/student-portal/capability-profile", params={"user_id": 1001, "course_id": 401})
+
+    assert response.status_code == 200
+    assert response.json()["overall_score"] == 88
+
+
+def test_get_study_report_returns_payload(monkeypatch) -> None:
+    async def fake_get_study_report(self, *, user_id: int, course_id: int | None = None):
+        assert user_id == 1001
+        assert course_id == 401
+        return {
+            "overall_score": 87,
+            "total_hours": 30.5,
+            "average_hours": 4.4,
+            "best_day": "周六",
+            "weekly_study": [{"day": "周一", "hours": 3.0, "focus": "复盘"}],
+            "metrics": [{"key": "hours", "label": "学习时长", "value": "30.5 小时"}],
+            "diagnosis_feed": [{"id": "a1", "time": "阶段", "title": "趋势刷新", "gain": "+6 分"}],
+            "recommendations": ["优先复盘当前薄弱知识点。"],
+        }
+
+    monkeypatch.setattr(StudentPortalService, "get_study_report", fake_get_study_report)
+
+    response = client.get("/api/v1/student-portal/study-report", params={"user_id": 1001, "course_id": 401})
+
+    assert response.status_code == 200
+    assert response.json()["best_day"] == "周六"

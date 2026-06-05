@@ -61,11 +61,11 @@ def build_profile_payload(
     if major:
         interest_tags.append(major)
 
-    preferred_resources = ["lecture_note", "quiz_set"]
+    preferred_resources = ["lecture_note", "practice_set"]
     if _contains_any(dialogue_text, ["代码", "实操", "实验"]):
         preferred_resources.append("coding_lab")
     if _contains_any(dialogue_text, ["图", "导图"]):
-        preferred_resources.append("mind_map")
+        preferred_resources.append("mindmap")
 
     habit_tags = []
     if _contains_any(dialogue_text, ["每天", "计划", "打卡"]):

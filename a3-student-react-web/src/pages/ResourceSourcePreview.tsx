@@ -16,9 +16,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { ACTIVE_COURSE_ID, buildResourcesRoute, resolveCourseId } from "../lib/courseContext";
 import { studentApi, type ResourceCard, type ResourceSourceFileRef } from "../lib/studentApi";
 
-const DEFAULT_COURSE_ID = "series-2";
+const DEFAULT_COURSE_ID = String(ACTIVE_COURSE_ID);
 const UNCATEGORIZED_LABEL = "未分组资料";
 
 type ResourcePreviewRouteState = {
@@ -29,7 +30,7 @@ type ResourcePreviewRouteState = {
 
 function getCourseIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("courseId") || DEFAULT_COURSE_ID;
+  return String(resolveCourseId(params.get("courseId"), ACTIVE_COURSE_ID));
 }
 
 function getResourceIdFromUrl() {
@@ -80,9 +81,6 @@ function resolveAssetUrl(path?: string | null) {
     return "";
   }
   if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-  if (path.startsWith("/videos/")) {
     return path;
   }
   return studentApi.buildResourceSourceFileUrl(path);
@@ -567,7 +565,7 @@ export default function ResourceSourcePreview() {
     );
   }
 
-  const backUrl = `/resources?courseId=${courseId}${resourceId ? `&resourceId=${resourceId}` : ""}`;
+  const backUrl = buildResourcesRoute(Number(courseId), resourceId ? { resourceId } : undefined);
   const SelectedIcon = getFileIcon(selectedFile);
 
   if (loading && !resource && !selectedFile) {
@@ -629,12 +627,12 @@ export default function ResourceSourcePreview() {
                   <div className="mt-2 text-2xl font-black text-slate-900">
                     {resource?.source_file_count || resource?.source_files?.length || 0}
                   </div>
-                  <div className="mt-2 text-xs leading-6 text-slate-500">这份资源下已接入的真实原始文件数量</div>
+                  <div className="mt-2 text-xs leading-6 text-slate-500">这份资源下已接入的原始文件数量</div>
                 </div>
                 <div className="rounded-[24px] border border-[#d9e8fb] bg-[#f4f9ff] p-4">
                   <div className="text-[11px] font-black tracking-[0.18em] text-[#006689]">目录分组</div>
                   <div className="mt-2 text-2xl font-black text-slate-900">{groupedFiles.length || 0}</div>
-                  <div className="mt-2 text-xs leading-6 text-slate-500">按真实课程目录聚合后的资料分区</div>
+                  <div className="mt-2 text-xs leading-6 text-slate-500">按课程目录聚合后的资料分区</div>
                 </div>
                 <div className="rounded-[24px] border border-[#e8e1fb] bg-[#f9f7ff] p-4">
                   <div className="text-[11px] font-black tracking-[0.18em] text-[#7c3aed]">当前文件</div>
@@ -667,7 +665,7 @@ export default function ResourceSourcePreview() {
                 </div>
 
                 <div className="mt-4 text-sm leading-7 text-white/78">
-                  {resource?.study_suggestion || "建议先快速浏览导读，再切到右侧文件目录按需精读，会更适合真实课堂学习路径。"}
+                  {resource?.study_suggestion || "建议先快速浏览导读，再切到右侧文件目录按需精读，会更适合当前课堂学习路径。"}
                 </div>
 
                 <div className="mt-5 space-y-3">

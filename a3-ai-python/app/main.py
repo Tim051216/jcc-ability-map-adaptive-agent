@@ -1,9 +1,11 @@
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
@@ -52,6 +54,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_router, prefix="/api")
+
+repo_root = Path.cwd().resolve().parent
+frontend_videos_dir = repo_root / "a3-student-react-web" / "public" / "videos"
+if frontend_videos_dir.exists():
+    app.mount("/videos", StaticFiles(directory=str(frontend_videos_dir)), name="course-videos")
 
 
 @app.get("/health", tags=["health"])

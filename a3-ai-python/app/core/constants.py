@@ -8,9 +8,13 @@ PROFILE_DIMENSIONS = [
 ]
 
 RESOURCE_TYPES = [
+    "course_overview",
     "lecture_note",
-    "mind_map",
-    "quiz_set",
+    "mindmap",
+    "practice_set",
+    "teaching_plan",
+    "assessment_guide",
+    "video",
     "extended_reading",
     "coding_lab",
 ]

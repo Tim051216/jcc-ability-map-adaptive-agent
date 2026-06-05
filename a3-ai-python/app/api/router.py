@@ -17,6 +17,7 @@ def _load_router(module_name: str):
 api_router = APIRouter()
 
 for module_name, prefix, tags in [
+    ("student_portal", "/v1/student-portal", ["student-portal"]),
     ("chat", "/v1/chat", ["chat"]),
     ("course", "/v1/course", ["course"]),
     ("course_comment", "/v1/course-comments", ["course-comments"]),

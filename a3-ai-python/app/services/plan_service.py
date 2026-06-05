@@ -91,8 +91,8 @@ class PlanService:
         dimensions = profile.get("dimensions", {})
         weak_focus = dimensions.get("weak_point_preference", {}).get("evidence", []) or [request.target]
         preferred_resources = profile.get("recommended_resource_types") or [
-            "lecture_notes",
-            "mind_map",
+            "lecture_note",
+            "mindmap",
             "practice_set",
         ]
         stage_focuses = self._build_stage_focuses(request.target, weak_focus)

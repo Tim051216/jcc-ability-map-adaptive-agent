@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Search, Bell, Bot, LogOut, Heart, BarChart2, Award, User, Menu, X, Layers, Compass, Tv, FolderOpen, ClipboardCheck } from "lucide-react";
+import { buildEvaluationRoute, buildLearnRoute, buildPathRoute, buildResourcesRoute, buildTutorRoute } from "../lib/courseContext";
 
 interface HeaderProps {
   user: {
@@ -23,6 +24,8 @@ export default function Header({ user, onLogout }: HeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const routeCourseId = Number(new URLSearchParams(location.search).get("courseId") || "");
+  const activeCourseId = Number.isFinite(routeCourseId) && routeCourseId > 0 ? routeCourseId : undefined;
 
   const navItems = [
     { label: "摘要", id: "overview", path: "/", icon: Layers },
@@ -81,7 +84,7 @@ export default function Header({ user, onLogout }: HeaderProps) {
           {/* Quick AI Tutor Pill button */}
           <Link
             id="header-ai-tutor-pill"
-            to="/tutor"
+            to={buildTutorRoute(activeCourseId)}
             className="flex items-center gap-1.5 bg-[#fb7299] hover:bg-[#fb7299]/90 text-white font-sans text-xs font-bold px-4 py-2 rounded-full shadow-sm hover:shadow transition-all"
           >
             <Bot className="w-3.5 h-3.5" />
@@ -184,7 +187,19 @@ export default function Header({ user, onLogout }: HeaderProps) {
               return (
                 <Link
                   key={item.path}
-                  to={item.path}
+                  to={
+                    item.id === "path"
+                      ? buildPathRoute(activeCourseId)
+                      : item.id === "learn"
+                        ? buildLearnRoute(activeCourseId)
+                        : item.id === "resources"
+                          ? buildResourcesRoute(activeCourseId)
+                          : item.id === "evaluation"
+                            ? buildEvaluationRoute(activeCourseId)
+                            : item.id === "tutor"
+                              ? buildTutorRoute(activeCourseId)
+                              : item.path
+                  }
                   className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-sans text-xs font-bold transition-all duration-150 cursor-pointer ${
                     isActive
                       ? "bg-[#fb7299] text-white shadow-sm shadow-[#fb7299]/15"
