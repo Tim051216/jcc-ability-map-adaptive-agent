@@ -1,75 +1,67 @@
 """
-对话式画像构建相关的Pydantic Schema
+对话式画像相关 Schema
 """
 
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
-# ============================================
-# 对话会话相关Schema
-# ============================================
+def _normalize_completeness_value(value: Any) -> int:
+    try:
+        numeric = float(value or 0)
+    except (TypeError, ValueError):
+        numeric = 0.0
+    if 0 < numeric <= 1:
+        numeric *= 100
+    return max(0, min(100, int(round(numeric))))
 
 
 class ConversationStartRequest(BaseModel):
-    """开始对话会话请求"""
-
-    user_id: int = Field(..., description="用户ID")
-    session_type: int = Field(default=1, description="会话类型：1-初始构建，2-补充，3-验证")
+    user_id: int = Field(..., description="用户 ID")
+    session_type: int = Field(default=1, description="会话类型")
 
 
 class ConversationMessageRequest(BaseModel):
-    """发送对话消息请求"""
-
-    session_id: int = Field(..., description="会话ID")
+    session_id: int = Field(..., description="会话 ID")
     content: str = Field(..., min_length=1, max_length=2000, description="消息内容")
 
 
 class ConversationMessageResponse(BaseModel):
-    """对话消息响应"""
-
-    message_id: int = Field(..., description="消息ID")
+    message_id: int = Field(..., description="消息 ID")
     role: str = Field(..., description="角色")
     content: str = Field(..., description="消息内容")
-    round_number: int = Field(..., description="对话轮次")
+    round_number: int = Field(..., description="轮次")
     message_type: int = Field(..., description="消息类型")
     related_dimension: str | None = Field(None, description="相关维度")
     created_at: datetime = Field(..., description="创建时间")
 
 
 class ConversationSessionResponse(BaseModel):
-    """对话会话响应"""
-
-    session_id: int = Field(..., description="会话ID")
-    user_id: int = Field(..., description="用户ID")
+    session_id: int = Field(..., description="会话 ID")
+    user_id: int = Field(..., description="用户 ID")
     status: int = Field(..., description="会话状态")
     session_type: int = Field(..., description="会话类型")
-    total_rounds: int = Field(..., description="总对话轮次")
+    total_rounds: int = Field(..., description="总轮次")
     collected_dimensions: list[str] = Field(default_factory=list, description="已采集维度")
     completeness: int = Field(..., description="完整度")
     start_time: datetime = Field(..., description="开始时间")
     end_time: datetime | None = Field(None, description="结束时间")
-    messages: list[ConversationMessageResponse] = Field(
-        default_factory=list, description="对话消息列表"
-    )
+    messages: list[ConversationMessageResponse] = Field(default_factory=list, description="消息列表")
+
+    @field_validator("completeness", mode="before")
+    @classmethod
+    def normalize_completeness(cls, value: Any) -> int:
+        return _normalize_completeness_value(value)
 
 
 class ConversationCompleteRequest(BaseModel):
-    """完成对话会话请求"""
-
-    session_id: int = Field(..., description="会话ID")
+    session_id: int = Field(..., description="会话 ID")
     force_complete: bool = Field(default=False, description="是否强制完成")
 
 
-# ============================================
-# 信息提取相关Schema
-# ============================================
-
-
 class ExtractedInfoItem(BaseModel):
-    """提取的信息项"""
-
     dimension: str = Field(..., description="所属维度")
     info_key: str = Field(..., description="信息键")
     info_value: str = Field(..., description="信息值")
@@ -77,149 +69,128 @@ class ExtractedInfoItem(BaseModel):
 
 
 class ExtractionResult(BaseModel):
-    """信息提取结果"""
-
-    extracted_info: list[ExtractedInfoItem] = Field(
-        default_factory=list, description="提取的信息列表"
-    )
-    missing_dimensions: list[str] = Field(default_factory=list, description="缺失的维度")
+    extracted_info: list[ExtractedInfoItem] = Field(default_factory=list, description="提取信息")
+    missing_dimensions: list[str] = Field(default_factory=list, description="缺失维度")
     completeness: int = Field(..., ge=0, le=100, description="完整度")
 
-
-# ============================================
-# 画像构建相关Schema
-# ============================================
+    @field_validator("completeness", mode="before")
+    @classmethod
+    def normalize_completeness(cls, value: Any) -> int:
+        return _normalize_completeness_value(value)
 
 
 class ProfileDimensionData(BaseModel):
-    """画像维度数据"""
-
-    dimension_code: str = Field(..., description="维度代码")
+    dimension_code: str = Field(..., description="维度编码")
     dimension_name: str = Field(..., description="维度名称")
-    data: dict = Field(default_factory=dict, description="维度数据")
+    data: dict[str, Any] = Field(default_factory=dict, description="维度数据")
     completeness: int = Field(default=0, ge=0, le=100, description="维度完整度")
+    sources: list[str] = Field(default_factory=list, description="维度来源")
+
+    @field_validator("completeness", mode="before")
+    @classmethod
+    def normalize_completeness(cls, value: Any) -> int:
+        return _normalize_completeness_value(value)
 
 
 class StudentProfileDetail(BaseModel):
-    """学生画像详情"""
-
-    profile_id: int | None = Field(None, description="画像ID")
-    user_id: int = Field(..., description="用户ID")
+    profile_id: int | None = Field(None, description="画像 ID")
+    user_id: int = Field(..., description="用户 ID")
     version: int = Field(default=1, description="版本号")
-    dimensions: list[ProfileDimensionData] = Field(
-        default_factory=list, description="六维度数据"
-    )
-    tags: list[str] = Field(default_factory=list, description="学习标签")
+    dimensions: list[ProfileDimensionData] = Field(default_factory=list, description="维度数据")
+    tags: list[str] = Field(default_factory=list, description="标签")
     completeness: int = Field(default=0, ge=0, le=100, description="画像完整度")
     summary: str | None = Field(None, description="画像摘要")
     created_at: datetime | None = Field(None, description="创建时间")
     updated_at: datetime | None = Field(None, description="更新时间")
+    score_breakdown: dict[str, int] = Field(default_factory=dict, description="能力评分")
+    latest_evaluation_diff: dict[str, dict[str, Any]] = Field(default_factory=dict, description="最近测评影响差异")
+
+    @field_validator("completeness", mode="before")
+    @classmethod
+    def normalize_completeness(cls, value: Any) -> int:
+        return _normalize_completeness_value(value)
 
 
 class ProfileSummary(BaseModel):
-    """画像摘要"""
-
-    profile_id: int | None = Field(None, description="画像ID")
-    user_id: int = Field(..., description="用户ID")
+    profile_id: int | None = Field(None, description="画像 ID")
+    user_id: int = Field(..., description="用户 ID")
     completeness: int = Field(..., description="完整度")
-    tags: list[str] = Field(default_factory=list, description="学习标签")
+    tags: list[str] = Field(default_factory=list, description="标签")
     key_features: str | None = Field(None, description="关键特征")
-    dimension_completeness: dict[str, int] = Field(
-        default_factory=dict, description="各维度完整度"
-    )
+    dimension_completeness: dict[str, int] = Field(default_factory=dict, description="维度完整度")
+    dimension_sources: dict[str, list[str]] = Field(default_factory=dict, description="维度来源")
     recommended_learning_style: str | None = Field(None, description="推荐学习方式")
-    current_stage: str | None = Field(None, description="当前学习阶段")
+    current_stage: str | None = Field(None, description="当前阶段")
+    score_breakdown: dict[str, int] = Field(default_factory=dict, description="能力评分")
+    latest_evaluation_diff: dict[str, dict[str, Any]] = Field(default_factory=dict, description="最近测评影响差异")
 
-
-# ============================================
-# 画像更新相关Schema
-# ============================================
+    @field_validator("completeness", mode="before")
+    @classmethod
+    def normalize_completeness(cls, value: Any) -> int:
+        return _normalize_completeness_value(value)
 
 
 class ProfileAdjustRequest(BaseModel):
-    """画像手动调整请求"""
-
-    user_id: int = Field(..., description="用户ID")
-    dimension_code: str = Field(..., description="维度代码")
-    adjust_data: dict = Field(..., description="调整的数据")
+    user_id: int = Field(..., description="用户 ID")
+    dimension_code: str = Field(..., description="维度编码")
+    adjust_data: dict[str, Any] = Field(..., description="调整数据")
     reason: str | None = Field(None, description="调整原因")
 
 
 class BehaviorDataRequest(BaseModel):
-    """学习行为数据上报请求"""
-
-    user_id: int = Field(..., description="用户ID")
+    user_id: int = Field(..., description="用户 ID")
     behavior_type: int = Field(..., description="行为类型")
-    behavior_data: dict = Field(..., description="行为详细数据")
+    behavior_data: dict[str, Any] = Field(..., description="行为数据")
     resource_type: str | None = Field(None, description="资源类型")
-    resource_id: int | None = Field(None, description="资源ID")
+    resource_id: int | None = Field(None, description="资源 ID")
     result: str | None = Field(None, description="行为结果")
-    duration: int | None = Field(None, description="行为时长（秒）")
+    duration: int | None = Field(None, description="行为时长")
 
 
 class ProfileUpdateResult(BaseModel):
-    """画像更新结果"""
-
-    updated_dimensions: dict[str, dict] = Field(
-        default_factory=dict, description="更新的维度"
-    )
+    updated_dimensions: dict[str, dict[str, Any]] = Field(default_factory=dict, description="更新维度")
     new_tags: list[str] = Field(default_factory=list, description="新增标签")
     removed_tags: list[str] = Field(default_factory=list, description="移除标签")
     summary: str = Field(..., description="更新摘要")
-
-
-# ============================================
-# 画像历史相关Schema
-# ============================================
+    before_summary: dict[str, Any] = Field(default_factory=dict, description="更新前摘要")
+    after_summary: dict[str, Any] = Field(default_factory=dict, description="更新后摘要")
+    latest_evaluation_diff: dict[str, dict[str, Any]] = Field(default_factory=dict, description="最近测评影响差异")
 
 
 class ProfileHistoryItem(BaseModel):
-    """画像历史记录项"""
-
-    history_id: int = Field(..., description="历史记录ID")
-    profile_id: int = Field(..., description="画像ID")
+    history_id: int = Field(..., description="历史记录 ID")
+    profile_id: int = Field(..., description="画像 ID")
     version: int = Field(..., description="版本号")
     change_type: int = Field(..., description="变更类型")
     change_description: str | None = Field(None, description="变更描述")
-    changed_dimensions: list[str] = Field(default_factory=list, description="变更的维度")
+    changed_dimensions: list[str] = Field(default_factory=list, description="变更维度")
     created_at: datetime = Field(..., description="创建时间")
 
 
 class ProfileHistoryResponse(BaseModel):
-    """画像历史响应"""
-
-    user_id: int = Field(..., description="用户ID")
-    profile_id: int = Field(..., description="画像ID")
+    user_id: int = Field(..., description="用户 ID")
+    profile_id: int = Field(..., description="画像 ID")
     history: list[ProfileHistoryItem] = Field(default_factory=list, description="历史记录")
-    total: int = Field(default=0, description="总记录数")
-
-
-# ============================================
-# 引导问题相关Schema
-# ============================================
+    total: int = Field(default=0, description="总数")
 
 
 class GuideQuestionResponse(BaseModel):
-    """引导问题响应"""
-
     question: str = Field(..., description="引导问题")
     related_dimension: str | None = Field(None, description="相关维度")
     question_type: int = Field(default=2, description="问题类型")
-    suggestions: list[str] = Field(default_factory=list, description="回答建议")
-
-
-# ============================================
-# 对话流程响应Schema
-# ============================================
+    suggestions: list[str] = Field(default_factory=list, description="建议答案")
 
 
 class ConversationFlowResponse(BaseModel):
-    """对话流程响应（包含助手回复和引导问题）"""
-
-    session_id: int = Field(..., description="会话ID")
+    session_id: int = Field(..., description="会话 ID")
     assistant_message: ConversationMessageResponse = Field(..., description="助手消息")
     guide_question: GuideQuestionResponse | None = Field(None, description="引导问题")
-    extraction_result: ExtractionResult | None = Field(None, description="信息提取结果")
+    extraction_result: ExtractionResult | None = Field(None, description="提取结果")
     profile_summary: ProfileSummary | None = Field(None, description="画像摘要")
-    should_continue: bool = Field(..., description="是否应该继续对话")
+    should_continue: bool = Field(..., description="是否继续")
     completeness: int = Field(..., description="当前完整度")
+
+    @field_validator("completeness", mode="before")
+    @classmethod
+    def normalize_completeness(cls, value: Any) -> int:
+        return _normalize_completeness_value(value)

@@ -22,7 +22,7 @@ export function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
   return (
     <div className="rounded-[28px] border border-outline-variant/35 bg-[#eef3f8] p-4 shadow-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
-        <div className="text-sm text-on-surface-variant">PDF preview</div>
+        <div className="text-sm text-on-surface-variant">PDF 预览</div>
         <a
           href={openUrl}
           target="_blank"
@@ -30,7 +30,7 @@ export function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
           className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-white px-4 py-2 text-sm font-bold text-on-surface transition-colors hover:border-primary/40 hover:text-primary"
         >
           <ExternalLink className="h-4 w-4" />
-          Open original
+          打开原文件
         </a>
       </div>
       <div className="min-h-[78vh] rounded-[24px] bg-[#dde5ee] p-4">
@@ -42,7 +42,7 @@ export function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
           />
         ) : (
           <div className="flex min-h-[72vh] items-center justify-center rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-700">
-            In-app PDF preview is unavailable. Please use the original-file button.
+            当前无法在页面内预览 PDF，请使用上方原文件按钮。
           </div>
         )}
       </div>

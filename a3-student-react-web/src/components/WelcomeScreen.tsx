@@ -38,14 +38,18 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
   const [academicEnergy, setAcademicEnergy] = useState(120);
   const [activeSpeech, setActiveSpeech] = useState<"both" | "haibara" | "usagi">("both");
   const [pokeCount, setPokeCount] = useState(0);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   // Play satisfying UI futuristic synthesizer sound waves
   const playSfx = (type: "beep" | "swipe" | "energy" | "laser" | "victory") => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || !audioUnlocked) return;
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
+      if (ctx.state === "suspended") {
+        void ctx.resume();
+      }
       const now = ctx.currentTime;
 
       if (type === "beep") {
@@ -129,7 +133,6 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
 
   // Simulating live syncing metrics
   useEffect(() => {
-    playSfx("energy");
     setSystemLoaded(true);
 
     const interval = setInterval(() => {
@@ -144,6 +147,19 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
     }, 3000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      setAudioUnlocked(true);
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
   }, []);
 
   const [particles, setParticles] = useState<{ x: number; y: number; s: number; symbol: string; delay: number }[]>([]);

@@ -82,7 +82,7 @@ export default function StudyReport() {
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#0f6c7b]">
                 <Sparkles className="h-3.5 w-3.5" />
-                Weekly Learning Intelligence Report
+                每周学习报告
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-[#171c22] px-3 py-1 text-[11px] font-bold text-white">
                 业务周报
@@ -181,7 +181,7 @@ export default function StudyReport() {
         <article className="overflow-hidden rounded-[32px] border border-[#dde7ea] bg-white shadow-[0_16px_50px_rgba(23,28,34,0.05)]">
           <div className="flex flex-col gap-4 border-b border-[#edf2f4] px-6 py-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">Study Rhythm</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">学习节奏</p>
               <h2 className="mt-2 flex items-center gap-2 text-xl font-extrabold text-[#171c22]">
                 <BarChart className="h-5 w-5 text-[#fb7299]" />
                 周学习时长趋势

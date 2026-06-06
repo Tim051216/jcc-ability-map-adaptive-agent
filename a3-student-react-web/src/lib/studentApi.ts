@@ -398,8 +398,11 @@ export interface ProfileSummaryResponse {
   tags: string[];
   key_features?: string | null;
   dimension_completeness: Record<string, number>;
+  dimension_sources: Record<string, string[]>;
   recommended_learning_style?: string | null;
   current_stage?: string | null;
+  score_breakdown: Record<string, number>;
+  latest_evaluation_diff: Record<string, Record<string, unknown>>;
 }
 
 export interface ProfileBehaviorUpdateResponse {
@@ -407,6 +410,9 @@ export interface ProfileBehaviorUpdateResponse {
   new_tags: string[];
   removed_tags: string[];
   summary: string;
+  before_summary?: Record<string, unknown>;
+  after_summary?: Record<string, unknown>;
+  latest_evaluation_diff?: Record<string, Record<string, unknown>>;
 }
 
 export interface ProfileConversationMessage {
@@ -467,6 +473,7 @@ export interface ProfileDimensionData {
   dimension_name: string;
   data: Record<string, unknown>;
   completeness: number;
+  sources: string[];
 }
 
 export interface StudentProfileDetailResponse {
@@ -479,6 +486,8 @@ export interface StudentProfileDetailResponse {
   summary?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  score_breakdown: Record<string, number>;
+  latest_evaluation_diff: Record<string, Record<string, unknown>>;
 }
 
 export interface ProfileHistoryItemResponse {

@@ -28,6 +28,9 @@ jobs:
           java-version: "11"
           cache: maven
 
+      - name: Make Maven wrapper executable
+        run: chmod +x mvnw
+
       - name: Build auth, learning, and gateway jars
         run: ./mvnw -B -pl a3-auth/a3-auth-service,a3-learning,a3-gateway -am -DskipTests package
 
@@ -63,20 +66,20 @@ jobs:
           - image_name: a3-auth-service
             artifact_name: a3-auth-service-jar
             artifact_path: a3-auth-service.jar
-            context_dir: .docker/auth
-            dockerfile: .docker/auth/Dockerfile
+            context_dir: .github/.ci-image-contexts/a3-auth-service
+            dockerfile: .github/.ci-image-contexts/a3-auth-service/Dockerfile
             kind: java
           - image_name: a3-learning-service
             artifact_name: a3-learning-jar
             artifact_path: a3-learning.jar
-            context_dir: .docker/learning
-            dockerfile: .docker/learning/Dockerfile
+            context_dir: .github/.ci-image-contexts/a3-learning-service
+            dockerfile: .github/.ci-image-contexts/a3-learning-service/Dockerfile
             kind: java
           - image_name: a3-gateway
             artifact_name: a3-gateway-jar
             artifact_path: a3-gateway.jar
-            context_dir: .docker/gateway
-            dockerfile: .docker/gateway/Dockerfile
+            context_dir: .github/.ci-image-contexts/a3-gateway
+            dockerfile: .github/.ci-image-contexts/a3-gateway/Dockerfile
             kind: java
           - image_name: a3-ai-python
             context_dir: a3-ai-python
@@ -86,7 +89,7 @@ jobs:
             context_dir: a3-student-react-web
             dockerfile: a3-student-react-web/Dockerfile
             kind: direct
-            build_args: VITE_AI_BASE_URL=${{ vars.VITE_AI_BASE_URL || '/ai/api/v1' }}
+            build_args: VITE_AI_BASE_URL=${{ vars.VITE_AI_BASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,12 +107,12 @@ jobs:
         run: |
           mkdir -p "${{ matrix.context_dir }}"
           cp Dockerfile "${{ matrix.context_dir }}/Dockerfile"
-          if [ "${{ matrix.image_name }}" = "a3-learning-service" ]; then
-            JAR_FILE=$(find "${{ matrix.context_dir }}" -maxdepth 1 -name "*.jar" ! -name "*.original" | head -n 1)
-            cp "$JAR_FILE" "${{ matrix.context_dir }}/app.jar"
-          else
-            cp "${{ matrix.context_dir }}/${{ matrix.artifact_path }}" "${{ matrix.context_dir }}/app.jar"
+          JAR_FILE=$(find "${{ matrix.context_dir }}" -maxdepth 1 -name "*.jar" ! -name "*.original" | head -n 1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "No jar artifact found in ${{ matrix.context_dir }}"
+            exit 1
           fi
+          cp "$JAR_FILE" "${{ matrix.context_dir }}/app.jar"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -145,7 +148,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ matrix.build_args || '' }}
+          build-args: ${{ matrix.build_args }}
 
   render-k8s-summary:
     name: Render K8s Summary

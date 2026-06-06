@@ -22,6 +22,7 @@ from app.db.models.generated_resource import GeneratedResource, ResourceFavorite
 from app.db.models.knowledge_document import KnowledgeChunk, KnowledgeDocument
 from app.db.models.learning_plan import LearningPlan
 from app.db.models.plan_progress import PlanStepProgress
+from app.db.models.resource_source_file import ResourceSourceFile
 from app.db.models.system_config import SystemConfig
 from app.db.models.tutoring import (
     EscalationRecord,
@@ -64,6 +65,7 @@ __all__ = [
     "PlanStepProgress",
     "ResourceFavorite",
     "ResourceFavoriteHistory",
+    "ResourceSourceFile",
     "SystemConfig",
     "TutoringAnswer",
     "TutoringFavorite",

@@ -50,10 +50,11 @@ export default function ProfileConversation() {
   const [profileHistory, setProfileHistory] = useState<ProfileHistoryResponse | null>(null);
 
   const loadProfileMeta = async () => {
-    const [detail, history] = await Promise.all([
-      studentApi.getProfileDetailOrNull(ACTIVE_USER_ID),
-      studentApi.getProfileHistory(ACTIVE_USER_ID, 8),
-    ]);
+    const history = await studentApi.getProfileHistory(ACTIVE_USER_ID, 8);
+    const detail =
+      history.profile_id && history.profile_id > 0
+        ? await studentApi.getProfileDetailOrNull(ACTIVE_USER_ID)
+        : null;
     setProfileDetail(detail);
     setProfileHistory(history);
   };
@@ -93,20 +94,32 @@ export default function ProfileConversation() {
   }, [shouldAutoStart, conversationSession, conversationBusy]);
 
   const handleSendConversationMessage = async () => {
-    if (!conversationSession || !conversationDraft.trim() || conversationBusy) return;
+    if (!conversationDraft.trim() || conversationBusy) return;
     setConversationBusy(true);
     setConversationError(null);
     try {
+      let activeSession = conversationSession;
+      if (!activeSession || activeSession.status !== 0) {
+        activeSession = await studentApi.startProfileConversation({
+          user_id: ACTIVE_USER_ID,
+          session_type: 1,
+        });
+        setConversationSession(activeSession);
+        setConversationFlow(null);
+      }
+
       const nextFlow = await studentApi.sendProfileConversationMessage({
-        session_id: conversationSession.session_id,
+        session_id: activeSession.session_id,
         content: conversationDraft.trim(),
       });
-      const refreshedSession = await studentApi.getProfileConversationSession(conversationSession.session_id);
+      const refreshedSession = await studentApi.getProfileConversationSession(activeSession.session_id);
       setConversationSession(refreshedSession);
       setConversationFlow(nextFlow);
       setConversationDraft("");
     } catch (sendError) {
-      setConversationError(sendError instanceof Error ? sendError.message : "画像对话发送失败");
+      setConversationError(
+        sendError instanceof Error ? `画像对话发送失败：${sendError.message}` : "画像对话发送失败",
+      );
     } finally {
       setConversationBusy(false);
     }
@@ -123,7 +136,9 @@ export default function ProfileConversation() {
       });
       setProfileDetail(builtProfile);
       setProfileHistory(await studentApi.getProfileHistory(ACTIVE_USER_ID, 8));
-      const refreshedSession = await studentApi.getProfileConversationSession(conversationSession.session_id).catch(() => null);
+      const refreshedSession = await studentApi
+        .getProfileConversationSession(conversationSession.session_id)
+        .catch(() => null);
       setConversationSession(refreshedSession);
     } catch (completeError) {
       setConversationError(completeError instanceof Error ? completeError.message : "画像生成失败");
@@ -142,7 +157,7 @@ export default function ProfileConversation() {
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#fb7299]">Profile Conversation</p>
             <h1 className="mt-2 text-2xl font-extrabold text-[#171c22]">对话式画像页</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[#564145]">
-              当前页面直接接后端 `/profile/conversation/*`。开始会话、继续问答、完成画像和回看历史都走真实业务接口。
+              当前页面直连后端 `/profile/conversation/*`。开始会话、继续问答、完成画像和查看历史都走真实业务接口。
             </p>
           </div>
           <div className="flex gap-2">
@@ -273,8 +288,66 @@ export default function ProfileConversation() {
                     <p className="mt-1 text-lg font-extrabold text-[#171c22]">v{profileDetail.version}</p>
                   </div>
                 </div>
+
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Score Breakdown</p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    {Object.entries(profileDetail.score_breakdown || {}).map(([label, score]) => (
+                      <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4">
+                        <p className="text-xs font-bold text-slate-500">{label}</p>
+                        <p className="mt-1 text-lg font-extrabold text-[#171c22]">{score}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 text-sm leading-6 text-[#564145]">
                   {profileDetail.summary || "暂无画像摘要。"}
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Latest Evaluation Diff</p>
+                  <div className="mt-2 grid gap-3">
+                    {Object.entries(profileDetail.latest_evaluation_diff || {}).length ? (
+                      Object.entries(profileDetail.latest_evaluation_diff || {}).map(([key, value]) => (
+                        <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
+                          <p className="font-bold text-[#171c22]">{String(value.label || key)}</p>
+                          <p className="mt-1 text-slate-600">
+                            变化后: {Array.isArray(value.after) ? value.after.join("、") : String(value.after ?? "暂无")}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                        暂无最近测评影响数据。
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Dimensions</p>
+                  <div className="mt-2 grid gap-3">
+                    {profileDetail.dimensions.map((dimension) => (
+                      <div key={dimension.dimension_code} className="rounded-2xl border border-slate-100 bg-white p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-extrabold text-[#171c22]">{dimension.dimension_name}</p>
+                          <span className="text-xs font-bold text-slate-400">{dimension.completeness}%</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {dimension.sources?.length ? (
+                            dimension.sources.map((source) => (
+                              <span key={source} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">
+                                {source}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-slate-400">暂无来源</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             ) : (

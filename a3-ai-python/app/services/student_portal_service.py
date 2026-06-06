@@ -259,15 +259,42 @@ class StudentPortalService:
         evaluation_trend: EvaluationTrendResponse | None,
         latest_plan: LearningPlanResponse | None,
     ) -> list[CapabilityAxisItem]:
-        completeness = profile_summary.completeness if profile_summary else 55
-        plan_completion = round(latest_plan.completion_rate) if latest_plan else 40
-        latest_score = round(evaluation_trend.latest_score) if evaluation_trend and evaluation_trend.latest_score is not None else 60
+        breakdown = profile_summary.score_breakdown if profile_summary else {}
+        completeness = profile_summary.completeness if profile_summary else 0
+        latest_score = round(evaluation_trend.latest_score) if evaluation_trend and evaluation_trend.latest_score is not None else 0
+        plan_completion = round(latest_plan.completion_rate) if latest_plan else 0
+
         return [
-            CapabilityAxisItem(label="规划能力", score=min(95, max(40, plan_completion)), benchmark=62, note="学习路径节奏"),
-            CapabilityAxisItem(label="执行效率", score=min(95, max(45, latest_score)), benchmark=68, note="真实测评表现"),
-            CapabilityAxisItem(label="学习持续力", score=min(96, max(50, completeness)), benchmark=72, note="画像完成度"),
-            CapabilityAxisItem(label="认知广度", score=min(92, max(48, latest_score - 6)), benchmark=66, note="知识覆盖"),
-            CapabilityAxisItem(label="成果输出", score=min(94, max(46, latest_score + 2)), benchmark=64, note="答题与报告"),
+            CapabilityAxisItem(
+                label="????",
+                score=breakdown.get("????", min(95, max(35, round((plan_completion * 0.7) + (completeness * 0.3))))),
+                benchmark=62,
+                note="???????????",
+            ),
+            CapabilityAxisItem(
+                label="????",
+                score=breakdown.get("????", min(95, max(35, latest_score))),
+                benchmark=68,
+                note="???????????",
+            ),
+            CapabilityAxisItem(
+                label="?????",
+                score=breakdown.get("?????", min(96, max(35, completeness))),
+                benchmark=72,
+                note="????????????",
+            ),
+            CapabilityAxisItem(
+                label="????",
+                score=breakdown.get("????", min(92, max(35, latest_score - 5 if latest_score else 40))),
+                benchmark=66,
+                note="???????????",
+            ),
+            CapabilityAxisItem(
+                label="????",
+                score=breakdown.get("????", min(94, max(35, latest_score + 2 if latest_score else 42))),
+                benchmark=64,
+                note="???????????",
+            ),
         ]
 
     @staticmethod

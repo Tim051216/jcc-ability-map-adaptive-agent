@@ -10,19 +10,49 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import settings
 from app.db.base import Base
 from app.db.models import (  # noqa: F401
+    AdminUserControl,
+    AgentRuntimeLog,
     AuditLog,
     ChatMessage,
     ChatSession,
+    ChatTicket,
+    ChatTicketReply,
+    ContentReviewTask,
+    CourseComment,
+    CourseCommentLike,
+    EscalationRecord,
+    EvaluationAnswer,
+    EvaluationAnswerRecord,
+    EvaluationFeedbackLoop,
+    EvaluationKnowledgeMastery,
+    EvaluationPaper,
+    EvaluationQuestion,
     EvaluationRecord,
+    EvaluationReport,
+    EvaluationTest,
+    EvaluationTestRecord,
+    EvaluationWrongQuestion,
     GenerationTask,
+    GeneratedResource,
     KnowledgeChunk,
     KnowledgeDocument,
     LearningPlan,
+    PlanStepProgress,
+    ResourceFavorite,
+    ResourceFavoriteHistory,
+    ResourceSourceFile,
+    SystemConfig,
+    TutoringAnswer,
+    TutoringFavorite,
+    TutoringQuestion,
+    TutoringSession,
     UserProfileSnapshot,
+    VideoDanmaku,
 )
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.postgres_dsn)
+resolved_dsn = settings.local_postgres_dsn or settings.postgres_dsn
+config.set_main_option("sqlalchemy.url", resolved_dsn)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -32,7 +62,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.postgres_dsn,
+        url=resolved_dsn,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

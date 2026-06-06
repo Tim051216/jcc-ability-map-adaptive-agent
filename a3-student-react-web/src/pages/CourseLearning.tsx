@@ -3,19 +3,13 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   Award,
-  BookOpen,
   Bot,
-  Clock,
-  FileText,
+  ExternalLink,
   FolderDown,
   LoaderCircle,
-  Lock,
-  Mail,
   MessageCircle,
-  MessageSquare,
   PlayCircle,
   Send,
-  Sparkles,
   ThumbsUp,
   Tv,
 } from "lucide-react";
@@ -28,7 +22,14 @@ import {
   buildTutorRoute,
   resolveCourseIdFromSearchParams,
 } from "../lib/courseContext";
-import { studentApi, type CourseCommentItem, type LearningCourseDetail, type ResourceCard, type ResourceSourceFileRef, type VideoDanmakuItem } from "../lib/studentApi";
+import {
+  studentApi,
+  type CourseCommentItem,
+  type LearningCourseDetail,
+  type ResourceCard,
+  type ResourceSourceFileRef,
+  type VideoDanmakuItem,
+} from "../lib/studentApi";
 
 type DanmakuMode = "scroll" | "top" | "bottom";
 
@@ -61,12 +62,26 @@ type ReplyTarget = {
   author: string;
 };
 
+type ResourceFileCandidate = {
+  resource: ResourceCard;
+  file: ResourceSourceFileRef;
+};
+
+type LinkedVideoOption = {
+  id: string;
+  title: string;
+  subtitle: string;
+  url: string;
+  badge: string;
+};
+
 const DANMAKU_SCROLL_LANES = ["12%", "22%", "32%", "42%", "52%"];
 const DANMAKU_FIXED_DURATION = 3.6;
 const DANMAKU_SCROLL_SPEED_PX_PER_SECOND = 132;
 const DANMAKU_SCROLL_GAP_PX = 124;
 const DANMAKU_SEEK_LOOKAHEAD_SECONDS = 0.45;
 const DANMAKU_MAX_FIXED_STACK = 1;
+const VIDEO_FILE_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".m3u8"]);
 
 function formatDate(value?: string | null) {
   if (!value) return "刚刚";
@@ -94,12 +109,12 @@ function mapComments(items: CourseCommentItem[]): CourseComment[] {
   }));
 }
 
-function resolveVideoSrc(playbackUrl?: string | null) {
-  if (!playbackUrl) return "";
-  return studentApi.buildResourceSourceFileUrl(playbackUrl);
+function resolveResourceFileUrl(path?: string | null) {
+  if (!path) return "";
+  return studentApi.buildResourceSourceFileUrl(path);
 }
 
-function findFallbackCoursewareFile(resources: ResourceCard[]): { resource: ResourceCard; file: ResourceSourceFileRef } | null {
+function findPreferredCoursewareFile(resources: ResourceCard[]): ResourceFileCandidate | null {
   const preferredExtensions = [".pdf", ".ppt", ".pptx"];
   for (const extension of preferredExtensions) {
     for (const resource of resources) {
@@ -111,6 +126,27 @@ function findFallbackCoursewareFile(resources: ResourceCard[]): { resource: Reso
     }
   }
   return null;
+}
+
+function isVideoResourceFile(file: ResourceSourceFileRef) {
+  const extension = (file.file_extension || "").toLowerCase();
+  const mimeType = (file.mime_type || "").toLowerCase();
+  return mimeType.startsWith("video/") || VIDEO_FILE_EXTENSIONS.has(extension);
+}
+
+function findLinkedVideoFiles(resources: ResourceCard[]): ResourceFileCandidate[] {
+  const result: ResourceFileCandidate[] = [];
+  const seen = new Set<string>();
+  for (const resource of resources) {
+    for (const file of resource.source_files || []) {
+      if (!isVideoResourceFile(file)) continue;
+      const key = `${file.file_id}:${file.open_url}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({ resource, file });
+    }
+  }
+  return result;
 }
 
 export default function CourseLearning() {
@@ -129,8 +165,9 @@ export default function CourseLearning() {
   const [error, setError] = useState<string | null>(null);
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState("");
-  const [fallbackCourseware, setFallbackCourseware] = useState<{ resource: ResourceCard; file: ResourceSourceFileRef } | null>(null);
-  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [coursewarePreview, setCoursewarePreview] = useState<ResourceFileCandidate | null>(null);
+  const [linkedResourceVideos, setLinkedResourceVideos] = useState<ResourceFileCandidate[]>([]);
+  const [selectedLinkedVideoId, setSelectedLinkedVideoId] = useState<string | null>(null);
   const [danmakuEnabled, setDanmakuEnabled] = useState(true);
   const [persistedDanmakus, setPersistedDanmakus] = useState<VideoDanmakuItem[]>([]);
   const [activeDanmakus, setActiveDanmakus] = useState<ActiveCourseDanmaku[]>([]);
@@ -150,11 +187,6 @@ export default function CourseLearning() {
   const activeSection = useMemo(
     () => sections.find((section) => section.id === activeSectionId) || sections[0] || null,
     [activeSectionId, sections],
-  );
-
-  const activeVideoKey = useMemo(
-    () => `${courseId}:${activeSection?.id || "section"}:${playbackUrl || "video"}`,
-    [activeSection?.id, courseId, playbackUrl],
   );
 
   const showToast = (msg: string) => {
@@ -208,15 +240,13 @@ export default function CourseLearning() {
     async function loadPlayback() {
       const payload = await studentApi.getCourseSectionPlayInfo(courseId, activeSection.id);
       if (!cancelled) {
-        setPlaybackUrl(resolveVideoSrc(payload.playback_url));
-        setFallbackCourseware(null);
+        setPlaybackUrl(resolveResourceFileUrl(payload.playback_url));
       }
     }
 
     void loadPlayback().catch(() => {
       if (!cancelled) {
         setPlaybackUrl("");
-        setFallbackCourseware(null);
       }
     });
 
@@ -226,30 +256,83 @@ export default function CourseLearning() {
   }, [activeSection, courseId]);
 
   useEffect(() => {
-    if (playbackUrl) {
-      setFallbackCourseware(null);
-      return;
-    }
     let cancelled = false;
 
-    async function loadFallbackCourseware() {
+    async function loadLinkedResources() {
       try {
         const response = await studentApi.listResources(1001, courseId);
         if (!cancelled) {
-          setFallbackCourseware(findFallbackCoursewareFile(response.items));
+          setCoursewarePreview(findPreferredCoursewareFile(response.items));
+          setLinkedResourceVideos(findLinkedVideoFiles(response.items));
         }
       } catch {
         if (!cancelled) {
-          setFallbackCourseware(null);
+          setCoursewarePreview(null);
+          setLinkedResourceVideos([]);
         }
       }
     }
 
-    void loadFallbackCourseware();
+    void loadLinkedResources();
     return () => {
       cancelled = true;
     };
-  }, [courseId, playbackUrl]);
+  }, [courseId]);
+
+  const linkedVideoOptions = useMemo(() => {
+    const items: LinkedVideoOption[] = [];
+    const seenUrls = new Set<string>();
+
+    if (playbackUrl && activeSection) {
+      items.push({
+        id: `section-${activeSection.id}`,
+        title: `${activeSection.name} 视频讲解`,
+        subtitle: activeSection.chapterName,
+        url: playbackUrl,
+        badge: "课堂",
+      });
+      seenUrls.add(playbackUrl);
+    }
+
+    for (const item of linkedResourceVideos) {
+      const url = resolveResourceFileUrl(item.file.preview_url || item.file.open_url);
+      if (!url || seenUrls.has(url)) continue;
+      seenUrls.add(url);
+      items.push({
+        id: `resource-${item.file.file_id}`,
+        title: item.file.display_name || item.resource.title,
+        subtitle: item.resource.title,
+        url,
+        badge: "资源",
+      });
+    }
+
+    return items;
+  }, [activeSection, linkedResourceVideos, playbackUrl]);
+
+  useEffect(() => {
+    setSelectedLinkedVideoId((current) => {
+      if (current && linkedVideoOptions.some((item) => item.id === current)) {
+        return current;
+      }
+      return linkedVideoOptions[0]?.id || null;
+    });
+  }, [linkedVideoOptions]);
+
+  const activeLinkedVideo = useMemo(
+    () => linkedVideoOptions.find((item) => item.id === selectedLinkedVideoId) || linkedVideoOptions[0] || null,
+    [linkedVideoOptions, selectedLinkedVideoId],
+  );
+
+  const activeVideoKey = useMemo(
+    () => `${courseId}:${activeSection?.id || "section"}:${activeLinkedVideo?.id || "video"}`,
+    [activeLinkedVideo?.id, activeSection?.id, courseId],
+  );
+
+  const coursewarePreviewUrl = useMemo(
+    () => (coursewarePreview ? resolveResourceFileUrl(coursewarePreview.file.preview_url || coursewarePreview.file.open_url) : ""),
+    [coursewarePreview],
+  );
 
   useEffect(() => {
     if (!activeSection) return;
@@ -275,7 +358,7 @@ export default function CourseLearning() {
   }, [activeSection, courseId]);
 
   useEffect(() => {
-    if (!activeSection) return;
+    if (!activeSection || !activeLinkedVideo) return;
     let cancelled = false;
 
     async function loadDanmaku() {
@@ -291,7 +374,7 @@ export default function CourseLearning() {
     return () => {
       cancelled = true;
     };
-  }, [activeSection, activeVideoKey]);
+  }, [activeSection, activeLinkedVideo, activeVideoKey]);
 
   useEffect(() => {
     nextDanmakuIndexRef.current = 0;
@@ -367,7 +450,7 @@ export default function CourseLearning() {
   };
 
   const handleSubmitDanmaku = async () => {
-    if (!newDanmakuText.trim() || !activeSection) return;
+    if (!newDanmakuText.trim() || !activeSection || !activeLinkedVideo) return;
     try {
       const created = await studentApi.createVideoDanmaku({
         video_key: activeVideoKey,
@@ -447,9 +530,9 @@ export default function CourseLearning() {
       <section className="bg-white rounded-3xl border border-[#E3E8EC] p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] uppercase font-bold text-[#fb7299] tracking-wider font-mono">Live Classroom</p>
+            <p className="text-[10px] uppercase font-bold text-[#fb7299] tracking-wider font-mono">课堂学习</p>
             <h1 className="text-2xl font-extrabold text-[#171c22]">{course.name}</h1>
-            <p className="mt-2 text-sm text-[#564145]">当前课堂页已切到课程详情、章节和播放接口，不再使用本地课程常量与视频映射。</p>
+            <p className="mt-2 text-sm text-[#564145]">课堂学习页已调整为：主区域展示课件，联动资源展示视频。</p>
           </div>
           <button
             onClick={() => navigate(buildPathRoute(courseId))}
@@ -462,58 +545,143 @@ export default function CourseLearning() {
 
       <div className="flex flex-col lg:flex-row gap-6 w-full">
         <div className="flex-grow space-y-6">
-          <section className="relative overflow-hidden rounded-3xl border border-[#E3E8EC] bg-black shadow-sm">
-            {playbackUrl ? (
-              <video
-                ref={videoRef}
-                controls
-                autoPlay
-                className="h-[260px] w-full bg-black object-cover md:h-[420px]"
-                src={playbackUrl}
-                onPlay={() => setVideoPlaying(true)}
-                onPause={() => setVideoPlaying(false)}
-                onTimeUpdate={handleVideoTimeUpdate}
-              />
+          <section className="overflow-hidden rounded-3xl border border-[#E3E8EC] bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E8EC] bg-[linear-gradient(180deg,#fdfdff,#f6f9fc)] px-5 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#fb7299]">课堂课件</p>
+                <h2 className="mt-1 text-lg font-extrabold text-[#171c22]">{coursewarePreview?.resource.title || `${activeSection.name} 课件预览`}</h2>
+                <p className="mt-1 text-xs text-[#564145]/70">优先展示课程 PPT / PDF 资料。</p>
+              </div>
+              {coursewarePreview ? (
+                <a
+                  href={resolveResourceFileUrl(coursewarePreview.file.open_url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[#E3E8EC] bg-white px-4 py-2 text-xs font-bold text-[#171c22]"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  打开原文件
+                </a>
+              ) : null}
+            </div>
+            {coursewarePreview && coursewarePreviewUrl ? (
+              <div className="bg-[#eef3f8] p-4">
+                <iframe
+                  src={coursewarePreviewUrl}
+                  title={coursewarePreview.file.display_name}
+                  className="h-[420px] w-full rounded-[24px] border-0 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.12)] md:h-[640px]"
+                />
+              </div>
             ) : (
-              <div className="flex h-[260px] items-center justify-center text-sm font-semibold text-white/70 md:h-[420px]">
-                当前章节暂无可播放视频
+              <div className="flex h-[260px] items-center justify-center bg-[#f8fafc] px-6 text-center text-sm font-semibold text-[#564145]/80 md:h-[420px]">
+                当前课程还没有读取到可预览的 PPT / PDF 课件，你可以稍后刷新，或从资源中心打开资料原文件。
               </div>
             )}
+          </section>
 
-            {danmakuEnabled ? (
-              <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                {activeDanmakus.map((dan) => (
-                  <div
-                    key={dan.id}
-                    className="absolute whitespace-nowrap text-white"
-                    style={{
-                      top: dan.mode === "scroll" ? dan.top : dan.mode === "top" ? "12%" : "80%",
-                      color: dan.color,
-                      left: dan.mode === "scroll" ? "100%" : "50%",
-                      transform: dan.mode === "scroll" ? undefined : "translateX(-50%)",
-                      width: dan.width ? `${dan.width}px` : undefined,
-                      animation: dan.mode === "scroll" ? `danmaku-scroll ${dan.duration}s linear` : `danmaku-fade ${dan.duration}s linear`,
-                      opacity: dan.opacity,
-                    }}
-                    onAnimationEnd={() => handleDanmakuComplete(dan.id)}
-                  >
-                    {dan.content}
-                  </div>
-                ))}
+          <section className="bg-white rounded-3xl border border-[#E3E8EC] p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-extrabold text-[#171c22]">{activeLinkedVideo?.title || `${activeSection.name} 联动视频`}</h2>
+                <p className="text-xs text-[#564145]/70">{(activeLinkedVideo?.subtitle || activeSection.chapterName)} · 视频资源与课堂联动展示</p>
               </div>
-            ) : null}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDanmakuEnabled((value) => !value)}
+                  disabled={!activeLinkedVideo}
+                  className="rounded-xl border border-[#E3E8EC] px-3 py-2 text-xs font-bold text-[#171c22] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {danmakuEnabled ? "关闭弹幕" : "开启弹幕"}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+              <section className="relative overflow-hidden rounded-3xl border border-[#E3E8EC] bg-black shadow-sm">
+                {activeLinkedVideo ? (
+                  <video
+                    ref={videoRef}
+                    controls
+                    autoPlay
+                    className="h-[260px] w-full bg-black object-cover md:h-[420px]"
+                    src={activeLinkedVideo.url}
+                    onTimeUpdate={handleVideoTimeUpdate}
+                  />
+                ) : (
+                  <div className="flex h-[260px] items-center justify-center text-sm font-semibold text-white/70 md:h-[420px]">
+                    当前课程暂无可联动的视频资源
+                  </div>
+                )}
+
+                {danmakuEnabled && activeLinkedVideo ? (
+                  <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                    {activeDanmakus.map((dan) => (
+                      <div
+                        key={dan.id}
+                        className="absolute whitespace-nowrap text-white"
+                        style={{
+                          top: dan.mode === "scroll" ? dan.top : dan.mode === "top" ? "12%" : "80%",
+                          color: dan.color,
+                          left: dan.mode === "scroll" ? "100%" : "50%",
+                          transform: dan.mode === "scroll" ? undefined : "translateX(-50%)",
+                          width: dan.width ? `${dan.width}px` : undefined,
+                          animation: dan.mode === "scroll" ? `danmaku-scroll ${dan.duration}s linear` : `danmaku-fade ${dan.duration}s linear`,
+                          opacity: dan.opacity,
+                        }}
+                        onAnimationEnd={() => handleDanmakuComplete(dan.id)}
+                      >
+                        {dan.content}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
+              <div className="space-y-2">
+                {linkedVideoOptions.length ? (
+                  linkedVideoOptions.map((item) => {
+                    const isActive = item.id === activeLinkedVideo?.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedLinkedVideoId(item.id)}
+                        className={`w-full rounded-2xl border px-3 py-3 text-left transition-all ${
+                          isActive
+                            ? "border-[#006689]/35 bg-[#006689]/5 shadow-[0_8px_22px_rgba(0,102,137,0.08)]"
+                            : "border-[#E3E8EC] bg-white hover:border-[#bfd7df]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-bold text-[#171c22]">{item.title}</div>
+                            <div className="mt-1 text-[11px] text-[#564145]/70">{item.subtitle}</div>
+                          </div>
+                          <span className="rounded-full bg-[#edf6f8] px-2 py-1 text-[10px] font-bold text-[#006689]">{item.badge}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-[#d5dde6] bg-[#fafcff] px-4 py-6 text-xs leading-6 text-[#564145]/75">
+                    当前资源中心还没有返回可播放视频，先保留课件学习入口。
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
 
           <section className="bg-white rounded-3xl border border-[#E3E8EC] p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-extrabold text-[#171c22]">{activeSection.name}</h2>
-                <p className="text-xs text-[#564145]/70">{activeSection.chapterName} · 预计 {Math.round(activeSection.media_duration / 60)} 分钟</p>
+                <p className="text-xs text-[#564145]/70">{activeSection.chapterName} · 课堂互动与视频弹幕</p>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => setDanmakuEnabled((value) => !value)}
-                  className="rounded-xl border border-[#E3E8EC] px-3 py-2 text-xs font-bold text-[#171c22]"
+                  disabled={!activeLinkedVideo}
+                  className="rounded-xl border border-[#E3E8EC] px-3 py-2 text-xs font-bold text-[#171c22] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {danmakuEnabled ? "关闭弹幕" : "开启弹幕"}
                 </button>
@@ -535,7 +703,8 @@ export default function CourseLearning() {
               />
               <button
                 onClick={handleSubmitDanmaku}
-                className="rounded-xl bg-[#fb7299] px-4 py-2 text-sm font-bold text-white"
+                disabled={!activeLinkedVideo}
+                className="rounded-xl bg-[#fb7299] px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="inline-block h-4 w-4 mr-1" />
                 发送
@@ -654,10 +823,10 @@ export default function CourseLearning() {
                 className="w-full text-left rounded-2xl border border-[#e6edf5] bg-[linear-gradient(180deg,#f9fbff,#f3f7fc)] px-3.5 py-3.5 flex items-center justify-between"
               >
                 <div className="flex items-center gap-3 text-xs">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fb7299]/10 text-[#fb7299]"><BookOpen className="w-4 h-4" /></div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fb7299]/10 text-[#fb7299]"><PlayCircle className="w-4 h-4" /></div>
                   <div>
-                    <p className="font-bold">课程资料</p>
-                    <p className="text-[10px] text-[#564145]/70">讲义、PPT、实验与考核资源</p>
+                    <p className="font-bold">视频资源</p>
+                    <p className="text-[10px] text-[#564145]/70">进入资源中心查看视频讲解与演示录像</p>
                   </div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-[#564145]/50 shrink-0" />

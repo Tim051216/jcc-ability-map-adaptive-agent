@@ -99,12 +99,17 @@ export default function CapabilityModel() {
       setLoading(true);
       setError(null);
       try {
-        const [capabilityData, profileSummary, detail, history] = await Promise.all([
+        const [capabilityData, history] = await Promise.all([
           studentApi.getStudentCapabilityProfile(ACTIVE_USER_ID, courseId),
-          studentApi.getProfileSummaryOrNull(ACTIVE_USER_ID),
-          studentApi.getProfileDetailOrNull(ACTIVE_USER_ID),
           studentApi.getProfileHistory(ACTIVE_USER_ID, 8),
         ]);
+        const hasProfile = Boolean(history.profile_id && history.profile_id > 0);
+        const [profileSummary, detail] = hasProfile
+          ? await Promise.all([
+              studentApi.getProfileSummaryOrNull(ACTIVE_USER_ID),
+              studentApi.getProfileDetailOrNull(ACTIVE_USER_ID),
+            ])
+          : [null, null];
         if (cancelled) return;
         setProfile(capabilityData);
         setProfileSummaryMissing(!profileSummary);
@@ -228,11 +233,11 @@ export default function CapabilityModel() {
             <div className="rounded-[28px] border border-white/80 bg-[radial-gradient(circle_at_top,rgba(251,114,153,0.14),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.14),transparent_28%),linear-gradient(180deg,#f9fbff_0%,#f4f7ff_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]">
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#fb7299] font-mono">Profile Chamber</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#fb7299] font-mono">画像中枢</p>
                   <p className="mt-1 text-sm font-extrabold text-[#171c22]">能力中枢追踪</p>
                 </div>
                 <div className="rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-right shadow-sm backdrop-blur">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 font-mono">Overall</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 font-mono">综合评分</p>
                   <p className="text-lg font-black text-[#171c22]">{profile.overall_score}</p>
                 </div>
               </div>
@@ -271,7 +276,7 @@ export default function CapabilityModel() {
                   className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex h-22 w-22 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-white/80 bg-white/80 text-center shadow-[0_10px_30px_rgba(148,163,184,0.24)] backdrop-blur-md"
                   style={{ opacity: Math.max(0.45, radarProgress) }}
                 >
-                  <span className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400 font-mono">Core Score</span>
+                  <span className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400 font-mono">核心分数</span>
                   <span className="text-2xl font-black text-[#171c22]">{profile.overall_score}</span>
                   <span className="text-[10px] font-bold text-[#564145]">五维均衡稳定</span>
                 </div>
@@ -293,12 +298,12 @@ export default function CapabilityModel() {
 
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-white/80 bg-white/75 px-3 py-3 shadow-sm backdrop-blur">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 font-mono">Peak Axis</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 font-mono">优势维度</p>
                   <p className="mt-1 text-sm font-extrabold text-[#171c22]">{profile.strongest_axis}</p>
                   <p className="text-[11px] text-[#564145]">当前领先维度。</p>
                 </div>
                 <div className="rounded-2xl border border-white/80 bg-white/75 px-3 py-3 shadow-sm backdrop-blur">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 font-mono">Agent Sync</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 font-mono">联动状态</p>
                   <p className="mt-1 text-sm font-extrabold text-[#171c22]">画像 / 路径 / 测评已联动</p>
                   <p className="text-[11px] text-[#564145]">画像对话已拆到独立页面。</p>
                 </div>
@@ -355,12 +360,12 @@ export default function CapabilityModel() {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-[#f0f4fc]/65 rounded-2xl border border-blue-50 text-xs leading-relaxed">
-            <p className="uppercase tracking-wider font-extrabold text-[#006689] text-[9px] mb-1 font-mono">Current Status</p>
+            <p className="uppercase tracking-wider font-extrabold text-[#006689] text-[9px] mb-1 font-mono">当前状态</p>
             <h4 className="font-bold text-[#171c22] text-sm mb-1.5">能力诊断摘要</h4>
             <p className="text-[#564145]">{profile.diagnosis_summary}</p>
           </div>
           <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-100 text-xs text-[#00516e] leading-relaxed">
-            <p className="uppercase tracking-wider font-extrabold text-emerald-800 text-[9px] mb-1 font-mono">Recommended Actions</p>
+            <p className="uppercase tracking-wider font-extrabold text-emerald-800 text-[9px] mb-1 font-mono">建议操作</p>
             <div className="space-y-2 mt-1.5">
               {profile.recommendations.map((item) => (
                 <p key={item} className="flex items-start gap-1.5 font-sans font-medium text-emerald-950">
@@ -407,6 +412,18 @@ export default function CapabilityModel() {
               </div>
 
               <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Score Breakdown</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.entries(profileDetail.score_breakdown || {}).map(([label, score]) => (
+                    <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4">
+                      <p className="text-xs font-bold text-slate-500">{label}</p>
+                      <p className="mt-1 text-lg font-extrabold text-[#171c22]">{score}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Summary</p>
                 <p className="mt-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4 text-sm leading-6 text-[#564145]">
                   {profileDetail.summary || "暂无画像摘要。"}
@@ -425,6 +442,54 @@ export default function CapabilityModel() {
                   ) : (
                     <span className="text-sm text-slate-500">暂无标签</span>
                   )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Latest Evaluation Diff</p>
+                <div className="mt-2 grid gap-3">
+                  {Object.entries(profileDetail.latest_evaluation_diff || {}).length ? (
+                    Object.entries(profileDetail.latest_evaluation_diff || {}).map(([key, value]) => (
+                      <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 text-sm">
+                        <p className="font-bold text-[#171c22]">{String(value.label || key)}</p>
+                        <p className="mt-1 text-slate-600">
+                          变化后: {Array.isArray(value.after) ? value.after.join("、") : String(value.after ?? "暂无")}
+                        </p>
+                        <p className="text-slate-500">
+                          变化值: {value.delta === null || value.delta === undefined ? "暂无" : String(value.delta)}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                      暂无最近测评影响数据。
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Dimensions</p>
+                <div className="mt-2 grid gap-3">
+                  {profileDetail.dimensions.map((dimension) => (
+                    <div key={dimension.dimension_code} className="rounded-2xl border border-slate-100 bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-extrabold text-[#171c22]">{dimension.dimension_name}</p>
+                        <span className="text-xs font-bold text-slate-400">{dimension.completeness}%</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {dimension.sources?.length ? (
+                          dimension.sources.map((source) => (
+                            <span key={source} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">
+                              {source}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-slate-400">暂无来源</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

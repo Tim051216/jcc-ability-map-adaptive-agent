@@ -136,7 +136,7 @@ export default function Overview() {
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white/90 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#111827] shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
                 <Sparkles className="h-3.5 w-3.5" />
-                Student Portal
+                学习门户
               </span>
               <span className="rounded-full border border-black/[0.06] bg-[#f6f7fb] px-3 py-1 text-[11px] font-bold text-[#6b7280]">
                 已接入课程与资源链路
@@ -241,7 +241,7 @@ export default function Overview() {
         <div className="rounded-[32px] border border-[#E3E8EC] bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">Recent Activity</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">最近动态</p>
               <h2 className="mt-2 text-xl font-extrabold text-[#171c22]">业务链路最近动态</h2>
             </div>
             <BookOpen className="h-5 w-5 text-[#fb7299]" />

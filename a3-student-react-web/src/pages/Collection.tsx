@@ -49,7 +49,7 @@ function inferFormatFromMime(extension?: string | null, mimeType?: string | null
 }
 
 function formatFileSize(fileSize?: number | null) {
-  if (!fileSize || fileSize <= 0) return "Unknown";
+  if (!fileSize || fileSize <= 0) return "未知";
   if (fileSize >= 1024 * 1024) return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
   if (fileSize >= 1024) return `${Math.round(fileSize / 1024)} KB`;
   return `${fileSize} B`;

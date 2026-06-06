@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 try:
     from langchain_openai import ChatOpenAI
-except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency
+except ModuleNotFoundError:  # pragma: no cover
     ChatOpenAI = None
 
 from app.agents.state import LearningAgentState
@@ -26,20 +26,34 @@ EXTRACTION_PROMPT = """你是学习画像信息提取助手。
 6. learning_habit
 
 输出 JSON：
-{{
+{
   "extracted_info": [
-    {{
+    {
       "dimension": "维度代码",
       "info_key": "信息字段",
       "info_value": "信息内容",
       "confidence": 0.0
-    }}
+    }
   ],
   "missing_dimensions": ["未覆盖维度"],
   "completeness": 0
-}}
+}
 
 对话：
+{conversation}
+"""
+
+GUIDE_PROMPT = """你是学习画像追问助手。
+
+请基于学生刚刚的表达，生成一句自然的中文追问，用来继续完善学习画像。
+
+要求：
+1. 只输出一句追问，不要解释。
+2. 问题要紧跟学生刚说过的内容，不要空泛模板化。
+3. 优先补充这些缺失维度：{missing_dimensions}
+4. 语气像真实老师追问。
+
+最近对话：
 {conversation}
 """
 
@@ -54,9 +68,23 @@ ALL_DIMENSIONS = [
 
 
 def _store_extracted_info(state: LearningAgentState, extracted_data: dict[str, Any]) -> None:
-    state["extracted_info"] = extracted_data
-    state["missing_dimensions"] = extracted_data.get("missing_dimensions", ALL_DIMENSIONS)
-    state["completeness"] = int(extracted_data.get("completeness", 0) or 0)
+    raw_completeness = extracted_data.get("completeness", 0)
+    try:
+        completeness_value = float(raw_completeness or 0)
+    except (TypeError, ValueError):
+        completeness_value = 0.0
+    if 0 < completeness_value <= 1:
+        completeness = int(round(completeness_value * 100))
+    else:
+        completeness = int(round(completeness_value))
+
+    normalized_data = {
+        **extracted_data,
+        "completeness": max(0, min(100, completeness)),
+    }
+    state["extracted_info"] = normalized_data
+    state["missing_dimensions"] = normalized_data.get("missing_dimensions", ALL_DIMENSIONS)
+    state["completeness"] = normalized_data["completeness"]
 
 
 def _append_item(
@@ -113,7 +141,7 @@ def _fallback_extract_info(messages: list[str]) -> dict[str, Any]:
                 confidence=0.72,
             )
 
-        if any(token in message for token in ["容易错", "混淆", "不会", "困难", "卡住", "卡在", "薄弱", "调试", "算法题"]):
+        if any(token in message for token in ["容易错", "不太会", "困难", "卡住", "薄弱", "调试", "题型"]):
             _append_item(
                 extracted_items,
                 dimension="error_preference",
@@ -122,7 +150,7 @@ def _fallback_extract_info(messages: list[str]) -> dict[str, Any]:
                 confidence=0.82,
             )
 
-        if any(token in message for token in ["兴趣", "喜欢", "目标", "方向", "想学", "答辩"]):
+        if any(token in message for token in ["兴趣", "喜欢", "目标", "方向", "想学", "想做"]):
             _append_item(
                 extracted_items,
                 dimension="interest_direction",
@@ -157,13 +185,14 @@ async def info_extractor_node(state: LearningAgentState) -> LearningAgentState:
         _store_extracted_info(
             state,
             {
-            "extracted_info": [],
-            "missing_dimensions": ALL_DIMENSIONS,
-            "completeness": 0,
+                "extracted_info": [],
+                "missing_dimensions": ALL_DIMENSIONS,
+                "completeness": 0,
             },
         )
         return state
 
+    fallback_data = _fallback_extract_info(messages)
     if ChatOpenAI is None:
         raise RuntimeError(
             "langchain_openai is required for conversational-profile info extraction"
@@ -187,7 +216,7 @@ async def info_extractor_node(state: LearningAgentState) -> LearningAgentState:
 
     try:
         response = await llm.ainvoke(prompt_messages)
-        content = response.content
+        content = str(response.content or "").strip()
 
         if "```json" in content:
             json_start = content.find("```json") + 7
@@ -209,21 +238,66 @@ async def info_extractor_node(state: LearningAgentState) -> LearningAgentState:
         trace = state.get("execution_trace", [])
         trace.append(f"info_extractor: llm failed - {exc}")
         state["execution_trace"] = trace
-        raise RuntimeError("LLM info extraction failed") from exc
+        _store_extracted_info(state, fallback_data)
 
     return state
 
 
 def generate_guide_question(missing_dimensions: list[str], extracted_info: dict[str, Any]) -> str:
-    del extracted_info
+    extracted_items = extracted_info.get("extracted_info", []) if isinstance(extracted_info, dict) else []
+    context_hint = ""
+    if extracted_items:
+        latest_value = str(extracted_items[-1].get("info_value") or "").strip()
+        if latest_value:
+            context_hint = latest_value[:36]
+
     dimension_questions = {
-        "knowledge_base": "你之前学过哪些相关知识，哪些部分最熟悉？",
-        "cognitive_style": "你更喜欢视频、文字讲解，还是边做边学？",
-        "learning_progress": "你现在的学习进度大概到哪里了？每周能投入多少时间？",
-        "error_preference": "你最容易在哪些知识点或题型上出错？",
-        "interest_direction": "你对哪些主题更感兴趣，当前最想达到什么目标？",
+        "knowledge_base": "我先了解一下你的基础：你之前学过哪些相关知识，哪部分最熟悉？",
+        "cognitive_style": "我想确认你的学习偏好：你更喜欢视频、文字讲解，还是边做边学？",
+        "learning_progress": "你现在大概学到哪里了？每周通常能投入多少时间？",
+        "error_preference": "你最容易卡在哪些知识点或题型上？",
+        "interest_direction": "你对哪些主题更感兴趣，当前最想达成什么目标？",
         "learning_habit": "你通常在什么时间学习，能连续专注多久？",
     }
     if not missing_dimensions:
-        return "我已经收集到不少信息了，你还想补充哪些学习特点？"
-    return dimension_questions.get(missing_dimensions[0], "可以继续说说你的学习习惯和目标。")
+        return "我已经收集到一些关键信息了。你还想补充哪些学习特点、薄弱点或目标？"
+
+    question = dimension_questions.get(missing_dimensions[0], "可以继续说说你的学习习惯和目标。")
+    if context_hint:
+        return f"我记下了你刚提到的“{context_hint}”。{question}"
+    return question
+
+
+async def generate_guide_question_llm(
+    messages: list[str],
+    missing_dimensions: list[str],
+    extracted_info: dict[str, Any],
+) -> str:
+    fallback_question = generate_guide_question(missing_dimensions, extracted_info)
+    if ChatOpenAI is None:
+        return fallback_question
+
+    conversation_text = "\n".join(messages[-4:])
+    missing_text = "、".join(missing_dimensions[:3]) if missing_dimensions else "无明显缺失维度"
+    prompt = GUIDE_PROMPT.format(
+        missing_dimensions=missing_text,
+        conversation=conversation_text,
+    )
+
+    llm = ChatOpenAI(
+        model=settings.llm_model,
+        temperature=0.4,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+    )
+    try:
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content="你负责生成自然的画像追问句。"),
+                HumanMessage(content=prompt),
+            ]
+        )
+        content = str(response.content or "").strip()
+        return content or fallback_question
+    except Exception:
+        return fallback_question

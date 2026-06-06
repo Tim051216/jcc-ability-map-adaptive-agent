@@ -107,7 +107,7 @@ function mapResourceTypeToCategory(resourceType: string) {
 
 function formatFileSize(fileSize?: number | null) {
   if (!fileSize || fileSize <= 0) {
-    return "Unknown";
+    return "未知";
   }
   if (fileSize >= 1024 * 1024) {
     return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
@@ -150,7 +150,7 @@ function mapApiResourcesToUi(items: ResourceCard[], courseId: string): UiResourc
       type: mapFileType(file),
       format: mapMimeToFormat(file),
       size: formatFileSize(file.file_size),
-      uploadedDate: "Latest",
+      uploadedDate: "最新",
       excerpt: file.preview_text || item.summary,
       previewUrl: file.preview_url || file.preview_text || item.content_markdown,
       studyAdvice: item.study_suggestion || undefined,
@@ -164,7 +164,7 @@ function mapApiResourcesToUi(items: ResourceCard[], courseId: string): UiResourc
         type: "text",
         format: "Plain Text Document",
         size: "Generated",
-        uploadedDate: "Latest",
+        uploadedDate: "最新",
         excerpt: item.summary,
         previewUrl: item.content_markdown,
         studyAdvice: item.study_suggestion || undefined,
@@ -178,7 +178,7 @@ function mapApiResourcesToUi(items: ResourceCard[], courseId: string): UiResourc
       title: item.title,
       category: mapResourceTypeToCategory(item.resource_type),
       uploader: "A3 Resource Engine",
-      updatedAt: "Latest",
+      updatedAt: "最新",
       downloads: 0,
       files,
       summary: item.summary,
@@ -335,7 +335,7 @@ export default function ResourceCenter() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-[#F1F2F3] px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#564145]/70">Current Course</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#564145]/70">当前课程</p>
           <p className="mt-1 text-sm font-extrabold text-[#171c22]">软件工程与实践（第4版）</p>
         </div>
       </section>
