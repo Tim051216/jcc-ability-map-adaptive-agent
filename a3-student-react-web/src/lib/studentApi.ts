@@ -150,6 +150,10 @@ export interface PlanResourcePush {
   title: string;
   reason: string;
   status: string;
+  resource_id?: number | null;
+  resource_title?: string | null;
+  source_file_id?: number | null;
+  open_url?: string | null;
 }
 
 export interface LearningPlanStage {
@@ -172,6 +176,9 @@ export interface LearningPlanStep {
   checkpoint?: string | null;
   stage_no: number;
   stage_name?: string | null;
+  chapter_id?: number | null;
+  chapter_name?: string | null;
+  section_id?: number | null;
   node_type: string;
   status: string;
   duration_minutes: number;
@@ -179,6 +186,9 @@ export interface LearningPlanStep {
   knowledge_points: string[];
   recommended_resource_types: string[];
   resource_pushes: PlanResourcePush[];
+  resource_ids?: number[];
+  resource_titles?: string[];
+  path_reason?: string | null;
 }
 
 export interface LearningPlanResponse {
@@ -188,11 +198,14 @@ export interface LearningPlanResponse {
   course_id?: number | null;
   course_name: string;
   summary: string;
+  profile_summary?: string | null;
   progress_hint: string;
   next_action: string;
   risk_alerts: string[];
   path_mode: string;
   current_stage?: string | null;
+  recommended_learning_style?: string | null;
+  available_resource_types?: string[];
   completion_rate: number;
   dynamic_adjustments: string[];
   recommended_checkpoints: string[];

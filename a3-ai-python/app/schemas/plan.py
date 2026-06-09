@@ -17,6 +17,10 @@ class PlanResourcePush(BaseModel):
     title: str
     reason: str
     status: str = "pending"
+    resource_id: int | None = None
+    resource_title: str | None = None
+    source_file_id: int | None = None
+    open_url: str | None = None
 
 
 class LearningPlanStage(BaseModel):
@@ -39,6 +43,9 @@ class LearningPlanStep(BaseModel):
     checkpoint: str | None = None
     stage_no: int = 1
     stage_name: str | None = None
+    chapter_id: int | None = None
+    chapter_name: str | None = None
+    section_id: int | None = None
     node_type: str = "study_task"
     status: str = "pending"
     duration_minutes: int = 45
@@ -46,6 +53,9 @@ class LearningPlanStep(BaseModel):
     knowledge_points: list[str] = Field(default_factory=list)
     recommended_resource_types: list[str] = Field(default_factory=list)
     resource_pushes: list[PlanResourcePush] = Field(default_factory=list)
+    resource_ids: list[int] = Field(default_factory=list)
+    resource_titles: list[str] = Field(default_factory=list)
+    path_reason: str | None = None
 
 
 class LearningPlanResponse(BaseModel):
@@ -55,11 +65,14 @@ class LearningPlanResponse(BaseModel):
     course_id: int | None = None
     course_name: str
     summary: str
+    profile_summary: str | None = None
     progress_hint: str
     next_action: str
     risk_alerts: list[str] = Field(default_factory=list)
     path_mode: str = "laddered"
     current_stage: str | None = None
+    recommended_learning_style: str | None = None
+    available_resource_types: list[str] = Field(default_factory=list)
     completion_rate: float = 0.0
     dynamic_adjustments: list[str] = Field(default_factory=list)
     recommended_checkpoints: list[str] = Field(default_factory=list)

@@ -65,18 +65,40 @@ def test_generate_plan_returns_payload(monkeypatch) -> None:
     assert response.json()["plan_id"] == 11
 
 
-def test_get_latest_plan_returns_404_when_service_returns_none(monkeypatch) -> None:
+def test_get_latest_plan_generates_when_service_returns_none(monkeypatch) -> None:
     async def fake_get_latest_plan(self, *, user_id: int, course_code: str):
         assert user_id == 1001
         assert course_code == "JAVA-CORE"
         return None
 
+    async def fake_generate_plan(self, request):
+        assert request.user_id == 1001
+        assert request.course_code == "JAVA-CORE"
+        return {
+            "plan_id": 21,
+            "user_id": 1001,
+            "course_code": "JAVA-CORE",
+            "course_name": "Java Core",
+            "summary": "fallback generated",
+            "progress_hint": "start now",
+            "next_action": "open chapter 1",
+            "risk_alerts": [],
+            "path_mode": "profile_resource_path",
+            "current_stage": "基础导入",
+            "completion_rate": 0.0,
+            "dynamic_adjustments": [],
+            "recommended_checkpoints": [],
+            "stages": [],
+            "steps": [],
+        }
+
     monkeypatch.setattr(PlanService, "get_latest_plan", fake_get_latest_plan)
+    monkeypatch.setattr(PlanService, "generate_plan", fake_generate_plan)
 
     response = client.get("/api/v1/plan/latest", params={"user_id": 1001, "course_code": "JAVA-CORE"})
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "learning plan not found"
+    assert response.status_code == 200
+    assert response.json()["plan_id"] == 21
 
 
 def test_get_plan_returns_404_when_service_returns_none(monkeypatch) -> None:
@@ -215,8 +237,16 @@ def test_get_plan_progress_returns_payload(monkeypatch) -> None:
 
 
 def test_list_resources_passes_filters(monkeypatch) -> None:
-    async def fake_list_resources(self, *, user_id: int, course_code: str | None = None, resource_type: str | None = None):
+    async def fake_list_resources(
+        self,
+        *,
+        user_id: int,
+        course_id: int | None = None,
+        course_code: str | None = None,
+        resource_type: str | None = None,
+    ):
         assert user_id == 1001
+        assert course_id is None
         assert course_code == "JAVA-CORE"
         assert resource_type == "quiz_set"
         return {
@@ -272,8 +302,16 @@ def test_list_favorites_returns_payload(monkeypatch) -> None:
 
 
 def test_list_archived_resources_returns_payload(monkeypatch) -> None:
-    async def fake_list_archived_resources(self, *, user_id: int, course_code: str | None = None, resource_type: str | None = None):
+    async def fake_list_archived_resources(
+        self,
+        *,
+        user_id: int,
+        course_id: int | None = None,
+        course_code: str | None = None,
+        resource_type: str | None = None,
+    ):
         assert user_id == 1001
+        assert course_id is None
         assert course_code == "JAVA-CORE"
         assert resource_type == "quiz_set"
         return {

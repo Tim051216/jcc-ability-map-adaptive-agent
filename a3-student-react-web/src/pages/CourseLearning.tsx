@@ -26,6 +26,7 @@ import {
   studentApi,
   type CourseCommentItem,
   type LearningCourseDetail,
+  type LearningPlanResponse,
   type ResourceCard,
   type ResourceSourceFileRef,
   type VideoDanmakuItem,
@@ -161,6 +162,7 @@ export default function CourseLearning() {
   const emittedDanmakuIdsRef = useRef<Set<number>>(new Set());
 
   const [course, setCourse] = useState<LearningCourseDetail | null>(null);
+  const [latestPlan, setLatestPlan] = useState<LearningPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
@@ -189,6 +191,16 @@ export default function CourseLearning() {
     [activeSectionId, sections],
   );
 
+  const currentPlanStep = useMemo(() => {
+    if (!latestPlan) return null;
+    return (
+      latestPlan.steps.find((step) => step.section_id === activeSectionId) ||
+      latestPlan.steps.find((step) => step.status === "in_progress") ||
+      latestPlan.steps[0] ||
+      null
+    );
+  }, [activeSectionId, latestPlan]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 2800);
@@ -201,12 +213,21 @@ export default function CourseLearning() {
       setLoading(true);
       setError(null);
       try {
-        const detail = await studentApi.getLearningCourseDetail(courseId);
+        const [detail, plan] = await Promise.all([
+          studentApi.getLearningCourseDetail(courseId),
+          studentApi.getLatestLearningPlan(1001, courseId).catch(() => null),
+        ]);
         if (cancelled) return;
         setCourse(detail);
+        setLatestPlan(plan);
         const detailSections = detail.chapters.flatMap((chapter) => chapter.sections);
+        const planSectionId =
+          plan?.steps.find((step) => step.status === "in_progress")?.section_id ||
+          plan?.steps[0]?.section_id ||
+          null;
         const resolvedSectionId =
           detailSections.find((section) => section.id === sectionIdFromUrl)?.id ||
+          detailSections.find((section) => section.id === planSectionId)?.id ||
           detail.latest_section_id ||
           detail.chapters[0]?.sections[0]?.id ||
           null;
