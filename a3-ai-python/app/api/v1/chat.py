@@ -3,9 +3,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session
+from app.api.deps import get_current_user_id
 from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
+    ImMessageListResponse,
+    ImMessageResponse,
+    ImSendMessageRequest,
+    ImSessionCreateRequest,
+    ImSessionListResponse,
+    ImSessionSummaryResponse,
     ChatTaskStatusResponse,
     ChatTaskSubmitResponse,
     ChatTaskHistoryResponse,
@@ -19,6 +26,7 @@ from app.schemas.chat import (
     ChatTicketStatusRequest,
 )
 from app.services.chat_service import ChatService
+from app.services.im_service import ImService
 from app.services.chat_task_service import ChatTaskService
 from app.services.chat_task_summary_service import ChatTaskSummaryService
 from app.services.chat_ticket_service import ChatTicketService
@@ -31,6 +39,42 @@ router = APIRouter()
 async def chat(request: ChatRequest) -> ChatResponse:
     service = ChatService()
     return await service.chat(request)
+
+
+@router.get("/sessions", response_model=ImSessionListResponse)
+async def list_im_sessions(
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> ImSessionListResponse:
+    return await ImService(db).list_sessions(user_id)
+
+
+@router.post("/sessions", response_model=ImSessionSummaryResponse)
+async def create_im_session(
+    request: ImSessionCreateRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> ImSessionSummaryResponse:
+    return await ImService(db).create_session(user_id, request)
+
+
+@router.get("/sessions/{session_id}/messages", response_model=ImMessageListResponse)
+async def list_im_messages(
+    session_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> ImMessageListResponse:
+    return await ImService(db).list_messages(user_id, session_id)
+
+
+@router.post("/sessions/{session_id}/messages", response_model=ImMessageResponse)
+async def send_im_message(
+    session_id: int,
+    request: ImSendMessageRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db_session),
+) -> ImMessageResponse:
+    return await ImService(db).send_message(user_id, session_id, request)
 
 
 @router.post("/tasks", response_model=ChatTaskSubmitResponse)
