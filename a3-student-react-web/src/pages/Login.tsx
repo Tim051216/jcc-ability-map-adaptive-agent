@@ -37,16 +37,15 @@ const LOGIN_HIGHLIGHTS = [
 ];
 const LOGIN_POSTER_TAGS = ["画像", "测评", "规划", "资源", "答疑"];
 const LOGIN_LOOP_STEPS = [
-  { label: "画像", detail: "抽取专业、目标与薄弱点" },
-  { label: "测评", detail: "定位知识盲区" },
-  { label: "规划", detail: "生成下一步学习路径" },
-  { label: "资源", detail: "补齐讲义、导图、练习" },
-  { label: "答疑", detail: "结合课程资料持续追问" },
+  { label: "画像智能体", detail: "抽取专业、目标与薄弱点", status: "在线" },
+  { label: "测评智能体", detail: "定位知识盲区与掌握断层", status: "联动中" },
+  { label: "规划智能体", detail: "生成下一步学习路径", status: "在线" },
+  { label: "资源智能体", detail: "补齐讲义、导图、练习", status: "在线" },
 ];
 const LOGIN_POSTER_METRICS = [
-  { label: "画像维度", value: "6+" },
-  { label: "资源类型", value: "5+" },
-  { label: "闭环节点", value: "实时" },
+  { label: "画像维度", value: "6+", note: "动态更新" },
+  { label: "资源类型", value: "5+", note: "按任务补齐" },
+  { label: "闭环状态", value: "实时", note: "节点持续联动" },
 ];
 const BRAND_NAME = "BiliLearn";
 
@@ -428,6 +427,47 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 style={{ animation: "loginPosterSweep 8.5s ease-in-out infinite", transform: `translate3d(${posterParallax.x * 0.2}px, 0, 0)` }}
               />
               <div className="absolute inset-y-0 left-[-28%] w-[36%] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.10),transparent)]" style={{ animation: "loginSpotlightSweep 6.8s ease-in-out infinite 0.8s" }} />
+              <div className="absolute left-[62%] top-[8%] z-20 flex w-[252px] -translate-x-1/2 flex-col items-center justify-start gap-2 xl:left-[61%] xl:top-[7%] xl:w-[286px] xl:gap-3">
+                <div
+                  className={`ml-12 w-[126px] transition-all duration-[1400ms] ease-[cubic-bezier(0.22,1,0.36,1)] xl:ml-16 xl:w-[142px] ${
+                    introReady ? "opacity-95 translate-x-0 translate-y-0 rotate-0" : "opacity-0 translate-x-20 -translate-y-10 rotate-12"
+                  }`}
+                >
+                  <div
+                    className="overflow-hidden rounded-[32px] border border-white/80 bg-white/68 shadow-[0_24px_52px_rgba(15,23,42,0.12)] backdrop-blur-md transition-transform duration-300 ease-out"
+                    style={{
+                      animation: "loginPosterCardFloatA 10s ease-in-out infinite",
+                      transform: `translate3d(${posterParallax.x * -0.12}px, ${posterParallax.y * -0.08}px, 0) rotate(-6deg) scale(0.9)`,
+                    }}
+                  >
+                    <img src={assetHaibaraAcademic} alt="灰原哀" className="h-[148px] w-full object-cover object-top grayscale-[0.03] xl:h-[166px]" decoding="async" referrerPolicy="no-referrer" />
+                    <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.96))] p-4 ui-ui-text-ink">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] ui-text-subtle">Research Copilot</div>
+                      <div className="mt-1 text-[20px] font-black tracking-[-0.05em]">灰原哀</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className={`w-[198px] transition-all duration-[1500ms] ease-[cubic-bezier(0.22,1,0.36,1)] xl:w-[224px] ${
+                    introReady ? "opacity-100 translate-x-0 translate-y-0 rotate-0" : "opacity-0 translate-x-28 translate-y-20 rotate-12"
+                  }`}
+                >
+                  <div
+                    className="overflow-hidden rounded-[42px] border border-white/75 bg-white/52 shadow-[0_34px_78px_rgba(15,23,42,0.12)] backdrop-blur-md transition-transform duration-300 ease-out"
+                    style={{
+                      animation: "loginPosterCardFloatB 11s ease-in-out infinite",
+                      transform: `translate3d(${posterParallax.x * 0.18}px, ${posterParallax.y * -0.14}px, 0) rotate(2deg)`,
+                    }}
+                  >
+                    <img src={assetUsagiStudy} alt="乌萨奇" className="h-[236px] w-full object-cover object-center xl:h-[268px]" decoding="async" referrerPolicy="no-referrer" />
+                    <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.96))] p-5 ui-ui-text-ink">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] ui-text-subtle">Energy Partner</div>
+                      <div className="mt-1 text-[28px] font-black tracking-[-0.06em] xl:text-[30px]">乌萨奇</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div className="relative flex h-full flex-col justify-between">
                 <div className="flex items-start justify-between gap-6">
                   <div>
@@ -449,7 +489,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   </div>
                 </div>
 
-                <div className="relative mt-3 min-h-[300px] flex-1 xl:min-h-[330px]">
+                <div className="relative mt-3 min-h-[340px] flex-1 overflow-visible xl:min-h-[370px]">
                   <div className="absolute left-[62%] top-[10%] h-[430px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.55)_0%,rgba(251,114,153,0.10)_42%,rgba(125,211,252,0.08)_66%,transparent_78%)] blur-3xl" />
                   <div className="absolute left-[60%] top-[45%] h-[2px] w-[460px] -translate-x-1/2 overflow-hidden rounded-full bg-[#cbd5e1]/40">
                     <div className="h-full w-[58%] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.8),rgba(251,114,153,0.45),rgba(125,211,252,0.40),transparent)]" style={{ animation: "loginEnergyStream 5.6s ease-in-out infinite" }} />
@@ -457,80 +497,56 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   <div className="absolute left-[60%] top-[42%] h-24 w-24 -translate-x-1/2 rounded-full border border-white/70 bg-white/45 shadow-[0_0_40px_rgba(255,255,255,0.35)] backdrop-blur-sm" />
 
                   <div
-                    className="absolute left-[36%] top-[4%] z-[1] w-[330px] -translate-x-1/2 rounded-[34px] border border-white/75 bg-white/46 p-3.5 shadow-[0_28px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl transition-transform duration-300 ease-out xl:w-[374px]"
+                    className="absolute left-[36%] top-[4%] z-[1] w-[330px] -translate-x-1/2 rounded-[34px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(255,255,255,0.56))] p-3.5 shadow-[0_28px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl transition-transform duration-300 ease-out xl:w-[374px]"
                     style={{ transform: `translate3d(calc(-50% + ${posterParallax.x * 0.18}px), ${posterParallax.y * 0.12}px, 0)` }}
                   >
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,rgba(251,114,153,0),rgba(251,114,153,0.9),rgba(125,211,252,0.8),rgba(251,114,153,0))]" />
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#94a3b8]">Learning Runtime</div>
-                        <div className="mt-1 text-[18px] font-black tracking-[-0.05em] text-[#111827]">智能学习闭环驾驶舱</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#94a3b8]">Loop Orchestrator</div>
+                        <div className="mt-1 text-[18px] font-black tracking-[-0.05em] text-[#111827]">学习闭环编排中枢</div>
+                        <div className="mt-1 text-[11px] leading-5 text-[#667085]">登录后会自动接管画像、测评、规划与资源生成，把你的下一步动作直接串起来。</div>
                       </div>
                       <div className="rounded-full border border-white/80 bg-[#111827] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]">
-                        Live
+                        LIVE
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-2">
                       {LOGIN_POSTER_METRICS.map((item) => (
-                        <div key={item.label} className="rounded-2xl border border-white/80 bg-white/68 px-3 py-2 shadow-sm">
+                        <div key={item.label} className="rounded-2xl border border-white/80 bg-white/72 px-3 py-2.5 shadow-sm">
                           <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#94a3b8]">{item.label}</div>
                           <div className="mt-1 text-[18px] font-black tracking-[-0.06em] text-[#111827]">{item.value}</div>
+                          <div className="mt-1 text-[10px] font-semibold text-[#7c8a9a]">{item.note}</div>
                         </div>
                       ))}
                     </div>
-                    <div className="mt-3 space-y-1.5">
-                      {LOGIN_LOOP_STEPS.slice(0, 4).map((step, index) => (
-                        <div key={step.label} className="flex items-center gap-3 rounded-2xl border border-white/70 bg-white/56 px-3 py-2 shadow-sm">
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#fb7185,#7dd3fc)] text-[10px] font-black text-white shadow-[0_8px_18px_rgba(251,113,133,0.20)]">
-                            {index + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[12px] font-black text-[#111827]">{step.label}智能体</div>
-                            <div className="truncate text-[10px] text-[#667085]">{step.detail}</div>
-                          </div>
-                          <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]" />
+                    <div className="mt-3 rounded-[24px] border border-white/78 bg-white/62 p-2.5 shadow-sm">
+                      <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94a3b8]">Core Agent Chain</div>
+                        <div className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                          4 Nodes Online
                         </div>
-                      ))}
+                      </div>
+                      <div className="space-y-2">
+                        {LOGIN_LOOP_STEPS.map((step, index) => (
+                          <div key={step.label} className="flex items-center gap-3 rounded-2xl border border-white/74 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(248,251,255,0.72))] px-3 py-2.5 shadow-sm">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#fb7185,#7dd3fc)] text-[10px] font-black text-white shadow-[0_8px_18px_rgba(251,113,133,0.20)]">
+                              {index + 1}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="text-[12px] font-black text-[#111827]">{step.label}</div>
+                                <span className="rounded-full bg-[#f3f8fb] px-2 py-0.5 text-[9px] font-black text-[#54738a]">{step.status}</span>
+                              </div>
+                              <div className="truncate text-[10px] text-[#667085]">{step.detail}</div>
+                            </div>
+                            <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.95)]" />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
-                  <div
-                    className={`absolute right-[8%] top-[-2%] z-20 w-[138px] transition-all duration-[1400ms] ease-[cubic-bezier(0.22,1,0.36,1)] xl:right-[9%] xl:w-[154px] ${
-                      introReady ? "opacity-95 translate-x-0 translate-y-0 rotate-0" : "opacity-0 translate-x-20 -translate-y-10 rotate-12"
-                    }`}
-                  >
-                    <div
-                      className="overflow-hidden rounded-[32px] border border-white/80 bg-white/68 shadow-[0_24px_52px_rgba(15,23,42,0.12)] backdrop-blur-md transition-transform duration-300 ease-out"
-                      style={{
-                        animation: "loginPosterCardFloatA 10s ease-in-out infinite",
-                        transform: `translate3d(${posterParallax.x * -0.22}px, ${posterParallax.y * -0.18}px, 0) rotate(-5deg) scale(0.92)`,
-                      }}
-                    >
-                      <img src={assetHaibaraAcademic} alt="灰原哀" className="h-[170px] w-full object-cover object-top grayscale-[0.03] xl:h-[190px]" decoding="async" referrerPolicy="no-referrer" />
-                      <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.96))] p-5 ui-ui-text-ink">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] ui-text-subtle">Research Copilot</div>
-                        <div className="mt-1 text-[22px] font-black tracking-[-0.05em]">灰原哀</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className={`absolute bottom-[-5%] right-[3%] z-10 w-[232px] transition-all duration-[1500ms] ease-[cubic-bezier(0.22,1,0.36,1)] xl:w-[274px] ${
-                      introReady ? "opacity-100 translate-x-0 translate-y-0 rotate-0" : "opacity-0 translate-x-28 translate-y-20 rotate-12"
-                    }`}
-                  >
-                    <div
-                      className="overflow-hidden rounded-[42px] border border-white/75 bg-white/52 shadow-[0_34px_78px_rgba(15,23,42,0.12)] backdrop-blur-md transition-transform duration-300 ease-out"
-                      style={{
-                        animation: "loginPosterCardFloatB 11s ease-in-out infinite",
-                        transform: `translate3d(${posterParallax.x * 0.5}px, ${posterParallax.y * -0.32}px, 0) rotate(5deg)`,
-                      }}
-                    >
-                      <img src={assetUsagiStudy} alt="乌萨奇" className="h-[300px] w-full object-cover object-top xl:h-[345px]" decoding="async" referrerPolicy="no-referrer" />
-                      <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.96))] p-5 ui-ui-text-ink">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] ui-text-subtle">Energy Partner</div>
-                        <div className="mt-1 text-[34px] font-black tracking-[-0.06em]">乌萨奇</div>
-                      </div>
-                    </div>
-                  </div>
                   <div className="absolute left-0 top-[34%] rounded-full border border-white/80 bg-white/76 px-4 py-2 text-[11px] font-black uppercase ui-ui-tracking-brand ui-text-secondary backdrop-blur-sm">
                     {BRAND_NAME} Entry
                   </div>
