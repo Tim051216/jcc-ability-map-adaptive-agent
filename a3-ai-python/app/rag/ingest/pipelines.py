@@ -1,7 +1,7 @@
 from sqlalchemy import delete, select
 
 from app.db.models.knowledge_document import KnowledgeChunk, KnowledgeDocument
-from app.db.session import async_session_factory
+from app.db.session import ai_data_session_factory, ensure_sqlite_schema
 from app.rag.ingest.loaders import CourseKnowledgeLoader
 from app.rag.ingest.splitters import split_course_payload
 from app.rag.retrieve.vector_store import MilvusVectorStore
@@ -31,7 +31,9 @@ class KnowledgeIngestPipeline:
                 "message": "课程详情为空，暂时无法生成知识切片。",
             }
 
-        async with async_session_factory() as session:
+        await ensure_sqlite_schema()
+
+        async with ai_data_session_factory() as session:
             existing_document_ids = list(
                 (
                     await session.execute(
@@ -50,7 +52,7 @@ class KnowledgeIngestPipeline:
                 )
             await session.commit()
 
-        async with async_session_factory() as session:
+        async with ai_data_session_factory() as session:
             document = KnowledgeDocument(
                 course_code=course_code,
                 title=course.title or f"课程-{course_code}",

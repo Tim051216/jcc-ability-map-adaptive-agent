@@ -13,6 +13,7 @@ from app.agents.nodes.evaluation import (
 )
 from app.agents.state import LearningAgentState
 from app.core.logging import logger
+from app.services.guardrail_service import GuardrailContext, GuardrailService, GuardrailViolationError
 from app.db.models import (
     EvaluationAnswerRecord,
     EvaluationKnowledgeMastery,
@@ -42,6 +43,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class EvaluationAgentService:
     """评估智能体服务"""
 
+    def __init__(self) -> None:
+        self.guardrail_service = GuardrailService()
+
     async def generate_questions(
         self, request: QuestionGenerateRequest
     ) -> QuestionGenerateResponse:
@@ -50,6 +54,15 @@ class EvaluationAgentService:
         调用题目生成智能体
         """
         try:
+            guardrail_context = GuardrailContext(
+                scene="evaluation_question_generation",
+                course_id=request.test_id,
+            )
+            input_review = await self.guardrail_service.assert_safe_input(
+                "\n".join([request.course_context or "", *request.knowledge_points]),
+                context=guardrail_context,
+            )
+
             # 构建智能体状态
             state: LearningAgentState = {
                 "knowledge_points": request.knowledge_points,
@@ -67,6 +80,12 @@ class EvaluationAgentService:
             # 提取生成的题目
             generated_questions = result_state.get("generated_questions", [])
             layered_questions = result_state.get("layered_questions")
+            fallback_count = int(result_state.get("fallback_count", 0) or 0)
+            fallback_knowledge_points = [
+                str(item).strip()
+                for item in (result_state.get("fallback_knowledge_points", []) or [])
+                if str(item).strip()
+            ]
 
             # 转换为响应格式
             questions = [
@@ -79,6 +98,26 @@ class EvaluationAgentService:
                     level: [GeneratedQuestion(**q) for q in qs]
                     for level, qs in layered_questions.items()
                 }
+
+            review = await self.guardrail_service.review_output(
+                "\n".join(
+                    [
+                        q.get("question_content", "")
+                        + " "
+                        + q.get("answer_analysis", "")
+                        + " "
+                        + q.get("knowledge_point", "")
+                        for q in generated_questions
+                    ]
+                ),
+                context=guardrail_context,
+                citations=request.knowledge_points,
+            )
+
+            if review.output_review and review.output_review.blocked:
+                generated_questions = []
+                questions = []
+                layered_response = None
 
             if request.persist_to_db:
                 async with get_db() as db:
@@ -97,8 +136,29 @@ class EvaluationAgentService:
                 questions=questions,
                 layered_questions=layered_response,
                 total_count=len(questions),
+                fallback_count=fallback_count,
+                fallback_knowledge_points=fallback_knowledge_points,
+                safety_review={
+                    "input_review": input_review.model_dump(mode="json"),
+                    "output_review": review.output_review.model_dump(mode="json") if review.output_review else None,
+                },
+                hallucination_review=review.hallucination_review.model_dump(mode="json")
+                if review.hallucination_review
+                else None,
             )
 
+        except GuardrailViolationError as exc:
+            logger.warning("question_generation_blocked", detail=str(exc))
+            return QuestionGenerateResponse(
+                test_id=request.test_id,
+                questions=[],
+                layered_questions=None,
+                total_count=0,
+                fallback_count=0,
+                fallback_knowledge_points=[],
+                safety_review={"input_review": exc.review.model_dump(mode="json")},
+                hallucination_review=None,
+            )
         except Exception as e:
             logger.error(f"题目生成失败: {e}")
             raise

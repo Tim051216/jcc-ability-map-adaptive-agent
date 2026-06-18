@@ -1,0 +1,119 @@
+name: AI Learning And Tutor Checks
+
+on:
+  pull_request:
+    paths:
+      - "a3-ai-python/app/api/v1/learning.py"
+      - "a3-ai-python/app/api/v1/tutoring.py"
+      - "a3-ai-python/app/db/models/personalized_learning_state.py"
+      - "a3-ai-python/app/db/repositories/personalized_learning_state_repository.py"
+      - "a3-ai-python/app/schemas/learning.py"
+      - "a3-ai-python/app/schemas/tutoring.py"
+      - "a3-ai-python/app/services/learning_service.py"
+      - "a3-ai-python/app/services/tutoring_image_storage.py"
+      - "a3-ai-python/app/tests/test_tutoring_attachment_extraction.py"
+      - "a3-student-react-web/package.json"
+      - "a3-student-react-web/README.md"
+      - "a3-student-react-web/scripts/smoke-ai-tutor-upload.ts"
+      - "a3-student-react-web/scripts/smoke-ai-tutor-multiformat.ts"
+      - "a3-student-react-web/scripts/smoke-ai-tutor-capture.ts"
+      - "a3-student-react-web/src/lib/studentApi.ts"
+      - "a3-student-react-web/src/pages/AITutor.tsx"
+      - "a3-student-react-web/src/pages/CapabilityModel.tsx"
+      - "a3-student-react-web/src/pages/CourseLearning.tsx"
+      - "a3-student-react-web/src/pages/LearningPath.tsx"
+      - ".github/workflows/ai-learning-and-tutor-checks.yml"
+      - "AI_PERSONALIZED_LEARNING_AND_TUTOR_LOCATIONS.md"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Target student web URL, such as https://demo.example.com"
+        required: true
+        default: "http://127.0.0.1:3002"
+      login_id:
+        description: "Student account id used by AI Tutor smoke checks"
+        required: true
+        default: "demo2024"
+      login_password:
+        description: "Student account password used by AI Tutor smoke checks"
+        required: true
+        default: "bililearn"
+
+jobs:
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: a3-student-react-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: a3-student-react-web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+  tutoring-extraction-tests:
+    name: Tutoring Extraction Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: a3-ai-python
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install python-docx openpyxl
+
+      - name: Run tutoring extraction tests
+        run: pytest app/tests/test_tutoring_attachment_extraction.py
+
+  ai-tutor-smoke:
+    name: AI Tutor Smoke
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: a3-student-react-web
+    env:
+      AI_TUTOR_BASE_URL: ${{ inputs.base_url }}
+      AI_TUTOR_LOGIN_ID: ${{ inputs.login_id }}
+      AI_TUTOR_LOGIN_PASSWORD: ${{ inputs.login_password }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: a3-student-react-web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run AI Tutor smoke suite
+        run: npm run smoke:ai-tutor

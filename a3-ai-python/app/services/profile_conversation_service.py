@@ -12,19 +12,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.nodes.profile_conversation.conversation_graph import (
-    profile_conversation_graph,
-)
-from app.agents.nodes.profile_conversation.conversation_state import (
-    ProfileConversationState,
-)
-from app.agents.nodes.profile_conversation.info_extractor_agent import (
-    generate_guide_question,
-)
-from app.agents.nodes.profile_conversation.profile_builder_agent import (
-    calculate_profile_completeness,
-    generate_profile_tags,
-)
 from app.db.models.profile_conversation import (
     ConversationMessageModel,
     ConversationSessionModel,
@@ -46,6 +33,31 @@ from app.schemas.profile_conversation import (
     ProfileUpdateResult,
     StudentProfileDetail,
 )
+
+
+def _get_profile_conversation_graph():
+    from app.agents.nodes.profile_conversation.conversation_graph import (
+        profile_conversation_graph,
+    )
+
+    return profile_conversation_graph
+
+
+def _get_guide_question_generator():
+    from app.agents.nodes.profile_conversation.info_extractor_agent import (
+        generate_guide_question,
+    )
+
+    return generate_guide_question
+
+
+def _get_profile_builder_helpers():
+    from app.agents.nodes.profile_conversation.profile_builder_agent import (
+        calculate_profile_completeness,
+        generate_profile_tags,
+    )
+
+    return calculate_profile_completeness, generate_profile_tags
 
 
 class ProfileConversationService:
@@ -180,7 +192,7 @@ class ProfileConversationService:
         message_contents = [msg.content for msg in messages if msg.role == "user"]
 
         # 调用智能体进行信息提取
-        state: ProfileConversationState = {
+        state: dict[str, Any] = {
             "user_id": session.user_id,
             "session_id": session_id,
             "messages": message_contents,
@@ -191,7 +203,7 @@ class ProfileConversationService:
         }
 
         # 执行智能体图
-        result_state = await profile_conversation_graph.ainvoke(state)
+        result_state = await _get_profile_conversation_graph().ainvoke(state)
 
         # 提取结果
         extracted_info = result_state.get("extracted_info", {})
@@ -217,7 +229,7 @@ class ProfileConversationService:
         await self.db.commit()
 
         # 生成引导问题
-        guide_question_text = generate_guide_question(missing_dimensions, extracted_info)
+        guide_question_text = _get_guide_question_generator()(missing_dimensions, extracted_info)
         
         # 创建助手回复消息
         assistant_msg = ConversationMessageModel(
@@ -307,7 +319,7 @@ class ProfileConversationService:
         message_contents = [msg.content for msg in messages if msg.role == "user"]
 
         # 调用 LangGraph 编排的画像构建链路
-        state: ProfileConversationState = {
+        state: dict[str, Any] = {
             "user_id": session.user_id,
             "session_id": session_id,
             "messages": message_contents,
@@ -317,7 +329,7 @@ class ProfileConversationService:
             "execution_trace": [],
         }
 
-        result_state = await profile_conversation_graph.ainvoke(state)
+        result_state = await _get_profile_conversation_graph().ainvoke(state)
 
         built_profile = result_state.get("built_profile", {})
 
@@ -776,16 +788,67 @@ class ProfileConversationService:
         # 当前学习阶段
         current_stage = self._determine_current_stage(profile)
 
+        # 稳定学习画像编码
+        sbti_code = self._determine_sbti_code(
+            tags=profile.tags or [],
+            key_features=key_features,
+            recommended_style=recommended_style,
+            current_stage=current_stage,
+            dimension_completeness=dimension_completeness,
+        )
+
         return ProfileSummary(
             profile_id=profile.id,
             user_id=profile.user_id,
             completeness=profile.completeness,
+            sbti_code=sbti_code,
             tags=profile.tags or [],
             key_features=key_features,
             dimension_completeness=dimension_completeness,
             recommended_learning_style=recommended_style,
             current_stage=current_stage,
         )
+
+    def _determine_sbti_code(
+        self,
+        *,
+        tags: list[str],
+        key_features: str | None,
+        recommended_style: str | None,
+        current_stage: str | None,
+        dimension_completeness: dict[str, int],
+    ) -> str:
+        stable_signals = " ".join(
+            [
+                *(tags or []),
+                key_features or "",
+                recommended_style or "",
+                current_stage or "",
+            ]
+        ).lower()
+
+        def _count(*patterns: str) -> int:
+            return sum(1 for pattern in patterns if pattern and pattern in stable_signals)
+
+        scores = {
+            "SPTA": _count("结构", "拆解", "规划", "步骤", "实践", "实操", "项目", "验证", "稳定", "持续", "推进")
+            + (1 if dimension_completeness.get("learning_habit", 0) >= 70 else 0)
+            + (1 if dimension_completeness.get("learning_progress", 0) >= 70 else 0),
+            "STCA": _count("原理", "理论", "概念", "推导", "框架", "体系", "图谱", "讲义", "笔记", "梳理")
+            + (1 if dimension_completeness.get("knowledge_base", 0) >= 70 else 0)
+            + (1 if dimension_completeness.get("cognitive_style", 0) >= 70 else 0),
+            "ETFI": _count("反馈", "复盘", "纠错", "测评", "试错", "调整", "迭代", "修正", "提问", "答疑", "互动", "探索")
+            + (1 if dimension_completeness.get("error_preference", 0) >= 70 else 0),
+            "SPCI": _count("主线", "节奏", "持续", "推进", "巩固", "积累", "跟进", "提升")
+            + (1 if dimension_completeness.get("learning_habit", 0) >= 60 else 0),
+        }
+
+        ranked_codes = sorted(
+            scores.keys(),
+            key=lambda code: (scores[code], -["SPTA", "STCA", "ETFI", "SPCI"].index(code)),
+            reverse=True,
+        )
+        return ranked_codes[0] if ranked_codes else "SPCI"
 
     def _generate_key_features(self, profile: StudentProfileModel) -> str:
         """生成关键特征描述"""
@@ -906,6 +969,7 @@ class ProfileConversationService:
         profile.version += 1
 
         # 重新计算完整度
+        calculate_profile_completeness, generate_profile_tags = _get_profile_builder_helpers()
         profile.completeness = calculate_profile_completeness(
             {
                 "knowledge_base": profile.knowledge_base,
@@ -962,10 +1026,6 @@ class ProfileConversationService:
             analyze_behavior_impact,
             profile_updater_node,
         )
-        from app.agents.nodes.profile_conversation.conversation_state import (
-            ProfileConversationState,
-        )
-
         # 分析行为影响
         impact = analyze_behavior_impact(behavior_type, behavior_data)
 
@@ -984,7 +1044,7 @@ class ProfileConversationService:
             )
         else:
             # 构建状态
-            state: ProfileConversationState = {
+            state: dict[str, Any] = {
                 "user_id": user_id,
                 "profile": {
                     "knowledge_base": profile.knowledge_base,
@@ -1077,6 +1137,7 @@ class ProfileConversationService:
         profile.last_behavior_time = datetime.now()
 
         # 重新计算完整度
+        calculate_profile_completeness, _ = _get_profile_builder_helpers()
         profile.completeness = calculate_profile_completeness(updated_profile)
 
         await self.db.commit()

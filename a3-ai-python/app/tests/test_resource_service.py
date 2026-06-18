@@ -205,3 +205,76 @@ async def test_generate_resources_prefers_coordinator_output(monkeypatch) -> Non
     assert response.resources[0].resource_id == 99
     assert response.resources[0].title == "AI 讲义"
     assert response.recommended_order == ["AI 讲义"]
+
+
+
+def test_build_resource_metadata_for_new_resource_types() -> None:
+    resource_types = [
+        "extended_reading",
+        "coding_lab",
+        "visual_illustration",
+        "micro_video",
+        "subtitle_transcript",
+        "ocr_notes",
+    ]
+
+    for resource_type in resource_types:
+        title = ResourceService._build_title(resource_type, "JAVA-CORE")
+        summary = ResourceService._build_summary(resource_type, "JAVA-CORE", ["????", "????"])
+        suggestion = ResourceService._build_study_suggestion(resource_type)
+        content = ResourceService._build_markdown(
+            resource_type,
+            "JAVA-CORE",
+            ["????", "????"],
+            "????????????????",
+        )
+
+        assert "JAVA-CORE" in title
+        assert summary
+        assert suggestion
+        assert content
+
+
+def test_build_ocr_notes_contains_real_board_structure() -> None:
+    content = ResourceService._build_markdown(
+        "ocr_notes",
+        "software_engineering_4th",
+        ["板书识别", "课堂结构", "复盘动作"],
+        "黑板上写了输入、结构、输出和易错点。",
+    )
+
+    assert "真实板书生成稿" in content
+    assert "OCR 识别文本" in content
+    assert "黑板布局还原" in content
+    assert "可直接抄写的板书版式" in content
+
+
+@pytest.mark.asyncio
+async def test_hydrate_card_builds_visual_illustration_source_file_when_missing() -> None:
+    resource = SimpleNamespace(
+        id=9995,
+        user_id=1001,
+        course_code="vue3_engineering",
+        resource_type="visual_illustration",
+        title="Vue3 Engineering 教学插图",
+        summary="围绕课程拓展阅读、补教学插图、结构图示生成结构示意。",
+        content_markdown="# Vue3 Engineering 教学插图说明",
+        source_titles=["组件拆分", "状态边界", "流程说明"],
+        study_suggestion="先看插图，再对照讲义。",
+    )
+
+    card = await ResourceService()._hydrate_card(resource, preview_limit=None)
+
+    assert card.source_file_count == 1
+    assert len(card.source_files) == 1
+    file = card.source_files[0]
+    assert file.file_extension == ".svg"
+    assert file.preview_mode == "image"
+    assert file.preview_url == "/generated-resource-illustrations/vue3_engineering/9995.svg"
+
+
+def test_map_new_resource_types_for_coordinator() -> None:
+    mapped = ResourceService._map_resource_types_for_coordinator(
+        ["visual_illustration", "micro_video", "subtitle_transcript", "ocr_notes"]
+    )
+    assert mapped == [1, 4]

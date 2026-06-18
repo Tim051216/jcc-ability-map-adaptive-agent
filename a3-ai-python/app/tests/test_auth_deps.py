@@ -7,8 +7,8 @@ def test_resolve_current_user_id_accepts_bearer_token() -> None:
     assert resolve_current_user_id(authorization="Bearer student-demo") == 1001
 
 
-def test_resolve_current_user_id_prefers_bearer_over_header() -> None:
-    assert resolve_current_user_id(authorization="Bearer student-demo", x_user_id=9999) == 1001
+def test_resolve_current_user_id_prefers_header_over_bearer() -> None:
+    assert resolve_current_user_id(authorization="Bearer student-demo", x_user_id=9999) == 9999
 
 
 def test_resolve_current_user_id_accepts_x_user_id() -> None:
@@ -51,3 +51,11 @@ def test_get_websocket_user_id_accepts_access_token() -> None:
 def test_get_websocket_user_id_accepts_x_user_id() -> None:
     websocket = _DummyWebSocket(headers={"x-user-id": "2002"})
     assert get_websocket_user_id(websocket) == 2002
+
+
+def test_get_websocket_user_id_prefers_x_user_id_over_access_token() -> None:
+    websocket = _DummyWebSocket(
+        query_params={"access_token": "student-demo"},
+        headers={"x-user-id": "2003"},
+    )
+    assert get_websocket_user_id(websocket) == 2003

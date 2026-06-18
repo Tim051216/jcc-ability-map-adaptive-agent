@@ -6,12 +6,18 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
 from datetime import datetime
 from io import BytesIO
 from typing import Any, ClassVar
+import xml.etree.ElementTree as ET
 
+from docx import Document
 from fastapi import HTTPException
 
 from app.db.repositories.resource_repository import ResourceRepository
@@ -370,7 +376,7 @@ class ResourceManagementService:
 
         content = self._render_download_content(resource, format=format)
         mime = self._get_download_mime(format)
-        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        encoded = base64.b64encode(content).decode("ascii")
         return {
             "resource_id": resource_id,
             "download_url": f"data:{mime};base64,{encoded}",
@@ -794,15 +800,363 @@ class ResourceManagementService:
         payload["is_favorited"] = bool(payload.get("favorite_count"))
         return payload
 
-    def _render_download_content(self, resource: dict[str, Any], *, format: str) -> str:
+    def _render_download_content(self, resource: dict[str, Any], *, format: str) -> bytes:
         detail = self._to_resource_detail_payload(resource)
+        markdown = self._build_export_markdown(detail)
+        if format == "json":
+            export_payload = self._build_structured_export_payload(detail)
+            return json.dumps(export_payload, ensure_ascii=False, indent=2).encode("utf-8")
+        if format == "xmind":
+            return self._render_xmind_content(detail)
+        if format == "mermaid":
+            mermaid_code = self._extract_mermaid_code(detail)
+            if mermaid_code:
+                return mermaid_code.encode("utf-8")
+            return markdown.encode("utf-8")
         if format == "html":
+            pandoc_html = self._render_with_pandoc(markdown, "html")
+            if pandoc_html is not None:
+                return pandoc_html
             title = detail["title"]
             body = detail.get("content") or detail.get("description") or ""
-            return f"<html><body><h1>{title}</h1><pre>{body}</pre></body></html>"
+            return f"<html><body><h1>{title}</h1><pre>{body}</pre><p>当前 Pandoc 转换失败，已降级为内置 HTML 导出。</p></body></html>".encode("utf-8")
         if format == "pdf":
-            return detail.get("content") or detail.get("description") or detail["title"]
-        return detail.get("content") or detail.get("description") or detail["title"]
+            return (detail.get("content") or detail.get("description") or detail["title"]).encode("utf-8")
+        if format == "docx":
+            pandoc_docx = self._render_with_pandoc(markdown, "docx", binary=True)
+            if pandoc_docx is not None:
+                return pandoc_docx
+            return self._render_docx_content(detail)
+        if format == "pptx":
+            return self._render_pptx_content(detail)
+        return (detail.get("content") or detail.get("description") or detail["title"]).encode("utf-8")
+
+    @staticmethod
+    def _build_structured_export_payload(detail: dict[str, Any]) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "title": detail.get("title"),
+            "summary": detail.get("summary") or detail.get("description"),
+            "content": detail.get("content"),
+        }
+        if detail.get("mindmap") is not None:
+            payload["mindmap"] = detail.get("mindmap")
+        if detail.get("question_bank") is not None:
+            payload["question_bank"] = detail.get("question_bank")
+        if detail.get("questions"):
+            payload["questions"] = detail.get("questions")
+        if detail.get("document") is not None:
+            payload["document"] = detail.get("document")
+        return payload
+
+    @staticmethod
+    def _build_export_markdown(detail: dict[str, Any]) -> str:
+        title = str(detail.get("title") or "课堂资料").strip()
+        summary = str(detail.get("summary") or detail.get("description") or "").strip()
+        content = str(detail.get("content") or detail.get("description") or "").strip()
+        blocks = [f"# {title}"]
+        if summary:
+            blocks.append(summary)
+        if content:
+            blocks.append(content)
+        return "\n\n".join(blocks).strip()
+
+    def _render_docx_content(self, detail: dict[str, Any]) -> bytes:
+        document = Document()
+        document.add_heading(str(detail.get("title") or "课堂讲义"), level=0)
+
+        summary = str(detail.get("summary") or detail.get("description") or "").strip()
+        if summary:
+            document.add_paragraph(summary)
+
+        questions = detail.get("questions") or self._extract_question_list(detail.get("question_bank"))
+        if isinstance(questions, list) and questions:
+            document.add_heading("题目列表", level=1)
+            for index, question in enumerate(questions, start=1):
+                if not isinstance(question, dict):
+                    continue
+                question_title = str(question.get("question") or question.get("question_content") or f"第 {index} 题").strip()
+                document.add_paragraph(f"{index}. {question_title}")
+
+                options = question.get("options")
+                if isinstance(options, dict):
+                    iterable = options.items()
+                elif isinstance(options, list):
+                    iterable = ((chr(65 + option_index), option) for option_index, option in enumerate(options))
+                else:
+                    iterable = []
+
+                for option_key, option_value in iterable:
+                    document.add_paragraph(f"{option_key}. {option_value}", style="List Bullet")
+
+                answer = question.get("answer") or question.get("correct_answer")
+                if answer:
+                    document.add_paragraph(f"答案：{answer}")
+
+                explanation = question.get("explanation") or question.get("answer_analysis")
+                if explanation:
+                    document.add_paragraph(f"解析：{explanation}")
+
+                knowledge_points = question.get("knowledge_points") or question.get("knowledgeTag")
+                if knowledge_points:
+                    document.add_paragraph(f"知识点：{knowledge_points}")
+
+            output = BytesIO()
+            document.save(output)
+            return output.getvalue()
+
+        content = str(detail.get("content") or "").replace("\r\n", "\n")
+        lines = [line.strip() for line in content.split("\n") if line.strip()]
+        if not lines:
+            lines = [str(detail.get("description") or detail.get("title") or "")]
+
+        for line in lines:
+            normalized = re.sub(r"^[#>\-\d.\s]+", "", line).strip()
+            if not normalized:
+                continue
+            if line.startswith("###"):
+                document.add_heading(normalized, level=3)
+            elif line.startswith("##"):
+                document.add_heading(normalized, level=2)
+            elif line.startswith("#"):
+                document.add_heading(normalized, level=1)
+            elif re.match(r"^[-*]\s+", line) or re.match(r"^\d+[.)]\s+", line):
+                document.add_paragraph(normalized, style="List Bullet")
+            else:
+                document.add_paragraph(normalized)
+
+        output = BytesIO()
+        document.save(output)
+        return output.getvalue()
+
+    @staticmethod
+    def _extract_mermaid_code(detail: dict[str, Any]) -> str:
+        mindmap = detail.get("mindmap")
+        if isinstance(mindmap, dict):
+            mermaid_code = mindmap.get("mermaid_code")
+            if isinstance(mermaid_code, str) and mermaid_code.strip():
+                return mermaid_code.strip()
+        content = str(detail.get("content") or "").strip()
+        if content.startswith("mindmap") or content.startswith("graph ") or content.startswith("flowchart "):
+            return content
+        return ""
+
+    def _render_xmind_content(self, detail: dict[str, Any]) -> bytes:
+        mindmap = detail.get("mindmap") if isinstance(detail.get("mindmap"), dict) else {}
+        mermaid_code = self._extract_mermaid_code(detail)
+        root_topic = str(detail.get("title") or "知识导图").strip() or "知识导图"
+        title = str(detail.get("title") or "知识导图").strip() or "知识导图"
+        nodes = self._extract_mindmap_nodes(mindmap, mermaid_code, root_topic)
+        if not nodes:
+            nodes = [{"title": str(detail.get("summary") or detail.get("content") or "核心概念"), "children": []}]
+
+        xmap = ET.Element("xmap-content", version="2.0")
+        sheet = ET.SubElement(xmap, "sheet", id="sheet-1")
+        topic = ET.SubElement(sheet, "topic", id="root")
+        title_node = ET.SubElement(topic, "title")
+        title_node.text = title
+        for index, node in enumerate(nodes, start=1):
+            self._append_xmind_topic(topic, node, f"n{index}", depth=1)
+
+        metadata = ET.SubElement(sheet, "metadata")
+        ET.SubElement(metadata, "title").text = title
+        ET.SubElement(metadata, "summary").text = str(detail.get("summary") or detail.get("description") or "")
+        tree = ET.ElementTree(xmap)
+        xml_bytes = BytesIO()
+        tree.write(xml_bytes, encoding="utf-8", xml_declaration=True)
+
+        manifest = {
+            "file-entries": [
+                {"path": "content.xml", "media-type": "text/xml"},
+                {"path": "META-INF/manifest.xml", "media-type": "text/xml"},
+            ]
+        }
+        manifest_xml = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest>{json.dumps(manifest, ensure_ascii=False)}</manifest>"""
+
+        package = BytesIO()
+        with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("content.xml", xml_bytes.getvalue())
+            archive.writestr(
+                "META-INF/manifest.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><manifest><file-entry full-path=\"content.xml\" media-type=\"text/xml\"/></manifest>",
+            )
+        return package.getvalue()
+
+    def _extract_mindmap_nodes(self, mindmap: dict[str, Any], mermaid_code: str, root_topic: str) -> list[dict[str, Any]]:
+        if isinstance(mindmap.get("nodes"), list) and mindmap["nodes"]:
+            normalized = []
+            for item in mindmap["nodes"]:
+                if not isinstance(item, dict):
+                    continue
+                normalized.append(
+                    {
+                        "title": str(item.get("title") or item.get("topic") or item.get("label") or "节点"),
+                        "children": self._extract_mindmap_children(item.get("children")),
+                    }
+                )
+            if normalized:
+                return normalized
+        lines = [line.strip() for line in mermaid_code.splitlines() if line.strip() and line.strip() != "mindmap"]
+        extracted: list[dict[str, Any]] = []
+        stack: list[tuple[int, list[dict[str, Any]]]] = [(0, extracted)]
+        for line in lines:
+            depth = len(line) - len(line.lstrip())
+            level = max(0, depth // 2)
+            title = line.strip("-* ").strip()
+            while stack and stack[-1][0] >= level + 1:
+                stack.pop()
+            parent_children = stack[-1][1] if stack else extracted
+            node = {"title": title or root_topic, "children": []}
+            parent_children.append(node)
+            stack.append((level + 1, node["children"]))
+        return extracted
+
+    def _extract_mindmap_children(self, children: Any) -> list[dict[str, Any]]:
+        if not isinstance(children, list):
+            return []
+        normalized: list[dict[str, Any]] = []
+        for item in children:
+            if not isinstance(item, dict):
+                continue
+            normalized.append(
+                {
+                    "title": str(item.get("title") or item.get("topic") or item.get("label") or "节点"),
+                    "children": self._extract_mindmap_children(item.get("children")),
+                }
+            )
+        return normalized
+
+    def _append_xmind_topic(self, parent: ET.Element, node: dict[str, Any], node_id: str, depth: int = 1) -> None:
+        topic = ET.SubElement(parent, "topic", id=node_id)
+        title = ET.SubElement(topic, "title")
+        title.text = str(node.get("title") or "节点")
+        children = node.get("children") if isinstance(node.get("children"), list) else []
+        if children:
+            children_el = ET.SubElement(topic, "children")
+            topics_el = ET.SubElement(children_el, "topics", type="attached")
+            for index, child in enumerate(children, start=1):
+                if isinstance(child, dict):
+                    self._append_xmind_topic(topics_el, child, f"{node_id}-{index}", depth=depth + 1)
+
+    def _render_pptx_content(self, detail: dict[str, Any]) -> bytes:
+        from pptx import Presentation
+
+        presentation = Presentation()
+        title_layout = presentation.slide_layouts[0]
+        content_layout = presentation.slide_layouts[1]
+
+        title_slide = presentation.slides.add_slide(title_layout)
+        title_slide.shapes.title.text = str(detail.get("title") or "课程课件")
+        subtitle = title_slide.placeholders[1] if len(title_slide.placeholders) > 1 else None
+        if subtitle is not None:
+            subtitle.text = str(detail.get("summary") or detail.get("description") or "由 5 个核心智能体协同生成")
+
+        content = str(detail.get("content") or detail.get("description") or "").replace("\r\n", "\n")
+        raw_lines = [line.strip() for line in content.split("\n") if line.strip()]
+        normalized_lines = [re.sub(r"^[#>\-\d.\s]+", "", line).strip() for line in raw_lines]
+        normalized_lines = [line for line in normalized_lines if line]
+        if not normalized_lines:
+            normalized_lines = [str(detail.get("summary") or detail.get("title") or "暂无内容")]
+
+        grouped_sections: list[tuple[str, list[str]]] = []
+        current_title = "核心内容"
+        current_bullets: list[str] = []
+        for raw_line, line in zip(raw_lines, normalized_lines):
+            if raw_line.startswith("#"):
+                if current_bullets:
+                    grouped_sections.append((current_title, current_bullets))
+                current_title = line
+                current_bullets = []
+                continue
+            current_bullets.append(line)
+            if len(current_bullets) >= 5:
+                grouped_sections.append((current_title, current_bullets))
+                current_bullets = []
+        if current_bullets:
+            grouped_sections.append((current_title, current_bullets))
+        if not grouped_sections:
+            grouped_sections = [("核心内容", normalized_lines[:5])]
+
+        for section_title, bullets in grouped_sections[:8]:
+            slide = presentation.slides.add_slide(content_layout)
+            slide.shapes.title.text = section_title or "核心内容"
+            text_frame = slide.placeholders[1].text_frame
+            text_frame.clear()
+            for idx, bullet in enumerate(bullets[:6]):
+                paragraph = text_frame.paragraphs[0] if idx == 0 else text_frame.add_paragraph()
+                paragraph.text = bullet
+                paragraph.level = 0
+
+        # Give mindmap / practice resources a compact appendix slide for答辩展示
+        appendix = presentation.slides.add_slide(content_layout)
+        appendix.shapes.title.text = "生成说明"
+        appendix_frame = appendix.placeholders[1].text_frame
+        appendix_frame.text = "导出引擎：python-pptx"
+        for bullet in [
+            "支持将 AI 生成内容自动整理为课堂课件",
+            "可与模板、讲义、导图、练习结果联动导出",
+            "当前版本已可生成 .pptx 真实文件",
+        ]:
+            paragraph = appendix_frame.add_paragraph()
+            paragraph.text = bullet
+            paragraph.level = 0
+
+        if not presentation.slides:
+            fallback = presentation.slides.add_slide(content_layout)
+            fallback.shapes.title.text = "课件提纲"
+            fallback.placeholders[1].text = "暂无生成内容。"
+
+        output = BytesIO()
+        presentation.save(output)
+        return output.getvalue()
+
+    @classmethod
+    def _pandoc_path(cls) -> str | None:
+        system_path = shutil.which("pandoc")
+        if system_path:
+            return system_path
+        bundled = Path(__file__).resolve().parents[2] / "local_tools" / "pandoc" / "pandoc.exe"
+        if bundled.exists():
+            return str(bundled)
+        return None
+
+    @classmethod
+    def _render_with_pandoc(cls, markdown: str, target_format: str, *, binary: bool = False) -> bytes | None:
+        pandoc_path = cls._pandoc_path()
+        if not pandoc_path:
+            return None
+        try:
+            with tempfile.TemporaryDirectory(prefix="a3-pandoc-") as temp_dir:
+                temp_root = Path(temp_dir)
+                input_path = temp_root / "input.md"
+                output_path = temp_root / f"output.{target_format}"
+                input_path.write_text(markdown, encoding="utf-8")
+                subprocess.run(
+                    [
+                        pandoc_path,
+                        str(input_path),
+                        "-f",
+                        "markdown",
+                        "-t",
+                        target_format,
+                        "-s",
+                        "-o",
+                        str(output_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                if not output_path.exists():
+                    return None
+                data = output_path.read_bytes()
+                if binary:
+                    return data
+                return data
+        except Exception:
+            return None
+
+    @staticmethod
+    def _pandoc_available() -> bool:
+        return ResourceManagementService._pandoc_path() is not None
 
     def _extract_primary_content(self, resource: dict[str, Any]) -> str:
         for key in ("content", "document", "mindmap", "question_bank", "video", "code_example"):
@@ -860,6 +1214,16 @@ class ResourceManagementService:
             return "text/html"
         if format == "pdf":
             return "text/plain"
+        if format == "mermaid":
+            return "text/plain"
+        if format == "xmind":
+            return "application/zip"
+        if format == "json":
+            return "application/json"
+        if format == "docx":
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        if format == "pptx":
+            return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         return "text/markdown"
 
     @staticmethod
@@ -870,8 +1234,14 @@ class ResourceManagementService:
             return "html"
         if format == "markdown":
             return "md"
+        if format == "docx":
+            return "docx"
+        if format == "pptx":
+            return "pptx"
         if format == "mermaid":
             return "mmd"
+        if format == "xmind":
+            return "xmind"
         if format in {"json", "py", "java", "js", "cpp", "txt", "md"}:
             return format
         return "md"
@@ -885,6 +1255,14 @@ class ResourceManagementService:
             return "html"
         if normalized == "pdf":
             return "pdf"
+        if normalized == "docx":
+            return "docx"
+        if normalized == "pptx":
+            return "pptx"
+        if normalized == "mermaid":
+            return "mermaid"
+        if normalized == "xmind":
+            return "xmind"
         return normalized
 
     @staticmethod

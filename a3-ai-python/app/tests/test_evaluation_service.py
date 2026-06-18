@@ -1,8 +1,10 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
+from app.schemas.evaluation import EvaluationPaperGenerateRequest, EvaluationQuestion, QuestionGenerateRequest
 from app.services import evaluation_service as evaluation_service_module
 from app.services.evaluation_service import EvaluationService
 
@@ -10,9 +12,39 @@ from app.services.evaluation_service import EvaluationService
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.rows = []
+        self.added = []
+        self.executed = []
 
     async def commit(self) -> None:
         self.committed = True
+
+    async def execute(self, query):
+        self.executed.append(query)
+
+        class _Result:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def scalars(self):
+                class _Scalars:
+                    def __init__(self, rows):
+                        self._rows = rows
+
+                    def all(self):
+                        return self._rows
+
+                return _Scalars(self._rows)
+
+            def scalar_one(self):
+                if isinstance(self._rows, (int, float)):
+                    return self._rows
+                return 0
+
+        return _Result(self.rows)
+
+    def add(self, item) -> None:
+        self.added.append(item)
 
 
 class _FakeSessionFactory:
@@ -30,10 +62,19 @@ def _patch_session_factory(monkeypatch, session: _FakeSession) -> None:
     monkeypatch.setattr(evaluation_service_module, "async_session_factory", lambda: _FakeSessionFactory(session))
 
 
+def _patch_course_context(monkeypatch) -> None:
+    class FakeCourseContextService:
+        async def resolve(self, *, course_id=None, course_code=None):
+            return SimpleNamespace(course_id=course_id, course_code=course_code or "PYTHON-AI")
+
+    monkeypatch.setattr(evaluation_service_module, "CourseContextService", lambda: FakeCourseContextService())
+
+
 @pytest.mark.asyncio
 async def test_generate_paper_persists_questions_and_commits(monkeypatch) -> None:
     session = _FakeSession()
     _patch_session_factory(monkeypatch, session)
+    _patch_course_context(monkeypatch)
 
     captured: dict = {}
 
@@ -82,9 +123,10 @@ async def test_generate_paper_persists_questions_and_commits(monkeypatch) -> Non
     )
 
     response = await EvaluationService().generate_paper(
-        SimpleNamespace(
+        EvaluationPaperGenerateRequest(
             user_id=1001,
             course_code="PYTHON-AI",
+            course_id=None,
             target="asyncio",
             knowledge_points=["asyncio", "event loop"],
             paper_type="diagnostic",
@@ -105,6 +147,7 @@ async def test_generate_paper_persists_questions_and_commits(monkeypatch) -> Non
 async def test_generate_paper_falls_back_when_agent_generation_fails(monkeypatch) -> None:
     session = _FakeSession()
     _patch_session_factory(monkeypatch, session)
+    _patch_course_context(monkeypatch)
 
     class FakePaperRepository:
         async def create_paper(self, session_obj, **kwargs):
@@ -122,9 +165,10 @@ async def test_generate_paper_falls_back_when_agent_generation_fails(monkeypatch
     )
 
     response = await EvaluationService().generate_paper(
-        SimpleNamespace(
+        EvaluationPaperGenerateRequest(
             user_id=1001,
             course_code="PYTHON-AI",
+            course_id=None,
             target="asyncio",
             knowledge_points=["asyncio", "event loop"],
             paper_type="diagnostic",
@@ -135,7 +179,208 @@ async def test_generate_paper_falls_back_when_agent_generation_fails(monkeypatch
     assert response.paper_id == 502
     assert len(response.questions) == 2
     assert response.questions[0].question_id == "q1"
-    assert "asyncio" in response.questions[0].prompt
+    assert response.questions[0].knowledge_point == "asyncio"
+
+
+@pytest.mark.asyncio
+async def test_generate_question_bank_falls_back_after_timeout(monkeypatch) -> None:
+    service = EvaluationService()
+    monkeypatch.setattr(service, "QUESTION_BANK_USE_AGENT", True)
+    monkeypatch.setattr(service, "QUESTION_BANK_SINGLE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(service, "QUESTION_BANK_SINGLE_RETRY_COUNT", 1)
+    monkeypatch.setattr(service, "QUESTION_BANK_MAX_CONCURRENCY", 2)
+    monkeypatch.setattr(service, "_save_cached_question_bank", lambda **kwargs: asyncio.sleep(0))
+
+    async def slow_agent_builder(request):
+        await asyncio.sleep(0.05)
+        return []
+
+    monkeypatch.setattr(service, "_build_questions_with_agent", slow_agent_builder)
+
+    response = await service.generate_question_bank(
+        QuestionGenerateRequest(
+            test_id=401,
+            knowledge_points=["software crisis", "software lifecycle"],
+            difficulty_level=2,
+            question_type=1,
+            count=3,
+            generate_layered=False,
+            course_context="software crisis and software lifecycle",
+            persist_to_db=False,
+        )
+    )
+
+    assert response.total_count == 3
+    assert response.fallback_count == 3
+    assert response.source == "fallback"
+    assert len(response.questions) == 3
+
+
+@pytest.mark.asyncio
+async def test_generate_question_bank_keeps_ai_results_and_runs_concurrently(monkeypatch) -> None:
+    service = EvaluationService()
+    monkeypatch.setattr(service, "QUESTION_BANK_USE_AGENT", True)
+    monkeypatch.setattr(service, "QUESTION_BANK_SINGLE_TIMEOUT_SECONDS", 1)
+    monkeypatch.setattr(service, "QUESTION_BANK_SINGLE_RETRY_COUNT", 1)
+    monkeypatch.setattr(service, "QUESTION_BANK_MAX_CONCURRENCY", 3)
+    monkeypatch.setattr(service, "_save_cached_question_bank", lambda **kwargs: asyncio.sleep(0))
+
+    active = 0
+    max_active = 0
+
+    async def fast_agent_builder(request):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        try:
+            await asyncio.sleep(0.02)
+            point = request.knowledge_points[0]
+            return [
+                EvaluationQuestion(
+                    question_id="tmp",
+                    question_type="single_choice",
+                    prompt=f"What is the core concept of {point}?",
+                    options=["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
+                    correct_answer="A",
+                    explanation=f"Explanation for {point}",
+                    knowledge_point=point,
+                    difficulty="advanced",
+                    source="ai",
+                )
+            ]
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(service, "_build_questions_with_agent", fast_agent_builder)
+
+    response = await service.generate_question_bank(
+        QuestionGenerateRequest(
+            test_id=402,
+            knowledge_points=["requirements analysis", "architecture design", "detailed design"],
+            difficulty_level=2,
+            question_type=1,
+            count=3,
+            generate_layered=False,
+            course_context="software engineering fundamentals",
+            persist_to_db=False,
+        )
+    )
+
+    assert response.total_count == 3
+    assert response.fallback_count == 0
+    assert response.source == "ai"
+    assert max_active >= 2
+    assert all(item.quality_score == 1.0 for item in response.questions)
+
+
+@pytest.mark.asyncio
+async def test_generate_question_bank_uses_cached_questions(monkeypatch) -> None:
+    session = _FakeSession()
+    session.rows = [
+        SimpleNamespace(
+            id=11,
+            order_num=1,
+            question_type=1,
+            difficulty_level=2,
+            question_content="cached question 1",
+            question_options=[{"key": "A", "value": "Option 1"}, {"key": "B", "value": "Option 2"}],
+            correct_answer="A",
+            answer_analysis="cached analysis 1",
+            knowledge_point="software crisis",
+            generation_model="cached_ai",
+            generation_prompt="cache-key",
+            status=1,
+        ),
+        SimpleNamespace(
+            id=12,
+            order_num=2,
+            question_type=1,
+            difficulty_level=2,
+            question_content="cached question 2",
+            question_options=[{"key": "A", "value": "Option 1"}, {"key": "B", "value": "Option 2"}],
+            correct_answer="B",
+            answer_analysis="cached analysis 2",
+            knowledge_point="software lifecycle",
+            generation_model="cached_ai",
+            generation_prompt="cache-key",
+            status=1,
+        ),
+    ]
+    _patch_session_factory(monkeypatch, session)
+
+    service = EvaluationService()
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("should not generate when cache is hit")
+
+    monkeypatch.setattr(service, "_build_questions", fail_if_called)
+    monkeypatch.setattr(service, "_build_question_bank_cache_key", lambda **kwargs: "cache-key")
+
+    response = await service.generate_question_bank(
+        QuestionGenerateRequest(
+            test_id=501,
+            knowledge_points=["software crisis", "software lifecycle"],
+            difficulty_level=2,
+            question_type=1,
+            count=2,
+            generate_layered=False,
+            course_context="software engineering",
+            persist_to_db=True,
+        )
+    )
+
+    assert response.total_count == 2
+    assert response.fallback_count == 0
+    assert response.questions[0].question_content == "cached question 1"
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_generate_question_bank_persists_generated_questions(monkeypatch) -> None:
+    session = _FakeSession()
+    _patch_session_factory(monkeypatch, session)
+
+    service = EvaluationService()
+
+    async def empty_cache(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(service, "_load_cached_question_bank", empty_cache)
+    monkeypatch.setattr(
+        service,
+        "_build_questions",
+        lambda request: [
+            EvaluationQuestion(
+                question_id="q1",
+                question_type="single_choice",
+                prompt="generated question",
+                options=["A. One", "B. Two"],
+                correct_answer="A",
+                explanation="analysis",
+                knowledge_point="software crisis",
+                difficulty="advanced",
+                source="fallback",
+            )
+        ],
+    )
+
+    response = await service.generate_question_bank(
+        QuestionGenerateRequest(
+            test_id=601,
+            knowledge_points=["software crisis"],
+            difficulty_level=2,
+            question_type=1,
+            count=1,
+            generate_layered=False,
+            course_context="software engineering",
+            persist_to_db=True,
+        )
+    )
+
+    assert response.total_count == 1
+    assert len(session.added) == 1
+    assert session.added[0].generation_prompt.startswith(service.QUESTION_BANK_CACHE_PREFIX)
+    assert session.committed is True
 
 
 @pytest.mark.asyncio

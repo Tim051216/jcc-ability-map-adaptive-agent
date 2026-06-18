@@ -1,32 +1,17 @@
+import { getCurrentLoggedInUserIdString } from "./currentUser";
+
 const AI_BASE_URL = (import.meta.env.VITE_AI_BASE_URL || "/ai/api/v1").replace(/\/$/, "");
 const AI_ORIGIN = AI_BASE_URL.replace(/\/api\/v1$/, "");
+const LOCAL_AI_BASE_URL = (import.meta.env.VITE_LOCAL_AI_BASE_URL || "http://127.0.0.1:18080/api/v1").replace(/\/$/, "");
 const DEMO_AUTHORIZATION = "Bearer student-demo";
-
-type StoredUserSession = {
-  id?: string;
-  loggedIn?: boolean;
-};
 
 function getCurrentUserId() {
   if (typeof window === "undefined") return null;
-  const storageKeys = [
-    "a3-student-user-session",
-    "a3-student-user-session-persistent",
-    "a3-student-user-session-recovery",
-  ];
-  for (const key of storageKeys) {
-    try {
-      const raw = window.sessionStorage.getItem(key) || window.localStorage.getItem(key);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw) as StoredUserSession;
-      if (parsed?.loggedIn && parsed?.id && /^\d+$/.test(String(parsed.id))) {
-        return String(parsed.id);
-      }
-    } catch {
-      // Ignore malformed session payloads.
-    }
+  try {
+    return getCurrentLoggedInUserIdString();
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function buildAuthHeaders() {
@@ -60,6 +45,12 @@ function buildFileFetchInit(url: string): RequestInit {
       Accept: "*/*",
     },
   };
+}
+
+export function getImEventStreamUrl(userId: number | string) {
+  const resolved = new URL(`${AI_BASE_URL}/chat/stream`, window.location.origin);
+  resolved.searchParams.set("user_id", String(userId));
+  return resolved.toString();
 }
 
 export interface CourseCategory {
@@ -414,6 +405,26 @@ export interface ResourceGenerationResponse {
   task_id?: number | null;
   recommended_order: string[];
   resources: ResourceCard[];
+  safety_review?: Record<string, unknown> | null;
+  hallucination_review?: Record<string, unknown> | null;
+}
+
+export interface JavaRunResponse {
+  success: boolean;
+  compile_ok: boolean;
+  run_ok: boolean;
+  stdout: string;
+  stderr: string;
+  exit_code?: number | null;
+  compile_output: string;
+}
+
+export interface JavaReviewResponse {
+  success: boolean;
+  summary: string;
+  key_issues: string[];
+  suggested_code: string;
+  next_steps: string[];
 }
 
 export interface ResourceDownloadResponse {
@@ -422,6 +433,17 @@ export interface ResourceDownloadResponse {
   format: string;
   expires_in?: number;
   file_name?: string;
+}
+
+export interface ManagedResourceDetail extends ResourceCard {
+  id: number;
+  resource_name?: string;
+  description?: string;
+  content?: string;
+  document?: Record<string, unknown> | null;
+  mindmap?: Record<string, unknown> | null;
+  question_bank?: Record<string, unknown> | null;
+  questions?: Array<Record<string, unknown>>;
 }
 
 export interface ResourceBatchDownloadResponse {
@@ -519,6 +541,11 @@ export interface EvaluationQuestionGenerateResponse {
   questions: EvaluationGeneratedQuestion[];
   layered_questions?: Record<string, EvaluationGeneratedQuestion[]> | null;
   total_count: number;
+  fallback_count?: number;
+  fallback_knowledge_points?: string[];
+  safety_review?: Record<string, unknown> | null;
+  hallucination_review?: Record<string, unknown> | null;
+  source?: "ai" | "fallback" | "cache";
 }
 
 export interface EvaluationHistoryItem {
@@ -531,6 +558,8 @@ export interface EvaluationHistoryItem {
   report_summary: string;
   weak_points: string[];
   knowledge_points: string[];
+  recommended_actions?: string[];
+  suggestions?: string[];
   created_at?: string | null;
 }
 
@@ -571,6 +600,7 @@ export interface EvaluationPaperQuestion {
   explanation: string;
   knowledge_point: string;
   difficulty: string;
+  source?: string;
 }
 
 export interface EvaluationPaperResponse {
@@ -579,6 +609,7 @@ export interface EvaluationPaperResponse {
   course_code: string;
   paper_type: string;
   status: string;
+  source?: string;
   questions: EvaluationPaperQuestion[];
 }
 
@@ -639,11 +670,100 @@ export interface ProfileSummaryResponse {
   current_stage?: string | null;
 }
 
+export interface ProfileConversationMessage {
+  message_id: number;
+  role: string;
+  content: string;
+  round_number: number;
+  message_type: number;
+  related_dimension?: string | null;
+  created_at: string;
+}
+
+export interface ProfileConversationSessionResponse {
+  session_id: number;
+  user_id: number;
+  status: number;
+  session_type: number;
+  total_rounds: number;
+  collected_dimensions: string[];
+  completeness: number;
+  start_time: string;
+  end_time?: string | null;
+  messages: ProfileConversationMessage[];
+}
+
+export interface ProfileExtractedInfoItem {
+  dimension: string;
+  info_key: string;
+  info_value: string;
+  confidence: number;
+}
+
+export interface ProfileExtractionResult {
+  extracted_info: ProfileExtractedInfoItem[];
+  missing_dimensions: string[];
+  completeness: number;
+}
+
+export interface ProfileGuideQuestionResponse {
+  question: string;
+  related_dimension?: string | null;
+  question_type: number;
+  suggestions: string[];
+}
+
+export interface ProfileConversationFlowResponse {
+  session_id: number;
+  assistant_message: ProfileConversationMessage;
+  guide_question?: ProfileGuideQuestionResponse | null;
+  extraction_result?: ProfileExtractionResult | null;
+  profile_summary?: ProfileSummaryResponse | null;
+  should_continue: boolean;
+  completeness: number;
+}
+
+export interface ProfileDimensionData {
+  dimension_code: string;
+  dimension_name: string;
+  data: Record<string, unknown>;
+  completeness: number;
+}
+
+export interface StudentProfileDetailResponse {
+  profile_id?: number | null;
+  user_id: number;
+  version: number;
+  dimensions: ProfileDimensionData[];
+  tags: string[];
+  completeness: number;
+  summary?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface ProfileBehaviorUpdateResponse {
   updated_dimensions: Record<string, Record<string, unknown>>;
   new_tags: string[];
   removed_tags: string[];
   summary: string;
+}
+
+export interface ProfileHistoryItemResponse {
+  history_id: number;
+  profile_id: number;
+  version: number;
+  change_type: number;
+  change_description?: string | null;
+  changed_dimensions: string[];
+  created_at: string;
+}
+
+export interface ProfileHistoryResponse {
+  user_id: number;
+  profile_id: number;
+  history: ProfileHistoryItemResponse[];
+  total: number;
 }
 
 export interface ChatCitation {
@@ -685,6 +805,8 @@ export interface ChatResponse {
   generated_plan?: Record<string, unknown> | null;
   generated_resources: Array<Record<string, unknown>>;
   generated_evaluation?: Record<string, unknown> | null;
+  safety_review?: Record<string, unknown> | null;
+  hallucination_review?: Record<string, unknown> | null;
 }
 
 export interface ImSessionSummaryResponse {
@@ -720,6 +842,13 @@ export interface ImMessageListResponse {
   total: number;
 }
 
+export interface ImSessionReadResponse {
+  session_id: number;
+  user_id: number;
+  last_read_message_id: number;
+  unread_count: number;
+}
+
 export interface TutoringVideoRecommendation {
   video_id: number;
   title: string;
@@ -752,6 +881,10 @@ export interface TutoringAnswerDetail {
   should_escalate?: boolean;
   question_type?: string | null;
   knowledge_points?: string[] | null;
+  safety_review?: Record<string, unknown> | null;
+  hallucination_review?: Record<string, unknown> | null;
+  source?: "ai" | "fallback" | "cache" | string;
+  fallback_reason?: string | null;
 }
 
 export interface TutoringQuestionSubmitResponse {
@@ -871,6 +1004,50 @@ export interface CourseCommentLikeResponse {
   likes: number;
 }
 
+export interface OpenClassroomAgentCard {
+  role: string;
+  name: string;
+  responsibility: string;
+  style: string;
+  output: string;
+}
+
+export interface OpenClassroomInteractionTurn {
+  speaker: string;
+  goal: string;
+  script: string;
+}
+
+export interface OpenClassroomQuizQuestion {
+  questionType: "single_choice" | "multiple_choice" | "short_answer";
+  question: string;
+  options: string[];
+  answer: string;
+  explanation: string;
+  knowledgeTag: string;
+}
+
+export interface OpenClassroomPptSlide {
+  pageNo: number;
+  title: string;
+  bullets: string[];
+  speakerNote: string;
+}
+
+export interface OpenClassroomBuildResponse {
+  courseCode?: string | null;
+  courseName?: string | null;
+  lessonTitle: string;
+  sceneSummary: string;
+  completionStatus: string;
+  frameworkNote: string;
+  agentCards: OpenClassroomAgentCard[];
+  interactionScript: OpenClassroomInteractionTurn[];
+  quizQuestions: OpenClassroomQuizQuestion[];
+  pptOutline: OpenClassroomPptSlide[];
+  generatedResources: string[];
+}
+
 function parseJsonPreservingLargeIds<T>(rawText: string): T {
   if (!rawText) {
     return JSON.parse("null") as T;
@@ -920,7 +1097,87 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   return parseJsonPreservingLargeIds<T>(decoded);
 }
 
+function isTransientNetworkError(error: unknown) {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return false;
+  }
+  if (error instanceof TypeError) {
+    return true;
+  }
+  if (error instanceof Error) {
+    return /failed to fetch|networkerror|load failed/i.test(error.message);
+  }
+  return false;
+}
+
+async function readErrorDetail(response: Response) {
+  let detail = `HTTP ${response.status}`;
+  try {
+    const payload = await readJsonResponse<{ detail?: string; message?: string }>(response);
+    if (payload?.detail?.trim()) {
+      return payload.detail.trim();
+    }
+    if (payload?.message?.trim()) {
+      return payload.message.trim();
+    }
+  } catch {
+    try {
+      const text = await response.text();
+      if (text.trim()) {
+        return text.trim();
+      }
+    } catch {
+      // Ignore body parsing failures and keep the HTTP fallback.
+    }
+  }
+  return detail;
+}
+
 async function request<T>(path: string, timeoutMs?: number): Promise<T> {
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const controller = timeoutMs ? new AbortController() : null;
+    const timeoutId =
+      timeoutMs && controller
+        ? window.setTimeout(() => {
+            controller.abort();
+          }, timeoutMs)
+        : null;
+    try {
+      const response = await fetch(`${AI_BASE_URL}${path}`, {
+        signal: controller?.signal,
+        headers: {
+          Accept: "application/json",
+          ...buildAuthHeaders(),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response));
+      }
+      return readJsonResponse<T>(response);
+    } catch (error) {
+      lastError = error;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("Request timeout");
+      }
+      if (!isTransientNetworkError(error) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 600 * (attempt + 1)));
+    } finally {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Network request failed");
+}
+
+async function requestDirectLocal<T>(path: string, timeoutMs?: number): Promise<T> {
+  if (typeof window === "undefined" || !["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+    throw new Error("本地后端直连仅在本机开发环境启用");
+  }
   const controller = timeoutMs ? new AbortController() : null;
   const timeoutId =
     timeoutMs && controller
@@ -929,7 +1186,7 @@ async function request<T>(path: string, timeoutMs?: number): Promise<T> {
         }, timeoutMs)
       : null;
   try {
-    const response = await fetch(`${AI_BASE_URL}${path}`, {
+    const response = await fetch(`${LOCAL_AI_BASE_URL}${path}`, {
       signal: controller?.signal,
       headers: {
         Accept: "application/json",
@@ -937,14 +1194,9 @@ async function request<T>(path: string, timeoutMs?: number): Promise<T> {
       },
     });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error(await readErrorDetail(response));
     }
     return readJsonResponse<T>(response);
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Request timeout");
-    }
-    throw error;
   } finally {
     if (timeoutId) {
       window.clearTimeout(timeoutId);
@@ -972,16 +1224,7 @@ async function requestJson<T>(path: string, init: RequestInit, timeoutMs?: numbe
       },
     });
     if (!response.ok) {
-      let detail = `HTTP ${response.status}`;
-      try {
-        const payload = await readJsonResponse<{ detail?: string }>(response);
-        if (payload?.detail) {
-          detail = payload.detail;
-        }
-      } catch {
-        // Ignore JSON parse errors and keep the HTTP fallback.
-      }
-      throw new Error(detail);
+      throw new Error(await readErrorDetail(response));
     }
     return readJsonResponse<T>(response);
   } catch (error) {
@@ -993,6 +1236,52 @@ async function requestJson<T>(path: string, init: RequestInit, timeoutMs?: numbe
     if (timeoutId) {
       window.clearTimeout(timeoutId);
     }
+  }
+}
+
+async function requestJsonDirectLocal<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
+  if (typeof window === "undefined" || !["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+    throw new Error("本地后端直连仅在本机开发环境启用");
+  }
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeoutId =
+    timeoutMs && controller
+      ? window.setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : null;
+  try {
+    const response = await fetch(`${LOCAL_AI_BASE_URL}${path}`, {
+      ...init,
+      signal: controller?.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...buildAuthHeaders(),
+        ...(init.headers || {}),
+      },
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorDetail(response));
+    }
+    return readJsonResponse<T>(response);
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+}
+
+async function requestJsonWithLocalFallback<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
+  try {
+    return await requestJson<T>(path, init, timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const shouldFallback = /HTTP 404|Failed to fetch|NetworkError|load failed/i.test(message) || isTransientNetworkError(error);
+    if (!shouldFallback) {
+      throw error;
+    }
+    return requestJsonDirectLocal<T>(path, init, timeoutMs);
   }
 }
 
@@ -1246,7 +1535,7 @@ export const studentApi = {
     }
     return request<ResourceListResponse>(`/resource?${params.toString()}`, timeoutMs);
   },
-  listResourcesByCourseCode(userId: number, courseCode?: string, resourceType?: string, timeoutMs = 6000) {
+  listResourcesByCourseCode(userId: number, courseCode?: string, resourceType?: string, timeoutMs = 20000) {
     const params = new URLSearchParams({
       user_id: String(userId),
     });
@@ -1258,8 +1547,16 @@ export const studentApi = {
     }
     return request<ResourceListResponse>(`/resource?${params.toString()}`, timeoutMs);
   },
-  getResource(resourceId: number) {
-    return request<ResourceCard>(`/resource/${resourceId}`);
+  async getResource(resourceId: number, timeoutMs = 30000) {
+    try {
+      return await request<ResourceCard>(`/resource/${resourceId}`, timeoutMs);
+    } catch (error) {
+      console.warn("资源详情代理请求失败，尝试本地后端直连。", error);
+      return requestDirectLocal<ResourceCard>(`/resource/${resourceId}`, timeoutMs);
+    }
+  },
+  getManagedResourceDetail(resourceId: number) {
+    return request<ManagedResourceDetail>(`/resource/v2/${resourceId}/detail`);
   },
   getVideoInsight(resourceId: number, fileId: number, fileName?: string) {
     return getVideoInsightRequest(resourceId, fileId, fileName);
@@ -1295,10 +1592,47 @@ export const studentApi = {
     knowledge_points: string[];
     resource_types: string[];
   }) {
-    return requestJson<ResourceGenerationResponse>("/resource/generate", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    return requestJson<ResourceGenerationResponse>(
+      "/resource/generate",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      90000,
+    );
+  },
+
+  runJavaCode(payload: {
+    source_code: string;
+    class_name?: string;
+    stdin?: string;
+    timeout_seconds?: number;
+  }) {
+    return requestJsonWithLocalFallback<JavaRunResponse>(
+      "/resource/java-run",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      15000,
+    );
+  },
+  reviewJavaCode(payload: {
+    source_code: string;
+    problem_statement?: string;
+    resource_title?: string;
+    compile_output?: string;
+    runtime_output?: string;
+    expected_output?: string;
+  }) {
+    return requestJsonWithLocalFallback<JavaReviewResponse>(
+      "/resource/java-review",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      30000,
+    );
   },
   favoriteResource(resourceId: number, userId: number) {
     return requestJson<{ resource_id: number; user_id: number; favorite: boolean }>(
@@ -1393,8 +1727,44 @@ export const studentApi = {
   getWrongQuestions(recordId: number) {
     return request<WrongQuestionListResponse>(`/evaluation/results/${recordId}/wrong-questions`);
   },
+  startProfileConversation(payload: {
+    user_id: number;
+    session_type?: number;
+  }) {
+    return requestJson<ProfileConversationSessionResponse>("/profile/conversation/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  sendProfileConversationMessage(payload: {
+    session_id: number;
+    content: string;
+  }) {
+    return requestJson<ProfileConversationFlowResponse>("/profile/conversation/message", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  completeProfileConversation(payload: {
+    session_id: number;
+    force_complete?: boolean;
+  }) {
+    return requestJson<StudentProfileDetailResponse>("/profile/conversation/complete", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getProfileConversationSession(sessionId: number) {
+    return request<ProfileConversationSessionResponse>(`/profile/conversation/session/${sessionId}`);
+  },
+  getProfileDetail(userId: number) {
+    return request<StudentProfileDetailResponse>(`/profile/conversation/profile/${userId}`);
+  },
   getProfileSummary(userId: number) {
     return request<ProfileSummaryResponse>(`/profile/conversation/profile/${userId}/summary`);
+  },
+  getProfileHistory(userId: number, limit = 10) {
+    return request<ProfileHistoryResponse>(`/profile/conversation/profile/${userId}/history?limit=${limit}`);
   },
   reportProfileBehavior(payload: {
     user_id: number;
@@ -1426,7 +1796,7 @@ export const studentApi = {
   listImSessions() {
     return request<ImSessionListResponse>("/chat/sessions");
   },
-  createImSession(payload: { peer_user_id: number; peer_name?: string }) {
+  createImSession(payload: { peer_user_id: number; peer_name?: string; owner_name?: string }) {
     return requestJson<ImSessionSummaryResponse>("/chat/sessions", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -1434,6 +1804,11 @@ export const studentApi = {
   },
   listImMessages(sessionId: number) {
     return request<ImMessageListResponse>(`/chat/sessions/${sessionId}/messages`);
+  },
+  markImSessionRead(sessionId: number) {
+    return requestJson<ImSessionReadResponse>(`/chat/sessions/${sessionId}/read`, {
+      method: "PUT",
+    });
   },
   sendImMessage(sessionId: number, payload: { content: string }) {
     return requestJson<ImMessageResponse>(`/chat/sessions/${sessionId}/messages`, {
@@ -1456,6 +1831,21 @@ export const studentApi = {
     max_chars?: number;
   }) {
     return requestJson<WebFetchResponse>("/web-tools/fetch", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  buildOpenClassroom(payload: {
+    courseCode?: string;
+    courseName?: string;
+    lessonTitle: string;
+    studentQuestion?: string;
+    focusPoints?: string[];
+    targetResourceTypes?: string[];
+    audienceLevel?: "beginner" | "intermediate" | "advanced";
+    durationMinutes?: number;
+  }) {
+    return requestJson<OpenClassroomBuildResponse>("/open-classroom/build", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -1522,14 +1912,17 @@ export const studentApi = {
   },
   getTutoringStreamUrl(questionId: string | number) {
     const wsOrigin = AI_ORIGIN.replace(/^http/i, "ws");
-    const search = new URLSearchParams({
-      access_token: "student-demo",
-    });
     const userId = getCurrentUserId();
     if (userId) {
-      search.set("user_id", userId);
+      // Prefer the active frontend user id so the WebSocket subscribes to the
+      // same question owner as the HTTP submit call.
+      return `${wsOrigin}/api/v1/tutoring/stream/${questionId}?${new URLSearchParams({
+        user_id: userId,
+      }).toString()}`;
     }
-    return `${wsOrigin}/api/v1/tutoring/stream/${questionId}?${search.toString()}`;
+    return `${wsOrigin}/api/v1/tutoring/stream/${questionId}?${new URLSearchParams({
+      access_token: "student-demo",
+    }).toString()}`;
   },
   listTutoringHistory(params?: {
     course_id?: number;
@@ -1580,7 +1973,7 @@ export const studentApi = {
       video_key: videoKey,
       limit: String(limit),
     });
-    return request<VideoDanmakuListResponse>(`/danmaku?${search.toString()}`);
+    return request<VideoDanmakuListResponse>(`/danmaku?${search.toString()}`, 2500);
   },
   createVideoDanmaku(payload: {
     video_key: string;
@@ -1591,10 +1984,14 @@ export const studentApi = {
     course_id?: number;
     section_id?: number;
   }) {
-    return requestJson<VideoDanmakuItem>("/danmaku", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    return requestJson<VideoDanmakuItem>(
+      "/danmaku",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      2500,
+    );
   },
   listCourseComments(params: {
     course_key: string;
@@ -1627,7 +2024,7 @@ export const studentApi = {
     });
   },
   buildResourceSourceFileUrl(path: string) {
-    if (path.startsWith("http://") || path.startsWith("https://")) {
+    if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
       return path;
     }
     return `${AI_ORIGIN}${path}`;

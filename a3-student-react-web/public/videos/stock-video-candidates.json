@@ -1,0 +1,91 @@
+{
+  "updated_at": "2026-06-08",
+  "purpose": "Curated free/royalty-friendly candidate videos for the learning platform UI. Verify each source page license again before final production use.",
+  "recommended_usage": [
+    {
+      "slot": "home-hero-background",
+      "description": "首页首屏背景，偏学习氛围或数字工作台氛围，不冒充真实课程内容。"
+    },
+    {
+      "slot": "learn-page-atmosphere",
+      "description": "学习页辅助氛围视频，可作为空态、章节封面或资源预览，不替代真实课程讲解视频。"
+    },
+    {
+      "slot": "resource-preview",
+      "description": "资源页和 AI 导师页的小型预览视频，用于强化学习工作台和科技感。"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "pexels-study-laptop-4769538",
+      "title": "Woman at Desk with Laptop",
+      "platform": "Pexels",
+      "category": "study_scene",
+      "fit": "home-hero-background",
+      "source_url": "https://www.pexels.com/video/a-woman-sitting-at-a-desk-with-a-laptop-4769538/",
+      "license_url": "https://www.pexels.com/license/",
+      "reason": "自然光、书桌、学习状态明显，适合首页或学习工作台首屏氛围。",
+      "risk_note": "有人像时，避免用于暗示特定真实教师或学生身份。"
+    },
+    {
+      "id": "pexels-notes-computer-7857056",
+      "title": "Woman Looking at Computer and Taking Notes",
+      "platform": "Pexels",
+      "category": "study_scene",
+      "fit": "learn-page-atmosphere",
+      "source_url": "https://www.pexels.com/video/woman-looking-at-computer-and-taking-notes-7857056/",
+      "license_url": "https://www.pexels.com/license/",
+      "reason": "边看边记更贴合学习页叙事，适合 AI 导师或课堂陪学场景。",
+      "risk_note": "更适合作为陪学氛围，不建议写成“真实课程录播”。"
+    },
+    {
+      "id": "pixabay-laptop-student-1058",
+      "title": "Laptop Notebook Student Studying",
+      "platform": "Pixabay",
+      "category": "study_scene",
+      "fit": "resource-preview",
+      "source_url": "https://pixabay.com/videos/laptop-notebook-student-studying-1058/",
+      "license_url": "https://pixabay.com/service/license/",
+      "reason": "典型学习场景，分辨率够用，适合资源页卡片或短预览。",
+      "risk_note": "使用前建议保存下载页截图或授权说明，留存记录。"
+    },
+    {
+      "id": "pixabay-study-desk-search",
+      "title": "Studying At Desk Search Collection",
+      "platform": "Pixabay",
+      "category": "study_scene",
+      "fit": "home-hero-background",
+      "source_url": "https://pixabay.com/videos/search/studying%20at%20desk/",
+      "license_url": "https://pixabay.com/service/license/",
+      "reason": "适合继续挑更贴近你色系和页面构图的视频。",
+      "risk_note": "这是搜索集合页，不是单视频，落地前要最终锁定具体条目。"
+    },
+    {
+      "id": "mixkit-creative-workspace-101391",
+      "title": "Woman Working on Creative Workspace",
+      "platform": "Mixkit",
+      "category": "workspace",
+      "fit": "home-hero-background",
+      "source_url": "https://mixkit.co/free-stock-video/woman-working-on-creative-workspace-101391/",
+      "license_url": "https://mixkit.co/license/",
+      "reason": "更偏产品页气质，适合首屏背景或 AI 工作台视觉区。",
+      "risk_note": "仍需避免作为“真实课程内容视频”来宣传。"
+    },
+    {
+      "id": "mixkit-home-office-collection",
+      "title": "Home Office Collection",
+      "platform": "Mixkit",
+      "category": "workspace",
+      "fit": "resource-preview",
+      "source_url": "https://mixkit.co/free-stock-video/home-office/?page=1",
+      "license_url": "https://mixkit.co/license/",
+      "reason": "工作台、屏幕、桌面感更强，适合 AI 产品页和学习资源页。",
+      "risk_note": "这是集合页，最终要选定具体视频条目。"
+    }
+  ],
+  "selection_advice": [
+    "首页优先选学习氛围或数字工作台视频，不要把素材站视频包装成真实课堂录播。",
+    "学习页如果要体现真实课程感，最好仍然使用你自己的课程视频、录屏或公开授权课程片段。",
+    "每个最终采用的视频，都建议额外保存 author、download_date、license_url。"
+  ]
+}

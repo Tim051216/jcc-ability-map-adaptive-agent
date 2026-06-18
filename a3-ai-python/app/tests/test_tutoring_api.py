@@ -84,6 +84,7 @@ def test_websocket_stream_completed_sends_complete(monkeypatch: object) -> None:
     assert msg["content"]["answer_id"] == 99
     assert msg["content"]["answer_text"] == "已有解答"
     assert msg["content"]["should_escalate"] is False
+    assert msg["content"]["safety_review"]["output_review"]["blocked"] is False
 
 
 def test_websocket_stream_pending_emits_step_and_saved(monkeypatch: object) -> None:
@@ -358,6 +359,7 @@ def test_get_answer_completed_includes_should_escalate(monkeypatch: object) -> N
     assert body["status"] == "completed"
     assert body["answer_id"] == 42
     assert body["should_escalate"] is True
+    assert body["safety_review"]["output_review"]["blocked"] is False
 
 
 def test_history_returns_payload(monkeypatch: object) -> None:
@@ -714,37 +716,30 @@ def test_get_answer_404_when_question_not_found(monkeypatch: object) -> None:
     assert response.status_code == 404
 
 
-def test_get_answer_calls_generate_when_pending(monkeypatch: object) -> None:
+def test_get_answer_returns_processing_when_pending(monkeypatch: object) -> None:
     class Q:
+        id = 77
+        session_id = 7001
         user_id = 1001
         has_answer = False
+        is_escalated = False
+        question_type = None
+        knowledge_points = []
 
     async def fake_get_question(self, qid: int):
         assert qid == 77
         return Q()
 
-    async def fake_generate(self, qid: int, uid: int, on_event=None):
-        assert qid == 77 and uid == 1001
-        return {
-            "answer_id": 501,
-            "answer_text": "生成解答",
-            "diagrams": [],
-            "videos": [],
-            "reference_sources": [],
-            "confidence_score": 82.0,
-            "generation_time": 12,
-            "should_escalate": False,
-        }
-
     monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
-    monkeypatch.setattr(TutoringService, "generate_answer", fake_generate)
+    monkeypatch.setattr("app.api.v1.tutoring._generate_db_answer", AsyncMock())
 
     response = client.get("/api/v1/tutoring/answer/77")
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "completed"
-    assert body["answer_text"] == "生成解答"
-    assert body["answer_id"] == 501
+    assert body["status"] == "processing"
+    assert body["question_id"] == 77
+    assert body["session_id"] == 7001
+    assert body["answer_id"] is None
 
 
 def test_add_favorite_404_when_answer_not_for_question(monkeypatch: object) -> None:
@@ -796,14 +791,14 @@ def test_ocr_preview_minimal_png_returns_200() -> None:
 
 
 def test_upload_image_returns_url(monkeypatch: object) -> None:
-    def fake_upload(user_id: int, data: bytes, content_type: str) -> str:
+    def fake_upload(user_id: int, data: bytes, content_type: str):
         assert user_id == 1001
         assert data == b"png-bytes"
         assert content_type == "image/png"
-        return "https://minio.example/learning/t.png"
+        return type("Result", (), {"url": "https://minio.example/learning/t.png", "extracted_text": None})()
 
     monkeypatch.setattr(
-        "app.api.v1.tutoring.upload_tutoring_question_image",
+        "app.api.v1.tutoring.upload_tutoring_attachment",
         fake_upload,
     )
     response = client.post(
@@ -812,6 +807,7 @@ def test_upload_image_returns_url(monkeypatch: object) -> None:
     )
     assert response.status_code == 200
     assert response.json()["url"] == "https://minio.example/learning/t.png"
+    assert response.json()["extracted_text"] is None
 
 
 def test_upload_image_validation_returns_400(monkeypatch: object) -> None:
@@ -819,7 +815,7 @@ def test_upload_image_validation_returns_400(monkeypatch: object) -> None:
         raise ValueError("仅支持 JPEG、PNG、WebP、GIF")
 
     monkeypatch.setattr(
-        "app.api.v1.tutoring.upload_tutoring_question_image",
+        "app.api.v1.tutoring.upload_tutoring_attachment",
         bad_upload,
     )
     response = client.post(
@@ -834,7 +830,7 @@ def test_upload_image_storage_returns_503(monkeypatch: object) -> None:
         raise RuntimeError("minio refused")
 
     monkeypatch.setattr(
-        "app.api.v1.tutoring.upload_tutoring_question_image",
+        "app.api.v1.tutoring.upload_tutoring_attachment",
         fail_upload,
     )
     response = client.post(

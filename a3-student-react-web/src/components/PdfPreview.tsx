@@ -1,120 +1,113 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
-import { Document, Page, pdfjs } from "react-pdf";
+import React, { useEffect, useState } from "react";
+import { ExternalLink, LoaderCircle } from "lucide-react";
 import { studentApi, type ResourceSourceFileRef } from "../lib/studentApi";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+function resolvePreviewUrl(file: ResourceSourceFileRef) {
+  return studentApi.buildResourceSourceFileUrl(file.preview_url || file.open_url);
+}
 
-function buildInAppFileUrl(path: string | null | undefined) {
-  if (!path) {
-    return "";
+function resolveOpenUrl(file: ResourceSourceFileRef) {
+  return studentApi.buildResourceSourceFileUrl(file.open_url);
+}
+
+async function openOriginalFile(file: ResourceSourceFileRef) {
+  const blob = await studentApi.fetchResourceFileBlob(file.open_url);
+  const objectUrl = URL.createObjectURL(blob);
+  const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
+
+  if (!popup) {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.target = "_blank";
+    anchor.rel = "noreferrer";
+    anchor.click();
   }
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-  return path;
+
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 export function PdfPreview({ file }: { file: ResourceSourceFileRef }) {
-  const previewPath = file.preview_url || file.open_url;
-  const previewUrl = previewPath.startsWith("http://") || previewPath.startsWith("https://")
-    ? studentApi.buildResourceSourceFileUrl(previewPath)
-    : previewPath;
-  const openUrl = buildInAppFileUrl(file.open_url) || previewUrl;
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState(960);
-  const [numPages, setNumPages] = useState(0);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pdfError, setPdfError] = useState<string | null>(null);
+  const previewUrl = resolvePreviewUrl(file);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setPageNumber(1);
-    setNumPages(0);
-    setPdfError(null);
-  }, [previewUrl]);
-
-  useEffect(() => {
-    const element = hostRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateWidth = () => {
-      setContainerWidth(Math.max(320, Math.floor(element.clientWidth - 32)));
-    };
-
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+    setLoaded(false);
+    setFailed(false);
+  }, [previewUrl, file.file_id]);
 
   return (
-    <div className="rounded-[28px] border border-outline-variant/35 bg-[#eef3f8] p-4 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
-        <div className="text-sm text-on-surface-variant">{numPages ? `Page ${pageNumber} / ${numPages}` : "PDF preview"}</div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="overflow-hidden rounded-[32px] border border-[#e6ebf0] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+      <div className="border-b border-[#edf1f5] bg-[linear-gradient(180deg,#fcfdff_0%,#f6f8fb_100%)] px-6 py-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a94a3]">文档阅读模式</div>
+            <div className="mt-2 text-sm leading-7 text-[#4b5563]">文档会优先在当前工作台内展示，原始文件入口始终保留。</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-[#e6ebf0] bg-white px-3 py-1 text-[11px] font-medium text-[#5b6574]">文档</span>
+            <span className="inline-flex items-center rounded-full border border-[#e6ebf0] bg-white px-3 py-1 text-[11px] font-medium text-[#5b6574]">
+              {file.file_size ? `${Math.round(file.file_size / 1024)} KB` : "大小未知"}
+            </span>
+          </div>
+        </div>
+        <div className="mt-4">
           <button
             type="button"
-            onClick={() => setPageNumber((value) => Math.max(1, value - 1))}
-            disabled={pageNumber <= 1}
-            className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-white px-3 py-2 text-sm font-bold text-on-surface disabled:cursor-not-allowed disabled:opacity-45"
+            onClick={() => {
+              void openOriginalFile(file);
+            }}
+            className="inline-flex items-center gap-2 rounded-full border border-[#e5e7eb] bg-white px-4 py-2 text-xs font-semibold text-[#111827] transition-colors hover:bg-[#f8fafc]"
           >
-            Prev
+            <ExternalLink className="h-3.5 w-3.5" />
+            打开原始文件
           </button>
-          <button
-            type="button"
-            onClick={() => setPageNumber((value) => Math.min(numPages || value, value + 1))}
-            disabled={!numPages || pageNumber >= numPages}
-            className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-white px-3 py-2 text-sm font-bold text-on-surface disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            Next
-          </button>
-          <a
-            href={openUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-white px-4 py-2 text-sm font-bold text-on-surface transition-colors hover:border-primary/40 hover:text-primary"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open original
-          </a>
         </div>
       </div>
-      <div ref={hostRef} className="min-h-[78vh] rounded-[24px] bg-[#dde5ee] p-4">
-        <Document
-          file={previewUrl}
-          loading={<div className="flex min-h-[72vh] items-center justify-center rounded-[20px] bg-white text-sm text-on-surface-variant">Loading PDF...</div>}
-          onLoadSuccess={({ numPages: loadedPages }) => {
-            setNumPages(loadedPages);
-            setPdfError(null);
-          }}
-          onLoadError={(error) => {
-            const message = error.message || "PDF preview render failed";
-            console.error("PDF preview load error:", error);
-            setPdfError(message);
-          }}
-          error={
-            <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-700">
-              <div>In-app PDF preview failed. Please use the original-file button.</div>
-              {pdfError ? <div className="mt-2 break-all text-xs text-amber-800/90">{pdfError}</div> : null}
+
+      {failed ? (
+        <div className="flex min-h-[64vh] flex-col items-center justify-center px-6 text-center">
+          <div className="text-lg font-semibold tracking-[-0.02em] text-[#111827]">页内预览暂时不可用</div>
+          <div className="mt-2 max-w-xl text-sm leading-7 text-[#6b7280]">
+            当前转换后的 PDF 或文档预览没有成功返回，你仍然可以直接打开原始文件继续查看完整内容。
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              void openOriginalFile(file);
+            }}
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#111827] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937]"
+          >
+            <ExternalLink className="h-4 w-4" />
+            打开原始文件
+          </button>
+        </div>
+      ) : (
+        <div className="relative bg-[linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] p-5">
+          {!loaded ? (
+            <div className="absolute left-8 right-8 top-8 z-10 flex justify-center">
+              <div className="w-full max-w-lg rounded-full border border-[#e5e7eb] bg-white/94 px-5 py-3 text-center shadow-[0_14px_32px_rgba(15,23,42,0.10)] backdrop-blur">
+                <div className="flex items-center justify-center gap-3 text-sm text-[#4b5563]">
+                  <LoaderCircle className="h-4 w-4 animate-spin text-[#6b7280]" />
+                  <span className="font-medium">文档阅读视图准备中，转换完成后会自动展示正文</span>
+                </div>
+              </div>
             </div>
-          }
-          className="flex justify-center"
-        >
-          {!pdfError ? (
-            <Page
-              pageNumber={pageNumber}
-              width={Math.min(containerWidth, 1100)}
-              renderAnnotationLayer
-              renderTextLayer
-              className="overflow-hidden rounded-[20px] bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]"
-            />
           ) : null}
-        </Document>
-      </div>
+          <div className="overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
+            <iframe
+              title={file.display_name}
+              src={previewUrl}
+              className="h-[68vh] min-h-[560px] w-full bg-white"
+              onLoad={() => setLoaded(true)}
+              onError={() => {
+                setLoaded(true);
+                setFailed(true);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

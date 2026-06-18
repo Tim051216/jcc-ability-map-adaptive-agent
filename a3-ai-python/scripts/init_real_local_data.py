@@ -11,7 +11,9 @@ from app.db.models.evaluation_record import EvaluationRecord
 from app.db.models.generated_resource import GeneratedResource, ResourceFavorite, ResourceFavoriteHistory
 from app.db.models.resource_source_file import ResourceSourceFile
 from app.db.models.profile_conversation import ProfileHistoryModel, StudentProfileModel
-from app.db.session import async_session_factory, engine
+from app.db.session import async_session_factory, sqlite_engine
+
+SEED_USER_IDS = list(range(1001, 1011))
 
 
 def utc_iso(days_offset: int) -> str:
@@ -23,7 +25,45 @@ def _read_knowledge_markdown(file_name: str) -> str:
     return (knowledge_dir / file_name).read_text(encoding="utf-8").strip()
 
 
-def build_software_engineering_seed_resources() -> list[GeneratedResource]:
+def build_course_seed_resources(
+    *,
+    user_id: int,
+    course_code: str,
+    base_resource_id: int,
+    course_label: str,
+    resource_specs: list[dict],
+) -> list[GeneratedResource]:
+    resources: list[GeneratedResource] = []
+    resource_id_offset = max(0, user_id - 1001) * 1000
+    for index, spec in enumerate(resource_specs):
+        resources.append(
+            GeneratedResource(
+                id=base_resource_id + index + resource_id_offset,
+                user_id=user_id,
+                course_code=course_code,
+                resource_type=spec["resource_type"],
+                title=spec["title"],
+                summary=spec["summary"],
+                content_markdown=spec["content_markdown"],
+                source_titles=spec["source_titles"],
+                study_suggestion=spec["study_suggestion"],
+                generation_context={
+                    "seed": True,
+                    "scenario": f"{course_code}_course_resources",
+                    "seed_owner": user_id,
+                    "course_label": course_label,
+                },
+                is_archived=False,
+                download_scope="public",
+                download_count=spec.get("download_count", 0),
+                created_at=spec["created_at"],
+                updated_at=spec["updated_at"],
+            )
+        )
+    return resources
+
+
+def build_software_engineering_seed_resources(*, user_id: int = 1001) -> list[GeneratedResource]:
     resource_specs = [
         {
             "id": 101,
@@ -94,13 +134,14 @@ def build_software_engineering_seed_resources() -> list[GeneratedResource]:
     ]
 
     resources: list[GeneratedResource] = []
+    resource_id_offset = max(0, user_id - 1001) * 1000
     for spec in resource_specs:
         sections = [_read_knowledge_markdown(name) for name in spec["source_files"]]
         content_markdown = "\n\n".join(sections)
         resources.append(
             GeneratedResource(
-                id=spec["id"],
-                user_id=1001,
+                id=spec["id"] + resource_id_offset,
+                user_id=user_id,
                 course_code="software_engineering_4th",
                 resource_type=spec["resource_type"],
                 title=spec["title"],
@@ -112,6 +153,7 @@ def build_software_engineering_seed_resources() -> list[GeneratedResource]:
                     "seed": True,
                     "scenario": "software_engineering_course_resources",
                     "source_files": spec["source_files"],
+                    "seed_owner": user_id,
                 },
                 is_archived=False,
                 download_scope="public",
@@ -123,9 +165,313 @@ def build_software_engineering_seed_resources() -> list[GeneratedResource]:
     return resources
 
 
+def build_multi_course_seed_resources(*, user_id: int = 1001) -> list[GeneratedResource]:
+    resource_specs_by_course = {
+        "ml_intro": {
+            "base_resource_id": 201,
+            "course_label": "A3 智能学习助手实战",
+            "items": [
+                {
+                    "resource_type": "lecture_note",
+                    "title": "A3 学习闭环主线讲义",
+                    "summary": "围绕画像、路径、资源、答疑与报告串起整条学习闭环，适合首页和答辩讲解。",
+                    "content_markdown": "# A3 学习闭环主线讲义\n\n- 学习画像如何初始化\n- 学习路径如何动态调整\n- 资源生成如何结合弱项\n- AI 导师如何承接课堂上下文\n- 报告如何形成下一步决策",
+                    "source_titles": ["学习画像", "路径规划", "资源生成", "AI 导师", "学习报告"],
+                    "study_suggestion": "先看整条链路，再按页面逐段验证接口和数据落点。",
+                    "created_at": utc_iso(-6),
+                    "updated_at": utc_iso(-2),
+                },
+                {
+                    "resource_type": "mindmap",
+                    "title": "A3 多智能体协作图",
+                    "summary": "把画像、路径、资源、答疑、评测五类智能体的协作关系整理成可视化图谱。",
+                    "content_markdown": "# A3 多智能体协作图\n\n- 画像智能体\n- 路径规划智能体\n- 资源生成智能体\n- AI 导师智能体\n- 评测反馈智能体",
+                    "source_titles": ["画像智能体", "路径智能体", "资源智能体", "评测智能体"],
+                    "study_suggestion": "适合答辩前快速复盘多角色协作关系。",
+                    "created_at": utc_iso(-5),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "practice_set",
+                    "title": "A3 联调检查清单",
+                    "summary": "把画像、资源、评测和会话联调拆成一组实际检查项，适合开发验收。",
+                    "content_markdown": "# A3 联调检查清单\n\n1. 校验当前登录用户是否透传\n2. 校验页面是否读取真实数据库\n3. 校验资源收藏是否按用户变化\n4. 校验学习报告是否与评测记录一致",
+                    "source_titles": ["联调检查", "用户透传", "数据库验证"],
+                    "study_suggestion": "边验接口边勾选，能快速发现 demo 感来源。",
+                    "created_at": utc_iso(-4),
+                    "updated_at": utc_iso(-1),
+                },
+            ],
+        },
+        "vue3_engineering": {
+            "base_resource_id": 301,
+            "course_label": "Vue 3 项目工程化落地",
+            "items": [
+                {
+                    "resource_type": "lecture_note",
+                    "title": "Vue 3 页面工程化讲义",
+                    "summary": "聚焦组件抽象、状态边界和接口联调，是前端工程化主线的入门讲义。",
+                    "content_markdown": "# Vue 3 页面工程化讲义\n\n- 页面结构与模块分层\n- 组件职责边界\n- 状态管理拆分\n- 接口联调与容错",
+                    "source_titles": ["组件抽象", "状态边界", "接口联调"],
+                    "study_suggestion": "先看页面怎么拆，再看状态和接口怎么接。",
+                    "created_at": utc_iso(-5),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "mindmap",
+                    "title": "前端状态边界导图",
+                    "summary": "把推荐流、学习进度、AI 导师等状态面梳理成一张前端结构图。",
+                    "content_markdown": "# 前端状态边界导图\n\n- 推荐流\n- 学习进度\n- 资源工作台\n- AI 导师面板",
+                    "source_titles": ["推荐流", "学习进度", "AI 导师"],
+                    "study_suggestion": "适合首页改版前先做结构定位。",
+                    "created_at": utc_iso(-4),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "practice_set",
+                    "title": "前端页面改版练习题",
+                    "summary": "围绕页面密度、视觉层级和状态边界设计了一组练习题。",
+                    "content_markdown": "# 前端页面改版练习题\n\n1. 如何减少首屏信息密度？\n2. 哪些状态应该脱离页面局部组件？\n3. AI 导师入口放在哪里最顺手？",
+                    "source_titles": ["页面密度", "视觉层级", "状态边界"],
+                    "study_suggestion": "学完一节后立刻练，能更快形成产品直觉。",
+                    "created_at": utc_iso(-3),
+                    "updated_at": utc_iso(-1),
+                },
+            ],
+        },
+        "llm_app_intro": {
+            "base_resource_id": 401,
+            "course_label": "大模型应用开发导论",
+            "items": [
+                {
+                    "resource_type": "lecture_note",
+                    "title": "多智能体与 RAG 主线讲义",
+                    "summary": "整理了 RAG、联网检索、会话上下文和资源生成之间的主干关系。",
+                    "content_markdown": "# 多智能体与 RAG 主线讲义\n\n- 什么时候走知识库\n- 什么时候触发联网检索\n- 资源生成如何承接上下文\n- 多角色智能体如何协作",
+                    "source_titles": ["RAG", "联网检索", "资源生成", "多智能体"],
+                    "study_suggestion": "先看判断链路，再看每个工具的调用时机。",
+                    "created_at": utc_iso(-5),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "extended_reading",
+                    "title": "Agent 工具调用扩展阅读",
+                    "summary": "扩展说明了工具选择、上下文裁剪和调用边界，适合进阶阅读。",
+                    "content_markdown": "# Agent 工具调用扩展阅读\n\n- 工具选择条件\n- 上下文裁剪策略\n- 外部信息可信度判断\n- 结果回填到主会话的方法",
+                    "source_titles": ["工具选择", "上下文裁剪", "外部信息判断"],
+                    "study_suggestion": "看完主线后再看，会更容易理解为什么要自主判断。",
+                    "created_at": utc_iso(-4),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "case_study",
+                    "title": "联网补资料决策案例",
+                    "summary": "通过真实问题案例说明智能体如何判断是否需要 web search 或扩展阅读。",
+                    "content_markdown": "# 联网补资料决策案例\n\n1. 识别问题是否依赖最新外部信息\n2. 判断本地知识库是否已覆盖\n3. 决定是否追加视频、阅读或代码案例",
+                    "source_titles": ["联网补资料", "决策案例", "工具调用"],
+                    "study_suggestion": "适合给 AI 导师联动功能做演示脚本。",
+                    "created_at": utc_iso(-3),
+                    "updated_at": utc_iso(-1),
+                },
+            ],
+        },
+        "contest_project_lab": {
+            "base_resource_id": 501,
+            "course_label": "软挑赛题项目实训",
+            "items": [
+                {
+                    "resource_type": "lecture_note",
+                    "title": "项目答辩主线讲义",
+                    "summary": "帮助团队把需求、实现、亮点和学习闭环整理成可直接讲的答辩主线。",
+                    "content_markdown": "# 项目答辩主线讲义\n\n- 业务问题\n- 系统方案\n- 多智能体亮点\n- 学习闭环价值\n- 下一步扩展",
+                    "source_titles": ["答辩主线", "系统方案", "亮点表达"],
+                    "study_suggestion": "讲之前先删掉次要信息，只保留最能支撑价值的链路。",
+                    "created_at": utc_iso(-4),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "practice_set",
+                    "title": "答辩追问模拟题",
+                    "summary": "围绕评委常问的功能价值、数据真实性和协作架构设计了模拟题。",
+                    "content_markdown": "# 答辩追问模拟题\n\n1. 为什么你的项目不只是普通 dashboard？\n2. 多智能体分别做了什么？\n3. 数据为什么可信？\n4. 下一步准备怎么扩？",
+                    "source_titles": ["答辩追问", "数据真实性", "协作架构"],
+                    "study_suggestion": "适合演练 3 分钟版本和 8 分钟版本两套说法。",
+                    "created_at": utc_iso(-3),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "course_overview",
+                    "title": "项目资料工作台总览",
+                    "summary": "把讲义、PPT、思维导图、测评反馈和课堂记录整理成统一入口。",
+                    "content_markdown": "# 项目资料工作台总览\n\n- 讲义\n- PPT\n- 思维导图\n- 课堂记录\n- 测评反馈\n- 答辩版本输出",
+                    "source_titles": ["资料工作台", "PPT", "课堂记录", "评测反馈"],
+                    "study_suggestion": "适合作为项目首页或收藏工作台的内容来源。",
+                    "created_at": utc_iso(-2),
+                    "updated_at": utc_iso(-1),
+                },
+            ],
+        },
+        "spring_cloud_bootcamp": {
+            "base_resource_id": 601,
+            "course_label": "Spring Cloud 微服务训练营",
+            "items": [
+                {
+                    "resource_type": "lecture_note",
+                    "title": "微服务治理导学讲义",
+                    "summary": "帮助理解网关、注册发现、配置中心和故障隔离之间的关系。",
+                    "content_markdown": "# 微服务治理导学讲义\n\n- 注册发现\n- 网关治理\n- 配置中心\n- 限流与熔断\n- 联调与监控",
+                    "source_titles": ["网关治理", "注册发现", "配置中心"],
+                    "study_suggestion": "先看链路，再看每个服务怎么承担职责。",
+                    "created_at": utc_iso(-5),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "mindmap",
+                    "title": "后端服务调用关系图",
+                    "summary": "用一张调用关系图把服务入口、配置分发和追踪链路串起来。",
+                    "content_markdown": "# 后端服务调用关系图\n\n- Gateway\n- Service Registry\n- Config Center\n- Business Services\n- Tracing & Logs",
+                    "source_titles": ["调用链路", "网关", "配置分发"],
+                    "study_suggestion": "适合联调前先统一团队认知。",
+                    "created_at": utc_iso(-4),
+                    "updated_at": utc_iso(-1),
+                },
+                {
+                    "resource_type": "case_study",
+                    "title": "联调故障排查案例",
+                    "summary": "通过一次真实联调案例解释接口异常、链路追踪和状态回溯。",
+                    "content_markdown": "# 联调故障排查案例\n\n1. 入口请求失败\n2. 网关日志定位\n3. 服务注册状态检查\n4. 配置项比对\n5. 回归验证",
+                    "source_titles": ["联调故障", "链路追踪", "回归验证"],
+                    "study_suggestion": "适合接口治理和联调演示。",
+                    "created_at": utc_iso(-3),
+                    "updated_at": utc_iso(-1),
+                },
+            ],
+        },
+    }
+
+    resources: list[GeneratedResource] = []
+    for course_code, config in resource_specs_by_course.items():
+        resources.extend(
+            build_course_seed_resources(
+                user_id=user_id,
+                course_code=course_code,
+                base_resource_id=config["base_resource_id"],
+                course_label=config["course_label"],
+                resource_specs=config["items"],
+            )
+        )
+    return resources
+
+
+def build_seed_resources_for_user(*, user_id: int) -> list[GeneratedResource]:
+    resources: list[GeneratedResource] = []
+    if user_id == 1001:
+        resources.extend(
+            [
+                GeneratedResource(
+                    id=1,
+                    user_id=1001,
+                    course_code="ml_intro",
+                    resource_type="lecture_note",
+                    title="A3 智能学习助手机制梳理",
+                    summary="聚焦画像、资源、评测三条主链路的讲义笔记，适合联调时快速对齐。",
+                    content_markdown=(
+                        "# A3 智能学习助手机制梳理\n\n"
+                        "## 重点\n"
+                        "- 学习画像来自真实 student_profile 表\n"
+                        "- 资源收藏与归档来自 generated_resource 相关表\n"
+                        "- 评测趋势来自 evaluation_record\n\n"
+                        "## 建议\n"
+                        "先看整体链路，再验证每条接口的字段映射。"
+                    ),
+                    source_titles=["画像联调", "资源联调", "评测联调"],
+                    study_suggestion="先完成一次全链路浏览，再逐项核对字段。",
+                    generation_context={"seed": True, "scenario": "real_local_debug"},
+                    is_archived=False,
+                    download_scope="owner",
+                    download_count=3,
+                    created_at=utc_iso(-3),
+                    updated_at=utc_iso(-1),
+                ),
+                GeneratedResource(
+                    id=2,
+                    user_id=1001,
+                    course_code="ml_intro",
+                    resource_type="practice_set",
+                    title="A3 联调自测题单",
+                    summary="用于验证资源归档与历史页的补充题单。",
+                    content_markdown=(
+                        "# A3 联调自测题单\n\n"
+                        "1. 说出画像摘要接口依赖的主表。\n"
+                        "2. 说出资源收藏历史接口依赖的主表。\n"
+                        "3. 说出评测趋势接口如何计算 improvement。"
+                    ),
+                    source_titles=["归档验证", "历史接口"],
+                    study_suggestion="做完后回看评测趋势里的薄弱点。",
+                    generation_context={"seed": True, "scenario": "archive_debug"},
+                    is_archived=True,
+                    archived_at=utc_iso(-2),
+                    archived_by="system_seed",
+                    archive_reason="用于归档接口联调",
+                    download_scope="owner",
+                    download_count=1,
+                    created_at=utc_iso(-4),
+                    updated_at=utc_iso(-2),
+                ),
+            ]
+        )
+    resources.extend(build_software_engineering_seed_resources(user_id=user_id))
+    resources.extend(build_multi_course_seed_resources(user_id=user_id))
+    return resources
+
+
+def build_seed_favorites() -> tuple[list[ResourceFavorite], list[ResourceFavoriteHistory]]:
+    favorites: list[ResourceFavorite] = []
+    histories: list[ResourceFavoriteHistory] = []
+    favorite_id = 1
+    history_id = 1
+
+    for user_id in SEED_USER_IDS:
+        resource_id_offset = max(0, user_id - 1001) * 1000
+        seed_pairs = [
+            (1 + resource_id_offset if user_id == 1001 else 201 + resource_id_offset, "联调重点", "首页与资源页联调用的默认收藏。"),
+            (101 + resource_id_offset, "软件工程导学", "适合作为课程首页推荐的导学资源。"),
+            (104 + resource_id_offset, "实验实践", "可直接给资源中心的实践分类做初始样例。"),
+            (301 + resource_id_offset, "前端工程化", "跨课程补充用，适合首页和课堂页联动展示。"),
+            (401 + resource_id_offset, "AI 应用", "多智能体与联网补资料的核心示例资源。"),
+        ]
+
+        for resource_id, category, notes in seed_pairs:
+            favorites.append(
+                ResourceFavorite(
+                    id=favorite_id,
+                    user_id=user_id,
+                    resource_id=resource_id,
+                    category=category,
+                    notes=notes,
+                    created_at=utc_iso(-1),
+                    updated_at=utc_iso(-1),
+                )
+            )
+            histories.append(
+                ResourceFavoriteHistory(
+                    id=history_id,
+                    user_id=user_id,
+                    resource_id=resource_id,
+                    action="favorite",
+                    created_at=utc_iso(-1),
+                    updated_at=utc_iso(-1),
+                )
+            )
+            favorite_id += 1
+            history_id += 1
+
+    return favorites, histories
+
+
 async def create_tables() -> None:
     Path("local_data").mkdir(parents=True, exist_ok=True)
-    async with engine.begin() as conn:
+    async with sqlite_engine.begin() as conn:
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
@@ -160,118 +506,14 @@ async def seed_data() -> None:
         await session.execute(delete(ProfileHistoryModel))
         await session.execute(delete(StudentProfileModel))
 
-        resource_1 = GeneratedResource(
-            id=1,
-            user_id=1001,
-            course_code="ml_intro",
-            resource_type="lecture_note",
-            title="A3 智能学习助手机制梳理",
-            summary="聚焦画像、资源、评测三条主链路的讲义笔记，适合联调时快速对齐。",
-            content_markdown=(
-                "# A3 智能学习助手机制梳理\n\n"
-                "## 重点\n"
-                "- 学习画像来自真实 student_profile 表\n"
-                "- 资源收藏与归档来自 generated_resource 相关表\n"
-                "- 评测趋势来自 evaluation_record\n\n"
-                "## 建议\n"
-                "先看整体链路，再验证每条接口的字段映射。"
-            ),
-            source_titles=["画像联调", "资源联调", "评测联调"],
-            study_suggestion="先完成一次全链路浏览，再逐项核对字段。",
-            generation_context={"seed": True, "scenario": "real_local_debug"},
-            is_archived=False,
-            download_scope="owner",
-            download_count=3,
-            created_at=utc_iso(-3),
-            updated_at=utc_iso(-1),
-        )
-        resource_2 = GeneratedResource(
-            id=2,
-            user_id=1001,
-            course_code="ml_intro",
-            resource_type="practice_set",
-            title="A3 联调自测题单",
-            summary="用于验证资源归档与历史页的补充题单。",
-            content_markdown=(
-                "# A3 联调自测题单\n\n"
-                "1. 说出画像摘要接口依赖的主表。\n"
-                "2. 说出资源收藏历史接口依赖的主表。\n"
-                "3. 说出评测趋势接口如何计算 improvement。"
-            ),
-            source_titles=["归档验证", "历史接口"],
-            study_suggestion="做完后回看评测趋势里的薄弱点。",
-            generation_context={"seed": True, "scenario": "archive_debug"},
-            is_archived=True,
-            archived_at=utc_iso(-2),
-            archived_by="system_seed",
-            archive_reason="用于归档接口联调",
-            download_scope="owner",
-            download_count=1,
-            created_at=utc_iso(-4),
-            updated_at=utc_iso(-2),
-        )
-        software_engineering_resources = build_software_engineering_seed_resources()
-        session.add_all([resource_1, resource_2, *software_engineering_resources])
+        all_seed_resources: list[GeneratedResource] = []
+        for user_id in SEED_USER_IDS:
+            all_seed_resources.extend(build_seed_resources_for_user(user_id=user_id))
+        session.add_all(all_seed_resources)
 
-        session.add(
-            ResourceFavorite(
-                id=1,
-                user_id=1001,
-                resource_id=1,
-                category="联调重点",
-                notes="前端资源页默认展示的数据来源",
-                created_at=utc_iso(-1),
-                updated_at=utc_iso(-1),
-            )
-        )
-        session.add(
-            ResourceFavoriteHistory(
-                id=1,
-                user_id=1001,
-                resource_id=1,
-                action="favorite",
-                created_at=utc_iso(-1),
-                updated_at=utc_iso(-1),
-            )
-        )
-        session.add_all(
-            [
-                ResourceFavorite(
-                    id=2,
-                    user_id=1001,
-                    resource_id=101,
-                    category="软件工程导学",
-                    notes="适合作为课程首页推荐的导学资源。",
-                    created_at=utc_iso(-1),
-                    updated_at=utc_iso(-1),
-                ),
-                ResourceFavorite(
-                    id=3,
-                    user_id=1001,
-                    resource_id=104,
-                    category="实验实践",
-                    notes="可直接给资源中心的实践分类做初始样例。",
-                    created_at=utc_iso(-1),
-                    updated_at=utc_iso(-1),
-                ),
-                ResourceFavoriteHistory(
-                    id=2,
-                    user_id=1001,
-                    resource_id=101,
-                    action="favorite",
-                    created_at=utc_iso(-1),
-                    updated_at=utc_iso(-1),
-                ),
-                ResourceFavoriteHistory(
-                    id=3,
-                    user_id=1001,
-                    resource_id=104,
-                    action="favorite",
-                    created_at=utc_iso(-1),
-                    updated_at=utc_iso(-1),
-                ),
-            ]
-        )
+        favorite_rows, favorite_history_rows = build_seed_favorites()
+        session.add_all(favorite_rows)
+        session.add_all(favorite_history_rows)
 
         session.add(
             ChatTicket(

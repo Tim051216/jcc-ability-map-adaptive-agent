@@ -7,7 +7,7 @@ export interface Course {
   id: string;
   title: string;
   subtitle?: string;
-  category: "Programming" | "Design" | "Data";
+  category: "Programming" | "Design" | "Data" | "Software Engineering";
   uploader: string;
   uploaderAvatar?: string;
   rating: number;
@@ -76,7 +76,7 @@ export interface ActivityLog {
 export const COURSES: Course[] = [
   {
     id: "series-1",
-    title: "现代 Web 设计系统实战",
+    title: "现代网页设计系统实战",
     subtitle: "从组件规范到页面协同，系统化搭建设计与前端一体化能力。",
     category: "Design",
     uploader: "TechElite Academy",
@@ -93,19 +93,19 @@ export const COURSES: Course[] = [
   },
   {
     id: "series-2",
-    title: "React 高阶模式与性能优化",
-    subtitle: "聚焦 Hooks 组合、状态治理与渲染性能调优。",
-    category: "Programming",
-    uploader: "Design Mastery Lab",
+    title: "软件工程与实践（第4版）",
+    subtitle: "围绕软件工程基础、需求分析、系统设计、测试维护与项目管理形成完整学习闭环。",
+    category: "Software Engineering",
+    uploader: "贾铁军老师",
     uploaderAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&fit=crop&q=80",
     rating: 4.8,
     views: "89K",
     comments: "850",
     duration: "42:15",
     progress: 80,
-    lastWatchedEpisode: "学习中：Memo 渲染优化",
+    lastWatchedEpisode: "学习中：软件工程基础与软件危机",
     image: "https://images.unsplash.com/photo-1542831371-29b0f74f9713?w=600&fit=crop&q=80",
-    description: "系统拆解复合组件、状态切片、上下文边界和高性能渲染链路，适合直接迁移到真实项目中。",
+    description: "结合真实教材、教案、PPT、实验与题库资料，系统学习软件工程基础、过程模型、需求分析、设计实现、测试维护与项目管理。",
     playbackUrl: "/videos/software-engineering-4th/visio-flow-demo.mp4"
   },
   {
@@ -127,7 +127,7 @@ export const COURSES: Course[] = [
   },
   {
     id: "course-4",
-    title: "D3.js 数据叙事与可视化表达",
+    title: "数据叙事与可视化表达",
     subtitle: "把动态结构、图表层级与故事表达整合成更高级的数据界面。",
     category: "Data",
     uploader: "DataInsights Research",
@@ -311,49 +311,49 @@ export const RESOURCE_GROUPS: ResourceGroup[] = [
 // 3. Learning Paths
 export const LEARNING_PATHS: PathPhase[] = [
   {
-    phaseTitle: "Phase 1: Hooks Deep Dive",
+    phaseTitle: "阶段 1：副作用机制与状态理解",
     progress: 100,
     steps: [
       {
         id: "step-1",
-        title: "Understanding useEffect Lifecycle",
-        duration: "45 mins",
+        title: "理解副作用的执行时机",
+        duration: "45 分钟",
         type: "reading",
         completed: true,
         status: "unlocked",
-        subtitle: "Learn standard dependency comparisons, safe cleanup routines, and network stream subscriptions.",
-        date: "Day 1"
+        subtitle: "掌握依赖变化、清理时机和副作用边界，先把状态更新与副作用关系理清。",
+        date: "第 1 天"
       }
     ]
   },
   {
-    phaseTitle: "Phase 2: Custom Hooks & Composition",
+    phaseTitle: "阶段 2：自定义能力封装与组合",
     progress: 50,
     steps: [
       {
         id: "step-2",
-        title: "Building useFetch Hook",
-        duration: "32 mins",
+        title: "封装数据请求能力",
+        duration: "32 分钟",
         type: "video",
         completed: false,
         status: "current",
-        subtitle: "Create a robust custom hook for secure data fetching, handling loading wrappers, client exceptions, and local states.",
-        date: "Today"
+        subtitle: "练习把加载态、错误态和本地状态整理进统一封装，让数据请求逻辑更稳定。",
+        date: "今天"
       }
     ]
   },
   {
-    phaseTitle: "Phase 3: Performance & Memoization",
+    phaseTitle: "阶段 3：性能优化与状态收束",
     progress: 0,
     steps: [
       {
         id: "step-3",
-        title: "State Machines with XState",
-        duration: "1 hr 15 mins",
+        title: "用状态机整理复杂交互状态",
+        duration: "1 小时 15 分钟",
         type: "reading",
         completed: false,
         status: "locked",
-        subtitle: "Unlock by finishing 'Building useFetch'. Transition manual boolean loaders into comprehensive state machines."
+        subtitle: "完成前一节后再进入这一节，把零散布尔状态收束成更清晰的状态流。"
       }
     ]
   }

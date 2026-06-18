@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import logger
 from app.db.models.generation_task import GenerationTask
-from app.db.session import async_session_factory
+from app.db.session import get_db
 from app.schemas.tutoring import (
     TutoringQuestionCreate,
     TutoringTaskHistoryItem,
@@ -23,12 +24,20 @@ def _now_iso() -> str:
 
 _memory_tasks: dict[int, dict] = {}
 _memory_task_id = 200000
+_active_background_tasks: set[asyncio.Task] = set()
+_TASK_TIMEOUT_SECONDS = 90.0
 
 
 def _next_memory_task_id() -> int:
     global _memory_task_id
     _memory_task_id += 1
     return _memory_task_id
+
+
+def _track_background_task(task: asyncio.Task) -> asyncio.Task:
+    _active_background_tasks.add(task)
+    task.add_done_callback(_active_background_tasks.discard)
+    return task
 
 
 class TutoringTaskService:
@@ -168,7 +177,7 @@ class TutoringTaskService:
         self.db.add(task)
         await self.db.commit()
         await self.db.refresh(task)
-        asyncio.create_task(self._run_db_task(task.id))
+        _track_background_task(asyncio.create_task(self._run_db_task(task.id)))
         return TutoringTaskSubmitResponse(
             task_id=task.id,
             status=task.status,
@@ -195,7 +204,7 @@ class TutoringTaskService:
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
         }
-        asyncio.create_task(self._run_memory_task(task_id))
+        _track_background_task(asyncio.create_task(self._run_memory_task(task_id)))
         return TutoringTaskSubmitResponse(
             task_id=task_id,
             status="pending",
@@ -204,7 +213,7 @@ class TutoringTaskService:
         )
 
     async def _run_db_task(self, task_id: int) -> None:
-        async with async_session_factory() as session:
+        async with get_db() as session:
             task = await session.get(GenerationTask, task_id)
             if task is None:
                 return
@@ -214,12 +223,24 @@ class TutoringTaskService:
 
             try:
                 payload = task.payload or {}
-                result = await TutoringService(session).generate_answer(payload["question_id"], task.user_id)
+                logger.info("tutoring.task_started", task_id=task_id, question_id=payload.get("question_id"))
+                result = await asyncio.wait_for(
+                    TutoringService(session).generate_answer(payload["question_id"], task.user_id),
+                    timeout=_TASK_TIMEOUT_SECONDS,
+                )
                 task.status = "completed"
                 task.result_data = TutoringTaskResult.model_validate(result).model_dump(mode="json")
+                logger.info("tutoring.task_completed", task_id=task_id, question_id=payload.get("question_id"))
+            except asyncio.TimeoutError:
+                task.status = "failed"
+                task.result_data = {
+                    "error_message": f"AI 导师生成超时，请稍后重试（>{int(_TASK_TIMEOUT_SECONDS)}s）"
+                }
+                logger.warning("tutoring.task_timeout", task_id=task_id, question_id=payload.get("question_id"))
             except Exception as exc:  # noqa: BLE001
                 task.status = "failed"
                 task.result_data = {"error_message": str(exc)}
+                logger.exception("tutoring.task_failed", task_id=task_id)
 
             task.updated_at = _now_iso()
             await session.commit()
@@ -231,10 +252,16 @@ class TutoringTaskService:
         task["status"] = "running"
         task["updated_at"] = _now_iso()
         try:
-            async with async_session_factory() as session:
-                result = await TutoringService(session).generate_answer(task["question_id"], task["user_id"])
+            async with get_db() as session:
+                result = await asyncio.wait_for(
+                    TutoringService(session).generate_answer(task["question_id"], task["user_id"]),
+                    timeout=_TASK_TIMEOUT_SECONDS,
+                )
             task["status"] = "completed"
             task["result_data"] = TutoringTaskResult.model_validate(result).model_dump(mode="json")
+        except asyncio.TimeoutError:
+            task["status"] = "failed"
+            task["error_message"] = f"AI 导师生成超时，请稍后重试（>{int(_TASK_TIMEOUT_SECONDS)}s）"
         except Exception as exc:  # noqa: BLE001
             task["status"] = "failed"
             task["error_message"] = str(exc)

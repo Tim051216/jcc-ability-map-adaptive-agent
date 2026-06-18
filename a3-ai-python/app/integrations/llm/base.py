@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from collections.abc import AsyncIterator
+from typing import Any
 
 
 @dataclass
 class LLMMessage:
     role: str
-    content: str
+    content: Any
 
 
 class BaseLLMProvider:

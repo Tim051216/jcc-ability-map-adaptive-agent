@@ -18,8 +18,10 @@ api_router = APIRouter()
 
 for module_name, prefix, tags in [
     ("chat", "/v1/chat", ["chat"]),
+    ("web_tools", "/v1/web-tools", ["web-tools"]),
     ("course", "/v1/course", ["course"]),
     ("course_comment", "/v1/course-comments", ["course-comments"]),
+    ("inbox", "/v1/inboxes", ["inboxes"]),
     ("danmaku", "/v1/danmaku", ["danmaku"]),
     ("learning", "/v1/learning", ["learning"]),
     ("profile", "/v1/profile", ["profile"]),
@@ -29,6 +31,7 @@ for module_name, prefix, tags in [
     ("evaluation", "/v1/evaluation", ["evaluation"]),
     ("rag", "/v1/rag", ["rag"]),
     ("tutoring", "/v1/tutoring", ["tutoring"]),
+    ("open_classroom", "/v1/open-classroom", ["open-classroom"]),
     ("admin", "/v1/admin", ["admin"]),
 ]:
     module = _load_router(module_name)

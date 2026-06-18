@@ -1,0 +1,47 @@
+{
+  "updated_at": "2026-06-08",
+  "selection_version": "v1",
+  "summary": "Final recommended free stock video picks for the current learning platform. Recheck each source page license before production release.",
+  "picks": [
+    {
+      "slot": "home-hero-background",
+      "target_file": "/videos/software-engineering-4th/project-demo.mp4",
+      "recommended_title": "A woman sitting at a desk with a laptop",
+      "platform": "Pexels",
+      "source_url": "https://www.pexels.com/video/a-woman-sitting-at-a-desk-with-a-laptop-4769538/",
+      "license_url": "https://www.pexels.com/license/",
+      "why": "最适合首页首屏。画面安静、自然、学习感强，不会太像企业广告素材，和你现在的学习平台叙事最匹配。",
+      "page_usage": "首页首屏背景视频"
+    },
+    {
+      "slot": "learn-page-atmosphere",
+      "target_file": "/videos/software-engineering-4th/cloud-app-demo.mp4",
+      "recommended_title": "Woman studying while using laptop",
+      "platform": "Pexels",
+      "source_url": "https://www.pexels.com/video/woman-studying-while-using-laptop-7983124/",
+      "license_url": "https://www.pexels.com/license/",
+      "why": "更像真实陪学状态，适合学习页、AI 导师页、课堂辅助氛围区，不会喧宾夺主。",
+      "page_usage": "学习页 / AI 导师页氛围视频"
+    },
+    {
+      "slot": "resource-preview",
+      "target_file": "/videos/software-engineering-4th/visio-flow-demo.mp4",
+      "recommended_title": "Studying at desk collection",
+      "platform": "Pixabay",
+      "source_url": "https://pixabay.com/videos/search/studying%20at%20desk/",
+      "license_url": "https://pixabay.com/service/license/",
+      "why": "资源页更适合挑一条偏桌面、笔记、学习工作台的视频，Pixabay 这组更容易找到构图合适的短视频。",
+      "page_usage": "资源页预览 / 工作台小视频"
+    }
+  ],
+  "download_steps": [
+    "打开 source_url 对应页面。",
+    "下载分辨率建议优先选 1080p 或不高于当前页面需要的尺寸。",
+    "保存到 target_file 对应路径，直接覆盖当前占位视频。",
+    "把最终作者、下载日期、授权类型回填到 video-licenses.json。"
+  ],
+  "notes": [
+    "Pexels 和 Pixabay 都有官方授权页，但上线前仍建议你保留下载页截图。",
+    "这些视频更适合做氛围视频、工作台预览视频，不建议包装成真实课程讲解内容。"
+  ]
+}

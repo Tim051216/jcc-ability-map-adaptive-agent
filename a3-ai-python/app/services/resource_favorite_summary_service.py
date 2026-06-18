@@ -1,13 +1,13 @@
 from collections import Counter
 
 from app.db.repositories.resource_repository import ResourceRepository
-from app.db.session import async_session_factory
+from app.db.session import ai_data_session_factory
 from app.schemas.resource import ResourceFavoriteSummaryResponse
 
 
 class ResourceFavoriteSummaryService:
     async def get_summary(self, *, user_id: int) -> ResourceFavoriteSummaryResponse:
-        async with async_session_factory() as session:
+        async with ai_data_session_factory() as session:
             favorites = await ResourceRepository().list_favorites(session, user_id=user_id)
             history = await ResourceRepository().list_favorite_history(session, user_id=user_id)
 

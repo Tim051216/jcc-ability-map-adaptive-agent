@@ -12,11 +12,10 @@ from app.core.logging import logger
 from app.integrations.llm.client import get_llm_client
 
 
-QUESTION_GENERATION_TIMEOUT_SECONDS = 18
+QUESTION_GENERATION_TIMEOUT_SECONDS = 45
 
 
 def _sanitize_text(text: str) -> str:
-    """Remove characters that frequently break parsing or console encoding."""
     if not text:
         return ""
 
@@ -66,8 +65,9 @@ def _normalize_options(question_type: int, options: Any) -> list[dict[str, str]]
                 value = str(option.get("value") or "")
             else:
                 value = str(option)
+            value = value.strip()
             if value:
-                normalized.append({"key": key, "value": value})
+                normalized.append({"key": key.strip(), "value": value})
     return normalized
 
 
@@ -77,50 +77,67 @@ def _build_fallback_question(
     difficulty_level: int,
     question_type: int,
     index: int,
+    course_context: str = "",
 ) -> dict[str, Any]:
-    if question_type == 1:
+    point = knowledge_point.strip() or "当前知识点"
+    context_hint = course_context.strip()
+    normalized_type = question_type or 1
+
+    if normalized_type == 1:
+        prompt = (
+            f"在 {context_hint or '当前课程'} 的学习中，关于“{point}”的说法，哪一项最符合软件工程课程中的标准理解？"
+        )
         options = [
-            {"key": "A", "value": f"{knowledge_point}的核心概念"},
-            {"key": "B", "value": f"{knowledge_point}的无关概念"},
-            {"key": "C", "value": f"{knowledge_point}的错误示例"},
-            {"key": "D", "value": f"{knowledge_point}的边缘现象"},
+            {"key": "A", "value": f"准确说明 {point} 的目标、边界或核心作用"},
+            {"key": "B", "value": f"把 {point} 直接等同于后续编码或上线动作"},
+            {"key": "C", "value": f"只关注表面术语，不考虑业务约束与场景"},
+            {"key": "D", "value": f"把 {point} 误认为与本章节无关的外围工作"},
         ]
         correct_answer = "A"
-    elif question_type == 2:
+        analysis = f"{point} 的考查重点是核心定义、使用边界和在课程语境中的真实作用，不应和开发后续动作混淆。"
+    elif normalized_type == 2:
+        prompt = f"关于“{point}”，下面哪些表述是合理的？"
         options = [
-            {"key": "A", "value": f"{knowledge_point}的定义"},
-            {"key": "B", "value": f"{knowledge_point}的应用场景"},
-            {"key": "C", "value": f"{knowledge_point}的常见误区"},
-            {"key": "D", "value": f"{knowledge_point}的实现方式"},
+            {"key": "A", "value": f"体现 {point} 的基本定义"},
+            {"key": "B", "value": f"体现 {point} 的适用场景"},
+            {"key": "C", "value": f"混淆 {point} 与其他知识点的错误说法"},
+            {"key": "D", "value": f"体现 {point} 在实际项目中的落地方式"},
         ]
         correct_answer = "A,B,D"
-    elif question_type == 3:
+        analysis = f"多选题会同时覆盖 {point} 的定义、场景和应用，错误项通常来自知识点混淆。"
+    elif normalized_type == 3:
+        prompt = f"判断正误：{point} 只需要记住概念，不需要结合实际场景理解。"
         options = [{"key": "A", "value": "正确"}, {"key": "B", "value": "错误"}]
-        correct_answer = "A"
-    else:
+        correct_answer = "B"
+        analysis = f"{point} 不是纯记忆型内容，课程测评更强调能否放回真实情境中理解。"
+    elif normalized_type == 4:
+        prompt = f"填空：{point} 的核心目标是 __________。"
         options = []
-        correct_answer = knowledge_point
-
-    content_prefix = {
-        1: "下列关于",
-        2: "关于",
-        3: "判断正误：",
-        4: "请填空：",
-        5: "请简述",
-        6: "请编写代码说明",
-    }.get(question_type, "请说明")
+        correct_answer = point
+        analysis = f"填空题通常考查 {point} 的标准表述或关键目标。"
+    elif normalized_type == 5:
+        prompt = f"请简要说明 {point} 在当前课程中的作用，并给出一个典型应用场景。"
+        options = []
+        correct_answer = point
+        analysis = f"简答题会同时检查对 {point} 的概念理解和场景表达能力。"
+    else:
+        prompt = f"请围绕 {point} 编写一段能体现其应用的代码或伪代码。"
+        options = []
+        correct_answer = point
+        analysis = f"编程题要求把 {point} 落到实际实现或流程表达上。"
 
     return {
-        "question_content": f"{content_prefix}{knowledge_point}的第{index}个基础问题。",
+        "question_content": prompt,
         "question_options": options,
         "correct_answer": correct_answer,
-        "answer_analysis": f"这道题围绕{knowledge_point}的核心概念设计，用于覆盖基础掌握情况。",
-        "knowledge_point": knowledge_point,
-        "difficulty_reasoning": f"该题按照难度级别{difficulty_level}生成。",
-        "question_type": question_type,
+        "answer_analysis": analysis,
+        "knowledge_point": point,
+        "difficulty_reasoning": f"该题按难度等级 {difficulty_level} 生成，用于覆盖 {point} 的核心掌握情况。",
+        "question_type": normalized_type,
         "difficulty_level": difficulty_level,
         "quality_score": 0.6,
         "_fallback_used": True,
+        "_fallback_index": index,
     }
 
 
@@ -129,18 +146,30 @@ def _is_question_relevant(question: dict[str, Any], knowledge_point: str) -> boo
     if not expected:
         return True
 
+    question_content = str(question.get("question_content", "")).strip()
+    answer_analysis = str(question.get("answer_analysis", "")).strip()
+    normalized_point = str(question.get("knowledge_point", "")).strip().lower()
+
+    if normalized_point and normalized_point == expected:
+        return True
+
     haystack = " ".join(
         [
-            str(question.get("question_content", "")),
-            str(question.get("answer_analysis", "")),
+            question_content,
+            answer_analysis,
             str(question.get("difficulty_reasoning", "")),
         ]
     ).lower()
-    return expected in haystack
+    if expected in haystack:
+        return True
+
+    compact_expected = re.sub(r"\s+", "", expected)
+    compact_haystack = re.sub(r"\s+", "", haystack)
+    return bool(compact_expected and compact_expected in compact_haystack)
 
 
 def _distribute_question_counts(knowledge_points: list[str], total_count: int) -> list[tuple[str, int]]:
-    points = [point for point in knowledge_points if point]
+    points = [point.strip() for point in knowledge_points if point and point.strip()]
     if not points:
         return []
 
@@ -193,8 +222,8 @@ class QuestionGeneratorAgent:
             response = await asyncio.wait_for(
                 self.llm_client.chat_completion(
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
-                    max_tokens=2000,
+                    temperature=0.55,
+                    max_tokens=2200,
                 ),
                 timeout=QUESTION_GENERATION_TIMEOUT_SECONDS,
             )
@@ -215,6 +244,7 @@ class QuestionGeneratorAgent:
                         difficulty_level=difficulty_level,
                         question_type=question_type,
                         index=index + 1,
+                        course_context=course_context,
                     )
                     for index in range(max(count, 1))
                 ]
@@ -222,6 +252,7 @@ class QuestionGeneratorAgent:
                 for question in questions:
                     question["knowledge_point"] = knowledge_point
 
+            questions = questions[: max(count, 1)]
             for question in questions:
                 question["quality_score"] = await self._assess_quality(question)
 
@@ -237,6 +268,8 @@ class QuestionGeneratorAgent:
             logger.error(
                 "question generation failed; using fallback",
                 error=str(exc),
+                error_repr=repr(exc),
+                error_type=exc.__class__.__name__,
                 knowledge_point=knowledge_point,
                 question_type=question_type,
                 difficulty_level=difficulty_level,
@@ -248,6 +281,7 @@ class QuestionGeneratorAgent:
                     difficulty_level=difficulty_level,
                     question_type=question_type,
                     index=index + 1,
+                    course_context=course_context,
                 )
                 for index in range(max(count, 1))
             ]
@@ -260,24 +294,39 @@ class QuestionGeneratorAgent:
         count: int,
         course_context: str,
     ) -> str:
-        context_section = f"\n课程背景:\n{course_context}" if course_context else ""
+        context_section = f"\n课程背景：\n{course_context.strip()}" if course_context.strip() else ""
         return f"""
-你是一位专业的教育测评专家，请根据以下要求生成高质量题目。
+你是一名严谨的课程命题老师，需要围绕“{knowledge_point}”生成可以直接用于在线测评的正式题目。
 
-知识点: {knowledge_point}
-难度层级: {difficulty_desc}
-题目类型: {type_desc}
-生成数量: {count}{context_section}
+知识点：{knowledge_point}
+难度层级：{difficulty_desc}
+题目类型：{type_desc}
+生成数量：{count}{context_section}
 
-请直接返回 JSON 数组，不要输出额外说明。格式如下：
+出题要求：
+1. 题目必须是课程知识题，不要输出学习建议、产品推荐、视频推荐、复习提醒或 AI 助手话术。
+2. 题干要具体，优先考查定义理解、概念辨析、场景判断、流程步骤、方法比较、错误识别。
+3. 如果是选择题，选项要像真实考试题，干扰项合理，长度接近，不能明显凑数。
+4. 解析必须解释为什么正确、为什么其余选项不合适，不能只写一句“因为定义如此”。
+5. 输出内容必须紧扣“{knowledge_point}”，不要泛化到其他章节，不要改写成宽泛学习态度题。
+6. 如果课程背景里出现软件工程等课程信息，请优先按该课程语境命题。
+7. `knowledge_point` 字段必须写回“{knowledge_point}”。
+8. 只返回 JSON 数组，不要返回 Markdown，不要加任何额外说明。
+
+JSON 格式：
 [
   {{
-    "question_content": "题目内容",
-    "question_options": [{{"key": "A", "value": "选项A"}}],
-    "correct_answer": "正确答案",
-    "answer_analysis": "答案解析",
+    "question_content": "题干",
+    "question_options": [
+      {{"key": "A", "value": "选项A"}},
+      {{"key": "B", "value": "选项B"}},
+      {{"key": "C", "value": "选项C"}},
+      {{"key": "D", "value": "选项D"}}
+    ],
+    "correct_answer": "A",
+    "answer_analysis": "解析",
     "knowledge_point": "{knowledge_point}",
-    "difficulty_reasoning": "难度设计说明"
+    "difficulty_reasoning": "这道题为什么符合当前难度"
   }}
 ]
 """.strip()
@@ -336,17 +385,17 @@ class QuestionGeneratorAgent:
         score = 0.0
 
         content = question.get("question_content", "")
-        if 10 <= len(content) <= 500:
+        if 12 <= len(content) <= 280:
             score += 0.3
         elif content:
             score += 0.15
 
         options = question.get("question_options", [])
         if question.get("question_type") in [1, 2, 3]:
-            if len(options) >= 2:
+            if len(options) >= 4:
                 score += 0.3
-            elif options:
-                score += 0.15
+            elif len(options) >= 2:
+                score += 0.2
         else:
             score += 0.3
 
@@ -354,7 +403,7 @@ class QuestionGeneratorAgent:
             score += 0.2
 
         analysis = question.get("answer_analysis", "")
-        if len(analysis) >= 20:
+        if len(analysis) >= 24:
             score += 0.2
         elif analysis:
             score += 0.1
@@ -463,6 +512,7 @@ async def question_generator_node(state: LearningAgentState) -> LearningAgentSta
                 for questions in layered_questions.values():
                     for question in questions:
                         question.pop("_fallback_used", None)
+                        question.pop("_fallback_index", None)
                 state["layered_questions"] = layered_questions
                 state["generated_questions"] = (
                     layered_questions["basic"]
@@ -495,6 +545,7 @@ async def question_generator_node(state: LearningAgentState) -> LearningAgentSta
                         fallback_knowledge_points.append(fallback_points[0])
                     for question in batch:
                         question.pop("_fallback_used", None)
+                        question.pop("_fallback_index", None)
                     questions.extend(batch)
                 state["generated_questions"] = questions
                 state["fallback_knowledge_points"] = fallback_knowledge_points

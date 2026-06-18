@@ -18,6 +18,8 @@ class ResourceGenerationResponse(BaseModel):
     task_id: int | None = None
     recommended_order: list[str] = Field(default_factory=list)
     resources: list[ResourceCard] = Field(default_factory=list)
+    safety_review: dict | None = None
+    hallucination_review: dict | None = None
 
 
 class ResourceListResponse(BaseModel):
@@ -101,6 +103,108 @@ class ResourceArchiveSummaryResponse(BaseModel):
     by_type: dict[str, int] = Field(default_factory=dict)
     by_archived_by: dict[str, int] = Field(default_factory=dict)
     latest_archived_at: str | None = None
+
+
+class VideoInsightSummaryPack(BaseModel):
+    minute: str
+    three_minute: str
+    deep_dive: list[str] = Field(default_factory=list)
+
+
+class VideoInsightTimelinePoint(BaseModel):
+    time: int
+    label: str
+    detail: str
+
+
+class VideoInsightTerm(BaseModel):
+    term: str
+    time: int
+    alias: str | None = None
+    explanation: str
+    background: str
+
+
+class VideoInsightCue(BaseModel):
+    start: int
+    end: int
+    zh: str
+    en: str
+    corrected: str | None = None
+
+
+class VideoInsightArticlePack(BaseModel):
+    article: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    mindmap: list[str] = Field(default_factory=list)
+
+
+class VideoInsightResponse(BaseModel):
+    resource_id: int | None = None
+    file_id: int
+    title: str
+    topic: str
+    summary: VideoInsightSummaryPack
+    timeline: list[VideoInsightTimelinePoint] = Field(default_factory=list)
+    terms: list[VideoInsightTerm] = Field(default_factory=list)
+    subtitles: list[VideoInsightCue] = Field(default_factory=list)
+    article_pack: VideoInsightArticlePack
+    formula_hint: str
+
+
+class VideoInsightRequest(BaseModel):
+    resource_id: int | None = None
+    file_id: int
+    resource_title: str | None = None
+    file_name: str | None = None
+
+
+class VideoInsightAskRequest(BaseModel):
+    resource_id: int | None = None
+    file_id: int
+    question: str
+    current_time: float = 0
+    resource_title: str | None = None
+    file_name: str | None = None
+
+
+class VideoInsightAskResponse(BaseModel):
+    answer: str
+    matched_time: int
+
+
+class JavaRunRequest(BaseModel):
+    source_code: str = Field(..., description="待编译运行的 Java 源码")
+    class_name: str = Field(default="Main", description="主类名")
+    stdin: str | None = Field(default=None, description="标准输入")
+    timeout_seconds: int = Field(default=6, ge=1, le=15, description="执行超时秒数")
+
+
+class JavaRunResponse(BaseModel):
+    success: bool
+    compile_ok: bool
+    run_ok: bool
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int | None = None
+    compile_output: str = ""
+
+
+class JavaReviewRequest(BaseModel):
+    source_code: str = Field(..., description="待分析的 Java 源码")
+    problem_statement: str | None = Field(default=None, description="题面描述")
+    resource_title: str | None = Field(default=None, description="资源标题")
+    compile_output: str | None = Field(default=None, description="编译输出")
+    runtime_output: str | None = Field(default=None, description="运行输出")
+    expected_output: str | None = Field(default=None, description="期望输出")
+
+
+class JavaReviewResponse(BaseModel):
+    success: bool
+    summary: str
+    key_issues: list[str] = Field(default_factory=list)
+    suggested_code: str = ""
+    next_steps: list[str] = Field(default_factory=list)
 
 
 # ========================================

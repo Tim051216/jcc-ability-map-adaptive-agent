@@ -69,6 +69,7 @@ class CourseDetailResponse(BaseModel):
     introduce: str
     use_people: str
     detail: str
+    teachers: list[CourseTeacherResponse] = Field(default_factory=list)
 
 
 class CourseSearchResponse(BaseModel):
@@ -86,6 +87,7 @@ class LearningCourseDetailResponse(BaseModel):
     latest_section_id: int | None = None
     moment: int = 0
     chapters: list[CourseChapterResponse] = Field(default_factory=list)
+    teachers: list[CourseTeacherResponse] = Field(default_factory=list)
 
 
 class CourseSectionPlayResponse(BaseModel):

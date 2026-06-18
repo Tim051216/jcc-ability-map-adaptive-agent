@@ -15,9 +15,11 @@ from app.db.models.generation_task import GenerationTask
 from app.db.repositories.resource_repository import ResourceRepository
 from app.db.session import async_session_factory
 from app.schemas.resource import ResourceGenerationTaskCreate, ResourceGenerationTaskResponse
+from app.services.course_context_service import CourseContextService
 from app.services.resource_generation_event_service import ResourceGenerationEventService
 from app.services.resource_file_storage_service import ResourceFileStorageService
 from app.services.resource_management_service import ResourceManagementService
+from app.services.resource_service import ResourceService
 
 if TYPE_CHECKING:
     from app.agents.nodes.resource_generation.coordinator_agent import ResourceGenerationCoordinator
@@ -264,10 +266,12 @@ class ResourceGenerationService:
         title = data.get("title") or f"{task_data.task_name}-{resource_type_name}"
         content_markdown = self._extract_content_markdown(resource_type_name, data)
         summary = data.get("summary") or data.get("description") or title
+        course_code = await self._resolve_course_code(task_data.course_id)
         generation_context = {
             "resource_type_value": resource_type_value,
             "knowledge_point_id": task_data.knowledge_point_id,
             "course_id": task_data.course_id,
+            "course_code": course_code,
             "chapter_id": task_data.chapter_id,
             "section_id": task_data.section_id,
             "difficulty_level": (task_data.generation_params or {}).get("difficulty_level", 1),
@@ -291,7 +295,7 @@ class ResourceGenerationService:
                     resource = await self.resource_repository.create_resource(
                         session,
                         user_id=task_data.student_id,
-                        course_code=str(task_data.course_id),
+                        course_code=course_code,
                         resource_type=resource_type_name,
                         title=title,
                         summary=summary,
@@ -307,6 +311,14 @@ class ResourceGenerationService:
                         updated_at=now_iso,
                     )
                     resource_id = int(resource.id)
+                    self._hydrate_visual_illustration_generation_context(
+                        generation_context=generation_context,
+                        resource_id=resource_id,
+                        resource_type_name=resource_type_name,
+                        course_code=course_code,
+                        title=title,
+                        summary=summary,
+                    )
                     uploaded_file_url, uploaded_object_key = self._try_upload_resource_file(
                         resource_id=resource_id,
                         resource_type_name=resource_type_name,
@@ -325,6 +337,15 @@ class ResourceGenerationService:
                 resource_id = ResourceManagementService.allocate_resource_id()
         else:
             resource_id = ResourceManagementService.allocate_resource_id()
+
+        self._hydrate_visual_illustration_generation_context(
+            generation_context=generation_context,
+            resource_id=resource_id,
+            resource_type_name=resource_type_name,
+            course_code=course_code,
+            title=title,
+            summary=summary,
+        )
 
         if not uploaded_file_url and not uploaded_object_key:
             uploaded_file_url, uploaded_object_key = self._try_upload_resource_file(
@@ -365,7 +386,12 @@ class ResourceGenerationService:
                 "title": title,
                 "summary": summary,
                 "content": content_markdown,
+                "course_code": course_code,
+                "preview_url": generation_context.get("preview_url"),
+                "open_url": generation_context.get("open_url"),
+                "inline_asset_url": generation_context.get("inline_asset_url"),
                 "object_key": generation_context.get("object_key"),
+                "generation_context": dict(generation_context),
                 resource_type_name: data,
             }
         )
@@ -587,6 +613,38 @@ class ResourceGenerationService:
         except Exception:
             return None, None
         return result.get("file_url") or None, result.get("object_key") or None
+
+    async def _resolve_course_code(self, course_id: int) -> str:
+        try:
+            context = await CourseContextService().resolve(course_id=course_id)
+            if context.course_code:
+                return context.course_code
+        except Exception:
+            pass
+        return str(course_id)
+
+    @staticmethod
+    def _hydrate_visual_illustration_generation_context(
+        *,
+        generation_context: dict[str, Any],
+        resource_id: int,
+        resource_type_name: str,
+        course_code: str,
+        title: str,
+        summary: str,
+    ) -> None:
+        if resource_type_name != "visual_illustration":
+            return
+        source_file = ResourceService._build_visual_illustration_source_file(
+            resource_id=resource_id,
+            course_code=course_code,
+            title=title,
+            summary=summary,
+            source_titles=[],
+        )
+        generation_context["preview_url"] = source_file.preview_url
+        generation_context["open_url"] = source_file.open_url
+        generation_context["inline_asset_url"] = source_file.preview_url
 
     async def _publish_task_event(
         self,

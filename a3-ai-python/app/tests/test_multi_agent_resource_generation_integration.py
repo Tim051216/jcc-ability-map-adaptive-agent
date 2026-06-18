@@ -15,6 +15,7 @@ import zipfile
 from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -31,6 +32,7 @@ from app.schemas.resource import (
     ResourceFavoriteCreate,
     ResourceFavoriteRecordResponse,
 )
+from app.services.course_context_service import CourseContextService
 from app.services.resource_generation_service import ResourceGenerationService
 from app.services.resource_management_service import ResourceManagementService
 
@@ -448,6 +450,46 @@ async def test_generation_task_marks_partial_failure(monkeypatch) -> None:
     assert fetched.task_status == 4
     assert fetched.completed_resources == 1
     assert fetched.failed_resources == 1
+
+
+@pytest.mark.asyncio
+async def test_persist_visual_illustration_generates_real_preview_url(monkeypatch) -> None:
+    service = ResourceGenerationService()
+    service._db_available = False
+    monkeypatch.setattr(
+        "app.services.resource_generation_service.ResourceFileStorageService.upload_generated_resource",
+        lambda self, **kwargs: (_ for _ in ()).throw(RuntimeError("skip object storage in test")),
+    )
+
+    async def fake_resolve(self, *, course_id=None, course_code=None):
+        assert course_id == 201
+        return SimpleNamespace(course_id=201, course_code="vue3_engineering", course_name="Vue3 工程化")
+
+    monkeypatch.setattr(CourseContextService, "resolve", fake_resolve)
+
+    resource_id = await service._persist_resource(
+        task_id=88,
+        task_data=ResourceGenerationTaskCreate(
+            task_name="补插图",
+            student_id=1001,
+            resource_types=[1],
+            knowledge_point_id=20111,
+            course_id=201,
+        ),
+        resource_type_value=1,
+        resource_type_name="visual_illustration",
+        data={
+            "title": "Vue3 页面结构教学插图",
+            "summary": "围绕组件边界、状态流转与交互路径生成教学插图。",
+            "content_markdown": "# 插图说明\n\n用于课堂讲解与 PPT 配图。",
+        },
+    )
+
+    detail = await ResourceManagementService().get_resource_detail(resource_id)
+    assert detail["file_url"] is None
+    cached = ResourceManagementService().resource_cache[resource_id]
+    assert cached["generation_context"]["course_code"] == "vue3_engineering"
+    assert cached["generation_context"]["preview_url"] == "/generated-resource-illustrations/vue3_engineering/1.svg"
 
 
 # --- 资源管理 V2 API ---

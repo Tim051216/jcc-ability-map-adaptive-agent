@@ -25,6 +25,7 @@ class EvaluationQuestion(BaseModel):
     explanation: str = ""
     knowledge_point: str
     difficulty: str = "basic"
+    source: str = "ai"
 
 
 class EvaluationPaperGenerateRequest(BaseModel):
@@ -43,6 +44,7 @@ class EvaluationPaperResponse(BaseModel):
     course_code: str
     paper_type: str
     status: str
+    source: str = "ai"
     questions: list[EvaluationQuestion] = Field(default_factory=list)
 
 
@@ -202,6 +204,11 @@ class QuestionGenerateResponse(BaseModel):
     questions: list[GeneratedQuestion] = Field(default_factory=list)
     layered_questions: dict[str, list[GeneratedQuestion]] | None = None
     total_count: int = 0
+    fallback_count: int = 0
+    fallback_knowledge_points: list[str] = Field(default_factory=list)
+    safety_review: dict | None = None
+    hallucination_review: dict | None = None
+    source: str = "ai"
 
 
 class AnswerGradingRequest(BaseModel):

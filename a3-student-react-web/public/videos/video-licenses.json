@@ -1,0 +1,36 @@
+{
+  "updated_at": "2026-06-08",
+  "note": "Current in-project videos are local placeholder/demo assets. Replace each entry with the final downloaded stock or authorized course video before release.",
+  "videos": [
+    {
+      "id": "project-demo",
+      "file": "/videos/software-engineering-4th/project-demo.mp4",
+      "status": "placeholder",
+      "intended_use": "home hero / learning preview / project showcase",
+      "source_url": "",
+      "author": "",
+      "license": "pending replacement",
+      "license_url": ""
+    },
+    {
+      "id": "visio-flow-demo",
+      "file": "/videos/software-engineering-4th/visio-flow-demo.mp4",
+      "status": "placeholder",
+      "intended_use": "system flow / resource preview / process explanation",
+      "source_url": "",
+      "author": "",
+      "license": "pending replacement",
+      "license_url": ""
+    },
+    {
+      "id": "cloud-app-demo",
+      "file": "/videos/software-engineering-4th/cloud-app-demo.mp4",
+      "status": "placeholder",
+      "intended_use": "workspace atmosphere / integration demo / learning page backdrop",
+      "source_url": "",
+      "author": "",
+      "license": "pending replacement",
+      "license_url": ""
+    }
+  ]
+}

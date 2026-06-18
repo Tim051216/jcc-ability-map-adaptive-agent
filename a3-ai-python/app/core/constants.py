@@ -13,4 +13,8 @@ RESOURCE_TYPES = [
     "quiz_set",
     "extended_reading",
     "coding_lab",
+    "visual_illustration",
+    "micro_video",
+    "subtitle_transcript",
+    "ocr_notes",
 ]

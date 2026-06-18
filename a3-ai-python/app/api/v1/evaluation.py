@@ -158,8 +158,8 @@ async def get_evaluation_trend(
 @router.post("/questions/generate", response_model=QuestionGenerateResponse)
 async def generate_questions(request: QuestionGenerateRequest) -> QuestionGenerateResponse:
     """AI 生成题目"""
-    service = EvaluationAgentService()
-    return await service.generate_questions(request)
+    service = EvaluationService()
+    return await service.generate_question_bank(request)
 
 
 @router.post("/answers/grade", response_model=AnswerGradingResponse)

@@ -22,6 +22,8 @@ class ChatResponse(BaseModel):
     generated_plan: dict | None = None
     generated_resources: list[dict] = Field(default_factory=list)
     generated_evaluation: dict | None = None
+    safety_review: dict | None = None
+    hallucination_review: dict | None = None
 
 
 class ChatTaskSubmitResponse(BaseModel):
@@ -156,9 +158,17 @@ class ImMessageListResponse(BaseModel):
     total: int = 0
 
 
+class ImSessionReadResponse(BaseModel):
+    session_id: int
+    user_id: int
+    last_read_message_id: int
+    unread_count: int = 0
+
+
 class ImSessionCreateRequest(BaseModel):
     peer_user_id: int
     peer_name: str | None = None
+    owner_name: str | None = None
 
 
 class ImSendMessageRequest(BaseModel):

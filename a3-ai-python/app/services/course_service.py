@@ -376,6 +376,7 @@ class CourseService:
             introduce=course["introduce"],
             use_people=course["use_people"],
             detail=course["detail"],
+            teachers=[CourseTeacherResponse.model_validate(item) for item in course["teachers"]],
         )
 
     async def list_course_teachers(self, course_id: int) -> list[CourseTeacherResponse]:
@@ -410,6 +411,7 @@ class CourseService:
             latest_section_id=latest_section_id,
             moment=120,
             chapters=[self._to_course_chapter(item) for item in course["chapters"]],
+            teachers=[CourseTeacherResponse.model_validate(item) for item in course["teachers"]],
         )
 
     async def get_section_play_info(self, course_id: int, section_id: int, user_id: int | None = None) -> CourseSectionPlayResponse:
@@ -581,3 +583,132 @@ for bucket_name in ("free", "best", "new"):
     bucket = CourseService.RECOMMEND_BUCKETS.setdefault(bucket_name, [])
     if SOFTWARE_ENGINEERING_4TH_COURSE["id"] not in bucket:
         bucket.insert(0, SOFTWARE_ENGINEERING_4TH_COURSE["id"])
+
+
+COURSE_TEACHER_ENHANCEMENTS = {
+    101: [
+        {
+            "id": 11,
+            "name": "顾行知",
+            "role": "学习系统主讲",
+            "intro": "负责学习画像、路径规划和多智能体主链路讲解。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 12,
+            "name": "周知行",
+            "role": "陪学助教",
+            "intro": "负责课堂答疑、过程跟踪和学习任务接续。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+    ],
+    102: [
+        {
+            "id": 21,
+            "name": "程启航",
+            "role": "微服务实战导师",
+            "intro": "负责服务拆分、注册发现和链路治理讲解。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 22,
+            "name": "段牧原",
+            "role": "交付教练",
+            "intro": "负责工程部署、容灾和联调流程复盘。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+    ],
+    201: [
+        {
+            "id": 31,
+            "name": "李闻川",
+            "role": "前端架构导师",
+            "intro": "负责组件抽象、状态边界和项目工程化落地。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 32,
+            "name": "孙以澄",
+            "role": "设计系统导师",
+            "intro": "负责页面表达、规范协同和视觉一致性训练。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+    ],
+    301: [
+        {
+            "id": 41,
+            "name": "蒋牧川",
+            "role": "AI 应用主讲",
+            "intro": "负责 RAG、Agent 编排和工具接入设计。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 42,
+            "name": "沈序安",
+            "role": "资源生成助教",
+            "intro": "负责讲义、导图、题目和扩展材料协同生成。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+    ],
+    302: [
+        {
+            "id": 51,
+            "name": "何青岚",
+            "role": "竞赛项目导师",
+            "intro": "负责赛题拆解、范围控制和验收叙事设计。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 52,
+            "name": "许嘉禾",
+            "role": "产品呈现教练",
+            "intro": "负责功能表达、答辩节奏和用户价值讲解。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+    ],
+    401: [
+        {
+            "id": 61,
+            "name": "贾铁军",
+            "role": "课程总主讲",
+            "intro": "负责软件工程课程主线、教材结构和教学安排。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 62,
+            "name": "何青岚",
+            "role": "工程实践导师",
+            "intro": "负责需求分析、设计落地和项目交付复盘。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+        {
+            "id": 63,
+            "name": "周知行",
+            "role": "课堂助教",
+            "intro": "负责配套资料同步、课后答疑和进度衔接。",
+            "icon": "/img-tx/default-user-icon.jpg",
+            "is_show": True,
+        },
+    ],
+}
+
+for course in CourseService.COURSE_FIXTURES:
+    extra_teachers = COURSE_TEACHER_ENHANCEMENTS.get(course["id"])
+    if not extra_teachers:
+        continue
+    existing_ids = {item.get("id") for item in course.get("teachers", [])}
+    for teacher in extra_teachers:
+        if teacher["id"] not in existing_ids:
+            course.setdefault("teachers", []).append(teacher)

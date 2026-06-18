@@ -9,8 +9,6 @@ import {
   Sparkles,
   Zap,
   Terminal,
-  Play,
-  Cpu,
   BookmarkCheck,
   Shield,
   Activity,
@@ -23,9 +21,9 @@ import {
   Award
 } from "lucide-react";
 
-import assetAnimeClassroom from "../assets/images/anime_perfect_dual_1779718037085.png";
-import assetHaibaraAcademic from "../assets/images/haibara_academic_1779716437995.png";
-import assetUsagiStudy from "../assets/images/usagi_perfect_1779717893221.png";
+import assetAnimeClassroom from "../assets/images/anime_perfect_dual_1779718037085.webp";
+import assetHaibaraAcademic from "../assets/images/haibara_academic_1779716437995.webp";
+import assetUsagiStudy from "../assets/images/usagi_perfect_1779717893221.webp";
 
 interface WelcomeScreenProps {
   onDismiss: () => void;
@@ -160,14 +158,16 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-pink-50/60 p-4 md:p-6 overflow-hidden select-none">
+    <div className="pointer-events-none fixed inset-0 z-[10000] flex items-center justify-center bg-pink-50/60 p-4 md:p-6 overflow-hidden select-none">
       
       {/* 1. Backdrop Ambient blur container */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         <img
           src={assetAnimeClassroom}
           alt="Classroom Classroom Backdrop"
           className="w-full h-full object-cover scale-105 filter blur-xs brightness-[0.95] opacity-55"
+          decoding="async"
+          fetchPriority="high"
           referrerPolicy="no-referrer"
         />
         
@@ -177,7 +177,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
         
         {/* Holographic tech grid layer */}
         <div className="absolute inset-0 bg-[radial-gradient(rgba(244,114,182,0.15)_1px,transparent_1px)] [background-size:20px_20px] opacity-80" />
-        <div className="absolute inset-0 bg-gradient-to-t from-pink-50/90 via-white/80 to-white/90" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-pink-50/90 via-white/80 to-white/90" />
       </div>
 
       {/* 2. Floating Mathematics Greek formulas and atoms particles */}
@@ -214,7 +214,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
         initial={{ opacity: 0, scale: 0.94, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-5xl bg-white/94 backdrop-blur-md border-4 border-white rounded-[36px] overflow-hidden shadow-[0px_25px_70px_-15px_rgba(251,114,153,0.35)] flex flex-col justify-between max-h-[92vh]"
+        className="pointer-events-auto relative z-10 w-full max-w-5xl bg-white/94 backdrop-blur-md border-4 border-white rounded-[36px] overflow-hidden shadow-[0px_25px_70px_-15px_rgba(251,114,153,0.35)] flex flex-col justify-between max-h-[92vh]"
       >
         {/* Tech decorative HUD line overlays */}
         <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-pink-400 via-[#fb7299] to-purple-500 animate-gradient-x" />
@@ -243,7 +243,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.15, type: "spring" }}
-            className="inline-flex items-center gap-2 px-3 py-1 bg-pink-50 border border-pink-200 rounded-full text-[10px] font-extrabold text-[#fb7299] tracking-wider shadow-xs"
+            className="ui-text-brand inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-[10px] font-extrabold tracking-wider shadow-xs"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#fb7299] animate-pulse" />
             <span>BILIBILI UNIVERSAL CO-RESEARCH TERMINAL</span>
@@ -283,7 +283,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
           >
             {/* High-end cyber matrix grid decorations */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-xl pointer-events-none" />
-            <div className="absolute -bottom-2 -left-2 text-[28px] font-black text-purple-100/45 tracking-tighter uppercase font-mono select-none">
+            <div className="absolute -bottom-2 -left-2 text-[28px] font-black text-purple-100/45 ui-tracking-tighter uppercase font-mono select-none">
               REVIEWER 01
             </div>
 
@@ -344,7 +344,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
           >
             {/* High-end cyber matrix grid decorations */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
-            <div className="absolute -bottom-2 -left-2 text-[28px] font-black text-amber-100/40 tracking-tighter uppercase font-mono select-none">
+            <div className="absolute -bottom-2 -left-2 text-[28px] font-black text-amber-100/40 ui-tracking-tighter uppercase font-mono select-none">
               YAHA ENERGY 02
             </div>
 
@@ -423,9 +423,8 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
 
           </div>
 
-          {/* Primary ENTER TERMINAL button with custom lasers */}
+          {/* Primary entry action */}
           <div className="relative group w-full md:w-auto">
-            <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl blur opacity-35 group-hover:opacity-85 transition-all duration-300 animate-pulse" />
             <button
               onClick={() => {
                 sessionStorage.setItem("hasSeenWelcome", "true");
@@ -434,11 +433,9 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
                   onDismiss();
                 }, 500);
               }}
-              className="relative w-full md:w-auto px-10 py-4.5 bg-[#fb7299] hover:bg-[#ff8fae] text-white font-black text-sm rounded-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0.5 active:scale-98 cursor-pointer flex items-center justify-center gap-2.5 shadow-[0_4px_20px_rgba(251,114,153,0.35)] tracking-wider"
+              className="w-full rounded-2xl border border-pink-200 bg-white px-8 py-4 text-sm font-black text-[#fb7299] transition-all duration-300 hover:border-pink-300 hover:bg-pink-50 md:w-auto"
             >
-              <Cpu className="w-4.5 h-4.5 text-white animate-pulse" />
-              <span>启动双生研学终端 (ENTER BILILEARN)</span>
-              <Play className="w-4 h-4 text-white group-hover:translate-x-1.5 transition-transform" />
+              <span>进入 BiliLearn</span>
             </button>
           </div>
 

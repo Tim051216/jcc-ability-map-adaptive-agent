@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.guardrails import HallucinationReview, SafetyReview
+
 
 # ==================== OCR 预览 ====================
 
@@ -37,6 +39,7 @@ class TutoringImageUploadResponse(BaseModel):
     """辅导配图上传结果（写入 question_images）"""
 
     url: str = Field(..., description="图片访问 URL（对象存储或预签名）")
+    extracted_text: Optional[str] = Field(None, description="从附件中提取出的文本内容")
 
 
 # ==================== 会话相关 ====================
@@ -316,6 +319,8 @@ class TutoringTaskResult(BaseModel):
     should_escalate: bool = False
     question_type: Optional[str] = None
     knowledge_points: list[str] = Field(default_factory=list)
+    safety_review: SafetyReview | dict[str, Any] | None = None
+    hallucination_review: HallucinationReview | dict[str, Any] | None = None
 
 
 class TutoringTaskSubmitResponse(BaseModel):

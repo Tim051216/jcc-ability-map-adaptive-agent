@@ -122,6 +122,7 @@ class ProfileSummary(BaseModel):
     profile_id: int | None = Field(None, description="画像ID")
     user_id: int = Field(..., description="用户ID")
     completeness: int = Field(..., description="完整度")
+    sbti_code: str | None = Field(None, description="稳定学习画像编码")
     tags: list[str] = Field(default_factory=list, description="学习标签")
     key_features: str | None = Field(None, description="关键特征")
     dimension_completeness: dict[str, int] = Field(
