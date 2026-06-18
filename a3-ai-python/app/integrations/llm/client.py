@@ -27,7 +27,7 @@ class LLMClient:
         model: str | None = None,
     ) -> Any:
         provider = get_llm_provider()
-        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=str(m.get("content", ""))) for m in messages]
+        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=m.get("content", "")) for m in messages]
         text = await provider.generate(llm_messages, temperature=temperature, max_tokens=max_tokens, model=model)
         msg = CompatNamespace(content=text)
         choice = CompatNamespace(message=msg)
@@ -42,7 +42,7 @@ class LLMClient:
         model: str | None = None,
     ) -> AsyncIterator[str]:
         provider = get_llm_provider()
-        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=str(m.get("content", ""))) for m in messages]
+        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=m.get("content", "")) for m in messages]
         async for chunk in provider.generate_stream(llm_messages, temperature=temperature, max_tokens=max_tokens, model=model):
             if chunk:
                 yield chunk

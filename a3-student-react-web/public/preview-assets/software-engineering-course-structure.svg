@@ -1,0 +1,67 @@
+<svg width="1600" height="1000" viewBox="0 0 1600 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1600" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8EEF5"/>
+      <stop offset="1" stop-color="#D9E2EC"/>
+    </linearGradient>
+    <linearGradient id="board" x1="170" y1="105" x2="1430" y2="895" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F9FBFD"/>
+    </linearGradient>
+    <filter id="boardShadow" x="120" y="70" width="1360" height="880" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#9AACBF" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#wall)"/>
+  <rect x="40" y="40" width="1520" height="920" rx="28" fill="#EEF3F8" fill-opacity="0.45"/>
+
+  <g filter="url(#boardShadow)">
+    <rect x="170" y="105" width="1260" height="790" rx="28" fill="url(#board)" stroke="#C8D3DE" stroke-width="10"/>
+    <rect x="210" y="145" width="1180" height="710" rx="16" fill="#FCFEFF" stroke="#E3EAF1" stroke-width="2"/>
+  </g>
+
+  <rect x="250" y="875" width="1100" height="20" rx="10" fill="#A8B6C6" fill-opacity="0.55"/>
+  <rect x="300" y="880" width="110" height="10" rx="5" fill="#FB7299" fill-opacity="0.75"/>
+  <rect x="430" y="880" width="90" height="10" rx="5" fill="#6EC1FF" fill-opacity="0.75"/>
+  <rect x="540" y="880" width="70" height="10" rx="5" fill="#93D46B" fill-opacity="0.75"/>
+
+  <text x="260" y="220" fill="#1A1E23" font-size="44" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">软件工程课程结构板书</text>
+  <text x="262" y="268" fill="#697586" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">课堂主线：为什么做软件工程 → 怎么做 → 如何验证与维护</text>
+
+  <line x1="265" y1="310" x2="1335" y2="310" stroke="#DCE5EE" stroke-width="4" stroke-linecap="round"/>
+
+  <text x="280" y="380" fill="#FB7299" font-size="30" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">1. 软件危机</text>
+  <text x="320" y="425" fill="#344054" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif">• 规模变大、复杂度上升、进度失控</text>
+  <text x="320" y="462" fill="#344054" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif">• 核心矛盾：质量、成本、周期难平衡</text>
+
+  <text x="760" y="380" fill="#2A7FD1" font-size="30" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">2. 生命周期</text>
+  <rect x="760" y="415" width="520" height="72" rx="20" fill="#F4F9FF" stroke="#D6E7FA" stroke-width="2"/>
+  <text x="790" y="460" fill="#213247" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif">需求分析 → 总体设计 → 详细设计 → 编码 → 测试 → 维护</text>
+
+  <line x1="520" y1="405" x2="700" y2="405" stroke="#C6D4E3" stroke-width="4" stroke-dasharray="10 12"/>
+  <path d="M700 405L682 394V416L700 405Z" fill="#C6D4E3"/>
+
+  <text x="280" y="560" fill="#171C22" font-size="28" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">3. 各阶段关注点</text>
+  <rect x="280" y="590" width="290" height="150" rx="22" fill="#FFF7FA" stroke="#F5D6E3" stroke-width="2"/>
+  <text x="310" y="635" fill="#171C22" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">需求分析</text>
+  <text x="310" y="675" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">搞清楚“要做什么”</text>
+  <text x="310" y="710" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">用户、功能、约束条件</text>
+
+  <rect x="620" y="590" width="290" height="150" rx="22" fill="#F6FAFF" stroke="#D7E6F7" stroke-width="2"/>
+  <text x="650" y="635" fill="#171C22" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">系统设计</text>
+  <text x="650" y="675" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">想清楚“怎么组织”</text>
+  <text x="650" y="710" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">模块、接口、数据流</text>
+
+  <rect x="960" y="590" width="290" height="150" rx="22" fill="#F8FFF6" stroke="#DDEFD4" stroke-width="2"/>
+  <text x="990" y="635" fill="#171C22" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">测试与维护</text>
+  <text x="990" y="675" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">确认“做得对不对”</text>
+  <text x="990" y="710" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">验证、确认、修复与迭代</text>
+
+  <path d="M1280 350C1315 364 1340 390 1342 432C1345 480 1310 512 1256 521" stroke="#FB7299" stroke-width="6" stroke-linecap="round"/>
+  <text x="1260" y="560" fill="#FB7299" font-size="24" font-family="Microsoft YaHei, Arial, sans-serif" font-weight="700">课堂提示：</text>
+  <text x="1260" y="595" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">维护不是最后补救，</text>
+  <text x="1260" y="628" fill="#4B5565" font-size="22" font-family="Microsoft YaHei, Arial, sans-serif">而是前面设计质量的延续。</text>
+
+  <text x="285" y="805" fill="#6B7280" font-size="20" font-family="Microsoft YaHei, Arial, sans-serif">课堂拍照整理版 · 板书重点：主线、阶段、验证闭环</text>
+</svg>

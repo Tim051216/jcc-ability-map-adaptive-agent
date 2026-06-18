@@ -1,0 +1,10 @@
+SBTI reference sites found during research:
+
+1. https://sbti.today/
+2. https://sbti.me/types
+3. https://sbti.pics/types
+
+Notes:
+- These sites may contain the kind of "人格结果图 / 小人画像图" you mentioned.
+- Before putting any downloaded image into a project, you should confirm you are comfortable using it locally.
+- If you later place files into this folder, I can wire them into the app for you.

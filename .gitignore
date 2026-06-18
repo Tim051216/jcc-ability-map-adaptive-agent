@@ -41,6 +41,7 @@ a3-student-react-web/node_modules/
 a3-student-react-web/dist/
 a3-student-react-web/.env.local
 a3-student-react-web/*.log
+a3-student-react-web/.codex-logs/
 a3-student-react-web/tmp-*.png
 a3-admin-web/node_modules/
 a3-admin-web/dist/
@@ -54,4 +55,7 @@ docs/course-materials/
 # Local runtime / export artifacts
 *.zip
 *.pid
+*.bak
+.codex/
 a3-ai-python/.run/
+a3-ai-python/local_tools/

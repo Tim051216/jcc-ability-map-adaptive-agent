@@ -63,3 +63,28 @@ async def test_generate_answer_uses_realtime_weather_and_persona_stream(monkeypa
     assert result["reference_sources"][0]["source_type"] == "web"
     assert emitted
     assert "".join(emitted) == result["answer_text"]
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_returns_direct_time_answer() -> None:
+    agent = AnswerGeneratorAgent()
+    result = await agent.generate_answer(
+        "现在几点了",
+        {"question_type": "概念理解", "knowledge_points": [], "difficulty_level": 1},
+        persona="haibara",
+    )
+    assert "现在是" in result["answer_text"]
+    assert result["confidence_score"] == 99.0
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_returns_direct_requirements_vs_design_answer() -> None:
+    agent = AnswerGeneratorAgent()
+    result = await agent.generate_answer(
+        "需求分析和概要设计的区别是什么",
+        {"question_type": "概念理解", "knowledge_points": [], "difficulty_level": 2},
+        persona="haibara",
+    )
+    assert "系统要做什么" in result["answer_text"]
+    assert "系统准备怎么做" in result["answer_text"]
+    assert result["confidence_score"] == 95.0

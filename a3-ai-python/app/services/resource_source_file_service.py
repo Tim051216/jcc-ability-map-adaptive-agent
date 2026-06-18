@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select
 
 from app.db.models.resource_source_file import ResourceSourceFile
-from app.db.session import async_session_factory, engine
+from app.db.session import ai_data_engine, ai_data_session_factory
 from app.schemas.common import ResourceSourceFileRef
 from app.services.resource_source_file_storage_service import ResourceSourceFileStorageService
 
@@ -28,6 +28,7 @@ class ResourceSourceFileService:
     _indexed_refs_cache: dict[int, list[ResourceSourceFileRef]] = {}
     _indexed_counts_cache: dict[int, int] = {}
     _index_cache_ready: bool = False
+    _local_file_lookup_cache: dict[int, ResourceSourceFile] = {}
     SOFTWARE_ENGINEERING_RESOURCE_IDS = (101, 102, 103, 104, 105, 106)
     SUPPORTED_EXTENSIONS = {
         ".doc",
@@ -103,16 +104,19 @@ class ResourceSourceFileService:
         cached = self.__class__._indexed_refs_cache.get(resource_id)
         if cached is not None:
             return list(cached if limit is None else cached[:limit])
-        async with async_session_factory() as session:
-            stmt = (
-                select(ResourceSourceFile)
-                .where(ResourceSourceFile.resource_id == resource_id)
-                .order_by(ResourceSourceFile.sort_order.asc(), ResourceSourceFile.display_name.asc())
-            )
-            if limit is not None:
-                stmt = stmt.limit(limit)
-            result = await session.execute(stmt)
-            rows = result.scalars().all()
+        try:
+            async with ai_data_session_factory() as session:
+                stmt = (
+                    select(ResourceSourceFile)
+                    .where(ResourceSourceFile.resource_id == resource_id)
+                    .order_by(ResourceSourceFile.sort_order.asc(), ResourceSourceFile.display_name.asc())
+                )
+                if limit is not None:
+                    stmt = stmt.limit(limit)
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+        except Exception:
+            rows = self._local_rows_for_resource(resource_id=resource_id, limit=limit)
         return [self._to_ref(row) for row in rows]
 
     async def count_for_resource(self, *, resource_id: int, course_code: str) -> int:
@@ -130,11 +134,14 @@ class ResourceSourceFileService:
         cached = self.__class__._indexed_counts_cache.get(resource_id)
         if cached is not None:
             return cached
-        async with async_session_factory() as session:
-            result = await session.execute(
-                select(func.count(ResourceSourceFile.id)).where(ResourceSourceFile.resource_id == resource_id)
-            )
-            return int(result.scalar_one() or 0)
+        try:
+            async with ai_data_session_factory() as session:
+                result = await session.execute(
+                    select(func.count(ResourceSourceFile.id)).where(ResourceSourceFile.resource_id == resource_id)
+                )
+                return int(result.scalar_one() or 0)
+        except Exception:
+            return len(self._local_rows_for_resource(resource_id=resource_id, limit=None))
 
     async def list_indexed_for_resources(
         self,
@@ -155,18 +162,25 @@ class ResourceSourceFileService:
                 for resource_id in resource_ids
             }
 
-        async with async_session_factory() as session:
-            stmt = (
-                select(ResourceSourceFile)
-                .where(ResourceSourceFile.resource_id.in_(resource_ids))
-                .order_by(
-                    ResourceSourceFile.resource_id.asc(),
-                    ResourceSourceFile.sort_order.asc(),
-                    ResourceSourceFile.display_name.asc(),
+        try:
+            async with ai_data_session_factory() as session:
+                stmt = (
+                    select(ResourceSourceFile)
+                    .where(ResourceSourceFile.resource_id.in_(resource_ids))
+                    .order_by(
+                        ResourceSourceFile.resource_id.asc(),
+                        ResourceSourceFile.sort_order.asc(),
+                        ResourceSourceFile.display_name.asc(),
+                    )
                 )
-            )
-            result = await session.execute(stmt)
-            rows = result.scalars().all()
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+        except Exception:
+            grouped_rows = self._local_rows_grouped_by_resource(resource_ids=resource_ids)
+            return {
+                resource_id: [self._to_ref(row) for row in (grouped_rows.get(resource_id, [])[:limit] if limit is not None else grouped_rows.get(resource_id, []))]
+                for resource_id in resource_ids
+            }
 
         grouped: dict[int, list[ResourceSourceFileRef]] = {resource_id: [] for resource_id in resource_ids}
         for row in rows:
@@ -189,13 +203,17 @@ class ResourceSourceFileService:
                 for resource_id in resource_ids
             }
 
-        async with async_session_factory() as session:
-            result = await session.execute(
-                select(ResourceSourceFile.resource_id, func.count(ResourceSourceFile.id))
-                .where(ResourceSourceFile.resource_id.in_(resource_ids))
-                .group_by(ResourceSourceFile.resource_id)
-            )
-            rows = result.all()
+        try:
+            async with ai_data_session_factory() as session:
+                result = await session.execute(
+                    select(ResourceSourceFile.resource_id, func.count(ResourceSourceFile.id))
+                    .where(ResourceSourceFile.resource_id.in_(resource_ids))
+                    .group_by(ResourceSourceFile.resource_id)
+                )
+                rows = result.all()
+        except Exception:
+            grouped_rows = self._local_rows_grouped_by_resource(resource_ids=resource_ids)
+            return {resource_id: len(grouped_rows.get(resource_id, [])) for resource_id in resource_ids}
 
         counts = {resource_id: 0 for resource_id in resource_ids}
         for resource_id, count in rows:
@@ -212,7 +230,7 @@ class ResourceSourceFileService:
         await self._refresh_index_cache()
 
     async def _refresh_index_cache(self) -> None:
-        async with async_session_factory() as session:
+        async with ai_data_session_factory() as session:
             result = await session.execute(
                 select(ResourceSourceFile)
                 .where(ResourceSourceFile.course_code == "software_engineering_4th")
@@ -320,8 +338,14 @@ class ResourceSourceFileService:
 
     async def _load_source_file(self, file_id: int) -> ResourceSourceFile:
         await self._ensure_table()
-        async with async_session_factory() as session:
-            source_file = await session.get(ResourceSourceFile, file_id)
+        source_file = None
+        try:
+            async with ai_data_session_factory() as session:
+                source_file = await session.get(ResourceSourceFile, file_id)
+        except Exception:
+            source_file = self._build_local_source_file_lookup().get(file_id)
+        if source_file is None:
+            source_file = self._build_local_source_file_lookup().get(file_id)
         if source_file is None:
             raise HTTPException(status_code=404, detail="resource source file not found")
         return source_file
@@ -333,11 +357,14 @@ class ResourceSourceFileService:
         return file_path
 
     async def _ensure_table(self) -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(lambda sync_conn: ResourceSourceFile.__table__.create(sync_conn, checkfirst=True))
+        try:
+            async with ai_data_engine.begin() as conn:
+                await conn.run_sync(lambda sync_conn: ResourceSourceFile.__table__.create(sync_conn, checkfirst=True))
+        except Exception:
+            return
 
     async def _sync_resource_files(self, *, resource_id: int, course_code: str) -> None:
-        async with async_session_factory() as session:
+        async with ai_data_session_factory() as session:
             existing = await session.execute(
                 select(ResourceSourceFile.id, ResourceSourceFile.relative_path).where(ResourceSourceFile.resource_id == resource_id)
             )
@@ -352,7 +379,7 @@ class ResourceSourceFileService:
         if not pending_files:
             return
 
-        async with async_session_factory() as session:
+        async with ai_data_session_factory() as session:
             preview_map = self._load_preview_map()
             created_at = datetime.now().isoformat(timespec="seconds")
             session.add_all(
@@ -391,7 +418,7 @@ class ResourceSourceFileService:
         for file_path in sorted(course_dir.rglob("*")):
             if not file_path.is_file():
                 continue
-            if file_path.name in self.EXCLUDED_NAMES:
+            if file_path.name in self.EXCLUDED_NAMES or file_path.name.startswith("~$"):
                 continue
             suffix = file_path.suffix.lower()
             if suffix not in self.SUPPORTED_EXTENSIONS:
@@ -426,6 +453,161 @@ class ResourceSourceFileService:
 
         rows.sort(key=lambda item: (int(item["sort_order"]), str(item["relative_path"])))
         return rows[: self.MAX_FILES_PER_RESOURCE]
+
+    def _build_local_source_file_lookup(self) -> dict[int, ResourceSourceFile]:
+        if self.__class__._local_file_lookup_cache:
+            return self.__class__._local_file_lookup_cache
+
+        lookup: dict[int, ResourceSourceFile] = {
+            row.id: row for row in self._build_builtin_preview_rows()
+        }
+        next_file_id = 1
+        preview_map = self._load_preview_map()
+
+        for resource_id in self.SOFTWARE_ENGINEERING_RESOURCE_IDS:
+            for item in self._collect_selected_files(resource_id=resource_id):
+                lookup[next_file_id] = ResourceSourceFile(
+                    id=next_file_id,
+                    resource_id=resource_id,
+                    course_code="software_engineering_4th",
+                    display_name=str(item["display_name"]),
+                    relative_path=str(item["relative_path"]),
+                    absolute_path=str(item["absolute_path"]),
+                    top_level_category=str(item["top_level_category"]),
+                    file_extension=str(item["file_extension"]),
+                    mime_type=str(item["mime_type"]),
+                    file_size=int(item["file_size"]) if item.get("file_size") is not None else None,
+                    preview_text=preview_map.get(str(item["relative_path"])),
+                    is_inline_previewable=bool(item["is_inline_previewable"]),
+                    sort_order=int(item["sort_order"]),
+                    created_at=None,
+                    updated_at=None,
+                )
+                next_file_id += 1
+
+        self.__class__._local_file_lookup_cache = lookup
+        return lookup
+
+    def _build_builtin_preview_rows(self) -> list[ResourceSourceFile]:
+        preview_root = self._repo_root / "a3-student-react-web" / "public"
+        builtin_files = [
+            {
+                "id": 901,
+                "resource_id": 900001,
+                "display_name": "project-demo.mp4",
+                "relative_path": "/videos/software-engineering-4th/project-demo.mp4",
+                "absolute_path": preview_root / "videos" / "software-engineering-4th" / "project-demo.mp4",
+                "top_level_category": "视频",
+                "file_extension": ".mp4",
+                "mime_type": "video/mp4",
+                "file_size": 13631541,
+                "preview_text": "软件工程课程项目演示视频",
+                "is_inline_previewable": True,
+                "sort_order": 0,
+            },
+            {
+                "id": 902,
+                "resource_id": 900002,
+                "display_name": "visio-flow-demo.mp4",
+                "relative_path": "/videos/software-engineering-4th/visio-flow-demo.mp4",
+                "absolute_path": preview_root / "videos" / "software-engineering-4th" / "visio-flow-demo.mp4",
+                "top_level_category": "视频",
+                "file_extension": ".mp4",
+                "mime_type": "video/mp4",
+                "file_size": 24477668,
+                "preview_text": "系统流程设计演示视频",
+                "is_inline_previewable": True,
+                "sort_order": 0,
+            },
+            {
+                "id": 903,
+                "resource_id": 900003,
+                "display_name": "cloud-app-demo.mp4",
+                "relative_path": "/videos/software-engineering-4th/cloud-app-demo.mp4",
+                "absolute_path": preview_root / "videos" / "software-engineering-4th" / "cloud-app-demo.mp4",
+                "top_level_category": "视频",
+                "file_extension": ".mp4",
+                "mime_type": "video/mp4",
+                "file_size": 78228810,
+                "preview_text": "云端应用集成演示视频",
+                "is_inline_previewable": True,
+                "sort_order": 0,
+            },
+            {
+                "id": 904,
+                "resource_id": 900004,
+                "display_name": "software-engineering-ui-board.jpg",
+                "relative_path": "/preview-assets/software-engineering-ui-board.jpg",
+                "absolute_path": preview_root / "preview-assets" / "software-engineering-ui-board.jpg",
+                "top_level_category": "图片",
+                "file_extension": ".jpg",
+                "mime_type": "image/jpeg",
+                "file_size": 310742,
+                "preview_text": "软件工程界面素材参考图",
+                "is_inline_previewable": True,
+                "sort_order": 0,
+            },
+            {
+                "id": 905,
+                "resource_id": 900005,
+                "display_name": "software-engineering-preview-note.txt",
+                "relative_path": "/preview-assets/software-engineering-preview-note.txt",
+                "absolute_path": preview_root / "preview-assets" / "software-engineering-preview-note.txt",
+                "top_level_category": "文本",
+                "file_extension": ".txt",
+                "mime_type": "text/plain",
+                "file_size": 547,
+                "preview_text": "软件工程资源导览说明",
+                "is_inline_previewable": True,
+                "sort_order": 0,
+            },
+        ]
+
+        rows: list[ResourceSourceFile] = []
+        for item in builtin_files:
+            absolute_path = Path(item["absolute_path"])
+            if not absolute_path.exists():
+                continue
+            rows.append(
+                ResourceSourceFile(
+                    id=int(item["id"]),
+                    resource_id=int(item["resource_id"]),
+                    course_code="software_engineering_4th",
+                    display_name=str(item["display_name"]),
+                    relative_path=str(item["relative_path"]),
+                    absolute_path=str(absolute_path),
+                    top_level_category=str(item["top_level_category"]),
+                    file_extension=str(item["file_extension"]),
+                    mime_type=str(item["mime_type"]),
+                    file_size=int(item["file_size"]),
+                    preview_text=str(item["preview_text"]),
+                    is_inline_previewable=bool(item["is_inline_previewable"]),
+                    sort_order=int(item["sort_order"]),
+                    created_at=None,
+                    updated_at=None,
+                )
+            )
+        return rows
+
+    def _local_rows_for_resource(self, *, resource_id: int, limit: int | None) -> list[ResourceSourceFile]:
+        rows = [
+            row
+            for row in self._build_local_source_file_lookup().values()
+            if int(row.resource_id) == resource_id
+        ]
+        rows.sort(key=lambda row: (int(row.sort_order or 0), str(row.display_name or "")))
+        return rows if limit is None else rows[:limit]
+
+    def _local_rows_grouped_by_resource(self, *, resource_ids: list[int]) -> dict[int, list[ResourceSourceFile]]:
+        wanted = {int(resource_id) for resource_id in resource_ids}
+        grouped: dict[int, list[ResourceSourceFile]] = {resource_id: [] for resource_id in resource_ids}
+        for row in self._build_local_source_file_lookup().values():
+            resource_id = int(row.resource_id)
+            if resource_id in wanted:
+                grouped.setdefault(resource_id, []).append(row)
+        for resource_id in grouped:
+            grouped[resource_id].sort(key=lambda row: (int(row.sort_order or 0), str(row.display_name or "")))
+        return grouped
 
     def _load_preview_map(self) -> dict[str, str]:
         index_path = self._materials_root / "material_index.json"
@@ -468,13 +650,13 @@ class ResourceSourceFileService:
             preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
         return ResourceSourceFileRef(
             file_id=source_file.id,
-            display_name=source_file.display_name,
-            relative_path=source_file.relative_path,
-            top_level_category=source_file.top_level_category,
+            display_name=self._normalize_text(source_file.display_name),
+            relative_path=self._normalize_text(source_file.relative_path),
+            top_level_category=self._normalize_text(source_file.top_level_category),
             file_extension=source_file.file_extension,
             mime_type=source_file.mime_type,
             file_size=source_file.file_size,
-            preview_text=source_file.preview_text,
+            preview_text=self._normalize_text(source_file.preview_text),
             is_inline_previewable=source_file.is_inline_previewable,
             preview_mode=preview_mode,
             preview_url=preview_url,
@@ -800,3 +982,36 @@ class ResourceSourceFileService:
             if candidate.exists():
                 return str(candidate)
         return None
+
+    def _normalize_text(self, value: str | None) -> str:
+        return _normalize_text(value)
+
+def _normalize_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\uFFFD", "").strip()
+    if not text:
+        return ""
+
+    suspicious_markers = ("?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?")
+    if not any(marker in text for marker in suspicious_markers):
+        return text
+
+    candidates = [text]
+    try:
+        candidates.append(text.encode("latin1").decode("utf-8"))
+    except Exception:
+        pass
+    try:
+        candidates.append(text.encode("cp1252").decode("utf-8"))
+    except Exception:
+        pass
+
+    def score(candidate: str) -> tuple[int, int]:
+        mojibake_tokens = ("?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?")
+        penalty = sum(candidate.count(token) for token in mojibake_tokens)
+        cjk = sum(1 for ch in candidate if "\u4e00" <= ch <= "\u9fff")
+        return (penalty, -cjk)
+
+    return min(candidates, key=score).strip()
+

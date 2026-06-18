@@ -25,5 +25,13 @@ public interface IUserInboxService extends IService<UserInbox> {
 
     PageDTO<UserInboxDTO> queryUserInBoxesPage(UserInboxQuery query);
 
+    PageDTO<UserInboxDTO> queryUserInBoxesPage(Long userId, UserInboxQuery query);
+
     Long sentMessageToUser(UserInboxFormDTO userInboxFormDTO);
+
+    Long sentMessageToUser(Long operatorUserId, UserInboxFormDTO userInboxFormDTO);
+
+    void markInboxRead(Long inboxId);
+
+    void markInboxRead(Long userId, Long inboxId);
 }

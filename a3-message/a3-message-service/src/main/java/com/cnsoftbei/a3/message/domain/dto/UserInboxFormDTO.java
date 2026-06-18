@@ -16,9 +16,15 @@ import lombok.Data;
 @ApiModel(description = "用户私信表单实体")
 public class UserInboxFormDTO {
 
+    @ApiModelProperty("通知标题")
+    private String title;
+
     @ApiModelProperty("目标用户id")
     private Long userId;
 
     @ApiModelProperty("私信内容")
     private String content;
+
+    @ApiModelProperty("通知类型")
+    private Integer type;
 }

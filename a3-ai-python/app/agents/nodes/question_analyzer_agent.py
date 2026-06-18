@@ -200,6 +200,22 @@ class QuestionAnalyzerAgent:
     @classmethod
     def _is_utility_question(cls, question_text: str) -> bool:
         normalized = cls._normalize(question_text)
+        if any(
+            token in normalized
+            for token in (
+                _zh("\\u8bb2\\u4e49"),
+                _zh("\\u8bfe\\u5802\\u8bb2\\u4e49"),
+                _zh("\\u5b8c\\u6574\\u8bb2\\u4e49"),
+                _zh("\\u6574\\u7406\\u8bb2\\u4e49"),
+                _zh("\\u751f\\u6210\\u8bb2\\u4e49"),
+                _zh("\\u8f93\\u51fa\\u8bb2\\u4e49"),
+                _zh("\\u672c\\u8282\\u4e3b\\u7ebf"),
+                _zh("\\u5173\\u952e\\u6982\\u5ff5"),
+                _zh("\\u590d\\u4e60\\u91cd\\u70b9"),
+                _zh("\\u4e0d\\u8981\\u63a8\\u8350\\u89c6\\u9891"),
+            )
+        ):
+            return False
         return bool(
             re.search(
                 r"(现在几点|几点了|今天几号|今天星期几|当前时间|日期是多少|北京时间)",

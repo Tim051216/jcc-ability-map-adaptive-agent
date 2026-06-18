@@ -1,102 +1,160 @@
-# A3 个性化学习多智能体系统
+# BiliLearn
 
-## 项目定位
+基于大模型的个性化学习多智能体系统，面向中国软件杯 A3 赛题场景，围绕“学习画像 -> 学习规划 -> 资源生成 -> AI 导师 -> 测评反馈 -> 复习提醒”构建完整学习闭环。
 
-本项目面向第十五届中国软件杯 A3 赛题《基于大模型的个性化资源生成与学习多智能体系统开发》，在原有在线学习微服务工程基础上完成赛题化改造与 AI 能力扩展。
+## Project Overview
 
-当前仓库不是“单一技术栈的全新项目”，而是由三部分共同组成：
+本仓库不是单一的聊天应用，而是一套由 `Java 学习业务服务 + Python AI 中台 + React 学生端/管理端` 组成的多智能体学习平台。
 
-- `a3-learning` 为本地可独立启动的 Java 学习服务，承载学习路径、学习进度、测评、错题、A3 演示骨架接口等能力
-- `a3-ai-python` 为 Python AI 中台，承载画像、问答、RAG、学习计划、资源生成、智能辅导、后台运营摘要等能力
-- `a3-student-react-web` 为当前唯一学生端前端，默认本地端口 `3002`
-- `a3-portal-web` 为 legacy 学生端前端，仅保留作历史代码参考
-- `a3-admin-web` 为当前唯一管理端前端
+当前版本已经完成以下核心方向：
 
-## 当前建议口径
+- 个性化学生画像：支持画像维度抽取、阶段判断、成长图谱与能力可视化
+- 个性化学习路径：支持目标驱动、阶段任务拆解、进度回写与推荐节奏
+- 资源生成与补全：支持讲义、导图、练习、PPT、代码实操、补充阅读等资源工作台
+- AI 导师：支持课程问答、截图理解、附件提取、多格式文档上下文答疑、最近会话
+- 学习效果评估：支持测评、错题、学习报告、答疑证据、资源偏好等闭环反馈
+- 复习提醒与消息中心：支持复习任务派发、通知联动与消息收口
+- 管理端运营能力：支持用户治理、日志、审核、配置、摘要等后台能力
 
-答辩或演示时，建议明确区分两类能力：
+## Architecture
 
-- `稳定本地链路`
-  Java 学习服务、学习路径、测评、错题、学生端基础页面、A3 演示骨架接口
-- `AI 真链路能力`
-  Python AI 服务、RAG 检索、智能问答、学习画像、学习计划、资源生成、智能辅导、后台摘要接口
+### 1. Java Business Services
 
-这样可以避免把“启发式演示骨架”与“真实 AI 调用链”混成同一层口径。
+- `a3-learning`
+  承载学习路径、学习进度、测评、错题、部分稳定业务闭环接口
+- `a3-gateway`
+  统一网关，负责转发 AI 相关接口与聚合访问入口
+- `a3-message`
+  站内消息、通知、收件箱等能力
+- `a3-user` / `a3-resource` / `a3-assessment` / `a3-media`
+  承载用户、资源、题库、媒体等原有业务基础
 
-## 目录说明
+### 2. Python AI Runtime
 
-- `a3-gateway`：Java 网关，默认本地端口 `10010`
-- `a3-learning`：Java 学习服务，默认本地端口 `8090`
-- `a3-ai-python`：Python AI 服务，默认本地端口 `18080`
-- `a3-student-react-web`：学生端前端，默认本地端口 `3002`
-- `a3-portal-web`：legacy 学生端前端，不再作为默认入口
-- `a3-admin-web`：管理端前端，默认本地端口 `3004`
-- `sql/`：MySQL 初始化脚本、A3 扩展 SQL、验证脚本
-- `scripts/`：本地启动、数据库初始化、演示验证脚本
+- `a3-ai-python`
+  承载学习画像、RAG 检索、智能问答、学习计划、资源生成、智能辅导、视频理解、开放课堂、消息联动等 AI 能力
 
-## 当前可稳定演示的功能
+AI 运行时依赖：
 
-- 学生端首页、课程列表/详情、学习页基础链路
-- Java 学习服务的学习路径接口
-- Java 学习服务的测评、报告、错题链路
-- `a3-learning` 中的 `/a3/agent-demo/**` 演示骨架接口
-- Python AI 服务的学习画像、学习计划、资源生成接口
-- Python AI 服务的 RAG 检索、智能问答、知识入库接口
-- Python AI 服务的智能辅导、OCR 预览、答疑历史接口
-- 管理侧后台摘要、审核、日志、配置、用户状态等接口
+- PostgreSQL
+- Redis
+- Milvus
+- MinIO
 
-详细演示动线见 [A3_DEMO_RUNBOOK.md](/F:/A3-cnsoftbei/a3-learning-agent-system/A3_DEMO_RUNBOOK.md)。
+### 3. Frontends
 
-## 快速启动入口
+- `a3-student-react-web`
+  当前默认学生端入口，开发端口 `3002`
+- `a3-admin-web`
+  当前默认管理端入口，开发端口 `3004`
+- `a3-portal-web`
+  legacy 学生端，仅保留作历史参考
 
-首次接手项目时，建议按下面顺序：
+## Current Demo Scope
 
-1. 启动依赖容器：`docker compose -f .\docker-compose.local.yml up -d`
-2. 初始化 MySQL：`powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1`
-3. 可选：补充本地演示数据：`powershell -ExecutionPolicy Bypass -File .\scripts\init-local-demo-data.ps1`
-4. 启动 Java 学习服务：`.\mvnw.cmd -f .\a3-learning\pom.xml -DskipTests spring-boot:run "-Dspring-boot.run.profiles=local"`
-5. 启动 Java 网关：`powershell -ExecutionPolicy Bypass -File .\scripts\start-gateway-local.ps1`
-6. 启动 Python AI 服务：`powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1`
-7. 启动学生端/管理端前端
+当前版本适合直接演示的页面与能力包括：
 
-完整步骤见 [LOCAL_SETUP.md](/F:/A3-cnsoftbei/a3-learning-agent-system/LOCAL_SETUP.md)。
+- 首页总览与学习闭环入口
+- 学习画像页 `/profile`
+- 学习路径页 `/path`
+- 资源中心 `/resources`
+- 资源预览与生成资源工作台 `/resources/preview`
+- 学习页与互动课堂 `/learn`
+- AI 导师 `/tutor` 与消息中心 `/im`
+- 学习报告 `/report`
+- 测评页 `/evaluation`
+- 管理端用户治理与运营页
 
-## Kubernetes 预备
+推荐演示口径：
 
-仓库已补充一套最小可演进的 k8s 清单，见 [k8s/README.md](/F:/A3-cnsoftbei/a3-learning-agent-system/k8s/README.md)。
-这套配置用于给后续上线做准备，当前覆盖核心依赖和 `auth / learning / ai / gateway / student-web` 主链路，并已补上 `kustomize` 分层、GitHub Actions 镜像构建流程，以及手动触发的 k8s prod 部署 workflow。
+- `稳定业务链路`
+  学习路径、测评、错题、报告、消息等基础能力
+- `AI 增强链路`
+  画像、RAG、资源生成、AI 导师、附件理解、多模态学习资源生成
 
-## 本地默认端口
+## Repository Structure
 
-- MySQL：`127.0.0.1:13306`
-- Redis：`127.0.0.1:16379`
-- RabbitMQ：`127.0.0.1:5672`
-- RabbitMQ 管理台：`http://127.0.0.1:15672`
-- PostgreSQL：`127.0.0.1:15432`
-- MinIO API：`http://127.0.0.1:19000`
-- MinIO Console：`http://127.0.0.1:19001`
-- Milvus：`127.0.0.1:19530`
-- Java 网关：`http://127.0.0.1:10010`
-- Java 学习服务：`http://127.0.0.1:8090`
-- Python AI 服务：`http://127.0.0.1:18080`
-- 管理端前端：`http://127.0.0.1:3004`
-- 学生端前端：`http://127.0.0.1:3002`
+```text
+a3-learning-agent-system/
+├─ a3-learning/              # Java 学习业务服务
+├─ a3-gateway/               # Java 网关
+├─ a3-message/               # 消息/通知服务
+├─ a3-ai-python/             # Python AI 中台
+├─ a3-student-react-web/     # 学生端前端（默认入口）
+├─ a3-admin-web/             # 管理端前端
+├─ sql/                      # 初始化与扩展 SQL
+├─ scripts/                  # 启动、初始化、演示脚本
+└─ deliverables/             # 答辩材料、项目文档、导出产物
+```
 
-## 文档索引
+## Quick Start
 
-- [LOCAL_SETUP.md](/F:/A3-cnsoftbei/a3-learning-agent-system/LOCAL_SETUP.md)：本地启动与依赖说明
-- [A3_DEMO_RUNBOOK.md](/F:/A3-cnsoftbei/a3-learning-agent-system/A3_DEMO_RUNBOOK.md)：答辩演示顺序、检查项与兜底方案
-- [A3_DEMO_API.md](/F:/A3-cnsoftbei/a3-learning-agent-system/A3_DEMO_API.md)：当前推荐演示接口与调用口径
-- [A3_ARCHITECTURE.md](/F:/A3-cnsoftbei/a3-learning-agent-system/A3_ARCHITECTURE.md)：Java + Python + 前端的当前架构映射
-- [A3_DELIVERY_STATUS.md](/F:/A3-cnsoftbei/a3-learning-agent-system/A3_DELIVERY_STATUS.md)：稳定功能、高风险点、未验证项
-- [sql/README.md](/F:/A3-cnsoftbei/a3-learning-agent-system/sql/README.md)：数据库初始化说明
+建议按下面顺序启动本地环境：
 
-## 开源引用说明
+1. 启动依赖容器
+2. 初始化数据库
+3. 启动 Java 学习服务
+4. 启动 Java 网关
+5. 启动 Python AI 服务
+6. 启动学生端和管理端前端
 
-当前版本是在开源在线学习项目基础上进行二次分析、重构与赛题化改造。提交最终作品时，建议同步附带：
+示例：
 
-- 原项目名称与来源地址
-- 采用的开源协议
-- 团队自主开发与改造部分说明
+```powershell
+docker compose -f .\docker-compose.local.yml up -d
+powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1
+```
 
-详细说明见 [OPEN_SOURCE_NOTICE.md](/F:/A3-cnsoftbei/a3-learning-agent-system/OPEN_SOURCE_NOTICE.md)。
+更完整的本地启动说明见：
+
+- [LOCAL_SETUP.md](./LOCAL_SETUP.md)
+- [AI_SERVICE_LOCAL_SETUP.md](./AI_SERVICE_LOCAL_SETUP.md)
+
+## Local Ports
+
+- MySQL: `127.0.0.1:13306`
+- Redis: `127.0.0.1:16379`
+- RabbitMQ: `127.0.0.1:5672`
+- PostgreSQL: `127.0.0.1:15432`
+- MinIO API: `http://127.0.0.1:19000`
+- Milvus: `127.0.0.1:19530`
+- Java Gateway: `http://127.0.0.1:10010`
+- Java Learning Service: `http://127.0.0.1:8090`
+- Python AI Service: `http://127.0.0.1:18080`
+- Student Web: `http://127.0.0.1:3002`
+- Admin Web: `http://127.0.0.1:3004`
+
+## Core Documents
+
+- [A3_DEMO_RUNBOOK.md](./A3_DEMO_RUNBOOK.md)
+  演示顺序、现场检查与兜底方案
+- [A3_ARCHITECTURE.md](./A3_ARCHITECTURE.md)
+  当前 Java + Python + Frontend 架构映射
+- [A3_DEMO_API.md](./A3_DEMO_API.md)
+  适合答辩演示的接口说明
+- [A3_DELIVERY_STATUS.md](./A3_DELIVERY_STATUS.md)
+  当前交付状态、稳定能力与风险项
+- [AI_PERSONALIZED_LEARNING_AND_TUTOR_LOCATIONS.md](./AI_PERSONALIZED_LEARNING_AND_TUTOR_LOCATIONS.md)
+  AI 功能分布与页面落点
+- [REVIEW_REMINDER_TEST_GUIDE.md](./REVIEW_REMINDER_TEST_GUIDE.md)
+  智能复习提醒验证说明
+
+## Tech Stack
+
+- Frontend: React 19, TypeScript, Vite, Tailwind, ECharts, Motion, GSAP
+- Backend: Spring Boot, MyBatis Plus, Python FastAPI
+- AI: RAG, Vector Search, Multi-Agent Workflow, OCR / Attachment Parsing
+- Infra: MySQL, Redis, RabbitMQ, PostgreSQL, MinIO, Milvus
+
+## Open Source Notice
+
+本项目是在原有在线学习工程基础上进行赛题化改造与 AI 能力扩展。若用于正式交付或答辩，请同时附带：
+
+- 原项目来源
+- 原项目协议
+- 团队自主开发与改造说明
+
+参考文档：
+
+- [OPEN_SOURCE_NOTICE.md](./OPEN_SOURCE_NOTICE.md)

@@ -9,37 +9,63 @@ from app.integrations.java_clients.course_client import CourseClient
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.common import Citation
 from app.schemas.rag import RagSearchRequest
+from app.schemas.web_tools import WebSearchRequest
 from app.services.answer_service import AnswerService
 from app.services.course_context_service import CourseContextService, ResolvedCourseContext
+from app.services.guardrail_service import GuardrailContext, GuardrailService, GuardrailViolationError
 from app.services.rag_service import RagService
+from app.services.web_tool_service import WebToolService
 
 
 class ChatService:
     STUDENT_EVALUATION_CHAT_TIMEOUT_SECONDS = 12
 
+    def __init__(self) -> None:
+        self.guardrail_service = GuardrailService()
+
     async def chat(self, request: ChatRequest) -> ChatResponse:
-        if getattr(request, "scene", "") == "evaluation_followup":
-            course_context = await CourseContextService().resolve(
-                course_id=getattr(request, "course_id", None),
-                course_code=getattr(request, "course_code", None),
+        course_context = await CourseContextService().resolve(
+            course_id=getattr(request, "course_id", None),
+            course_code=getattr(request, "course_code", None),
+        )
+        guardrail_context = GuardrailContext(
+            scene=request.scene,
+            course_code=course_context.course_code,
+            course_id=course_context.course_id,
+            user_id=getattr(request, "user_id", None),
+        )
+        try:
+            input_review = await self.guardrail_service.assert_safe_input(request.message, context=guardrail_context)
+        except GuardrailViolationError as exc:
+            return ChatResponse(
+                answer=exc.review.rewritten_text or "当前提问触发了内容安全保护，请换个学习相关问题继续。",
+                citations=[],
+                intent="guardrail_blocked",
+                agent_trace=["guardrail_input_blocked"],
+                safety_review={"input_review": exc.review.model_dump(mode="json")},
+                hallucination_review=None,
             )
-            return self._build_evaluation_followup_response(request, course_context=course_context)
+
+        if getattr(request, "scene", "") == "evaluation_followup":
+            response = self._build_evaluation_followup_response(request, course_context=course_context)
+            return await self._finalize_response(response, guardrail_context=guardrail_context, input_review=input_review)
+
+        if self._is_project_usage_question(getattr(request, "message", "")):
+            response = await self._build_contextual_fallback_response(request, course_context=course_context)
+            return await self._finalize_response(response, guardrail_context=guardrail_context, input_review=input_review)
 
         direct_response = await self._build_direct_course_guidance_response(request)
         if direct_response is not None:
-            return direct_response
+            return await self._finalize_response(direct_response, guardrail_context=guardrail_context, input_review=input_review)
 
         timeout_seconds = max(int(settings.llm_timeout_seconds or 0), 30) + 12
         if getattr(request, "scene", "") == "evaluation_followup":
             timeout_seconds = min(timeout_seconds, self.STUDENT_EVALUATION_CHAT_TIMEOUT_SECONDS)
         try:
-            return await asyncio.wait_for(self._chat_live(request), timeout=timeout_seconds)
+            response = await asyncio.wait_for(self._chat_live(request), timeout=timeout_seconds)
         except Exception:
-            course_context = await CourseContextService().resolve(
-                course_id=getattr(request, "course_id", None),
-                course_code=getattr(request, "course_code", None),
-            )
-            return await self._build_contextual_fallback_response(request, course_context=course_context)
+            response = await self._build_contextual_fallback_response(request, course_context=course_context)
+        return await self._finalize_response(response, guardrail_context=guardrail_context, input_review=input_review)
 
     async def _chat_live(
         self,
@@ -89,6 +115,66 @@ class ChatService:
             generated_evaluation=state.get("evaluation") or None,
         )
 
+    async def _finalize_response(
+        self,
+        response: ChatResponse,
+        *,
+        guardrail_context: GuardrailContext,
+        input_review,
+    ) -> ChatResponse:
+        review = await self.guardrail_service.review_output(
+            response.answer,
+            context=guardrail_context,
+            citations=[item.source for item in response.citations],
+        )
+        answer = response.answer
+        agent_trace = list(response.agent_trace)
+        if review.output_review and review.output_review.blocked:
+            answer = review.output_review.rewritten_text or "当前回答触发了内容安全保护，请换个问题继续。"
+            agent_trace.append("guardrail_output_blocked")
+        if review.hallucination_review and not review.hallucination_review.grounded:
+            agent_trace.append("hallucination_flagged")
+
+        return response.model_copy(
+            update={
+                "answer": answer,
+                "agent_trace": agent_trace,
+                "safety_review": {
+                    "input_review": input_review.model_dump(mode="json") if input_review else None,
+                    "output_review": review.output_review.model_dump(mode="json") if review.output_review else None,
+                },
+                "hallucination_review": review.hallucination_review.model_dump(mode="json")
+                if review.hallucination_review
+                else None,
+            }
+        )
+
+    def _is_project_usage_question(self, message: str | None) -> bool:
+        normalized = str(message or "").strip().lower()
+        if not normalized:
+            return False
+        project_usage_keywords = [
+            "端口",
+            "3002",
+            "3003",
+            "管理端",
+            "学生端",
+            "im",
+            "/im",
+            "登录页",
+            "概览页",
+            "资源页",
+            "画像页",
+            "怎么启动",
+            "如何启动",
+            "项目",
+            "bililearn",
+            "ai导师",
+            "知识库",
+            "rag",
+        ]
+        return any(keyword in normalized for keyword in project_usage_keywords)
+
     async def _build_contextual_fallback_response(
         self,
         request: ChatRequest,
@@ -105,6 +191,45 @@ class ChatService:
                 )
             )
             hits = [hit.model_dump() for hit in rag.hits]
+            if self._is_project_usage_question(request.message):
+                citations = getattr(rag, "citations", [])
+                def compact_summary(text: str) -> str:
+                    normalized = " ".join(str(text or "").split())
+                    return normalized[:220]
+
+                summary_lines = [
+                    "我先根据项目知识库直接给你结论：",
+                    *[
+                        f"{index + 1}. {hit.get('title')}: {compact_summary(str(hit.get('content') or ''))}"
+                        for index, hit in enumerate(hits[:3])
+                    ],
+                ]
+                return ChatResponse(
+                    answer="\n\n".join(summary_lines),
+                    citations=citations,
+                    intent=request.scene,
+                    agent_trace=["fallback:project_usage", f"retriever:{len(rag.hits)}"],
+                )
+            web_items = []
+            if len(hits) < 2:
+                search_query = f"{course_context.course_name or course_context.course_code} {request.message}"
+                web_result = await WebToolService().websearch(
+                    WebSearchRequest(query=search_query, top_k=3, domain_whitelist=[])
+                )
+                web_items = list(web_result.items)
+                for index, item in enumerate(web_items, start=1):
+                    fetched = await WebToolService().webfetch(item.url, max_chars=1800)
+                    if not fetched.content:
+                        continue
+                    hits.append(
+                        {
+                            "chunk_id": 10_000 + index,
+                            "document_id": item.url,
+                            "title": fetched.title or item.title,
+                            "content": fetched.content,
+                            "score": 0.45,
+                        }
+                    )
             citations = getattr(rag, "citations", None)
             if citations is None:
                 citations = [
@@ -115,6 +240,14 @@ class ChatService:
                     )
                     for hit in hits
                 ]
+            for item in web_items:
+                citations.append(
+                    Citation(
+                        source=item.title or item.source or item.url,
+                        chunk_id=0,
+                        score=0.35,
+                    )
+                )
             answer = await AnswerService().answer_with_context(
                 question=request.message,
                 course_name=course_name,
@@ -218,11 +351,14 @@ class ChatService:
         if not message:
             return None
 
+        if self._is_project_usage_question(message):
+            return None
+
         course_id = getattr(request, "course_id", None)
         course_code = getattr(request, "course_code", None)
         looks_corrupted = self._looks_corrupted_message(message)
         if looks_corrupted and (course_id == 401 or course_code == "software_engineering_4th"):
-            return await self._build_corrupted_software_engineering_response(request)
+            return None
 
         asks_course_name = "课程名称" in message or "什么课" in message or "识别到的课程" in message
         asks_learning_advice = any(keyword in message for keyword in ["学习建议", "怎么学", "如何学", "先学什么", "学习路径"])

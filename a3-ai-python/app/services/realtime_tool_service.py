@@ -41,6 +41,19 @@ class RealtimeToolService:
         "热搜",
     )
     TIME_WORDS = ("今天", "明天", "后天", "现在", "实时", "目前", "今日", "请问", "帮我", "查一下", "看看")
+    CLOCK_KEYWORDS = (
+        "几点",
+        "几号",
+        "几月几号",
+        "星期几",
+        "周几",
+        "当前时间",
+        "现在几点",
+        "现在几号",
+        "现在星期几",
+        "日期",
+        "时间",
+    )
 
     def __init__(self) -> None:
         self._location_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -74,6 +87,10 @@ class RealtimeToolService:
         text = str(question_text or "").strip()
         if not text:
             return None
+        if self._is_time_query(text):
+            time_payload = self._lookup_local_time(text)
+            if time_payload is not None:
+                return time_payload
         if self._is_weather_query(text):
             weather = await self._lookup_weather(text)
             if weather is not None:
@@ -87,10 +104,37 @@ class RealtimeToolService:
     def _is_weather_query(self, text: str) -> bool:
         return any(keyword in text for keyword in self.WEATHER_KEYWORDS)
 
+    def _is_time_query(self, text: str) -> bool:
+        normalized = re.sub(r"\s+", "", text)
+        return any(keyword in normalized for keyword in self.CLOCK_KEYWORDS)
+
     def _needs_web_search(self, text: str) -> bool:
-        if self._is_weather_query(text):
+        if self._is_weather_query(text) or self._is_time_query(text):
             return False
         return any(keyword in text for keyword in self.WEB_SEARCH_KEYWORDS)
+
+    def _lookup_local_time(self, question_text: str) -> dict[str, Any] | None:
+        now = datetime.now()
+        weekday_labels = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        normalized = re.sub(r"\s+", "", question_text)
+        if "星期" in normalized or "周几" in normalized:
+            answer = f"今天是{now:%Y年%m月%d日}，{weekday_labels[now.weekday()]}。"
+        elif "几号" in normalized or "日期" in normalized or "几月几号" in normalized:
+            answer = f"今天是{now:%Y年%m月%d日}。"
+        else:
+            answer = f"现在是{now:%Y年%m月%d日 %H:%M}。"
+        return {
+            "tool": "local_time",
+            "answer_text": answer,
+            "reference_sources": [
+                {
+                    "source_type": "system",
+                    "title": "Local system clock",
+                    "url": "",
+                    "excerpt": answer,
+                }
+            ],
+        }
 
     def _extract_location(self, text: str) -> str | None:
         match = re.search(r"([\u4e00-\u9fff]{2,12})(?:天气|气温|温度|下雨|降雨|降水|空气质量)", text)

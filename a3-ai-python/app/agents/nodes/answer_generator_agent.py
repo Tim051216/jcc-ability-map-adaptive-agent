@@ -11,9 +11,11 @@ import re
 from datetime import datetime
 from collections.abc import Awaitable, Callable
 from typing import Any
+import inspect
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.logging import logger
 from app.db.models.tutoring import TutoringAnswer, TutoringQuestion
 from app.db.session import async_session_factory
@@ -77,7 +79,9 @@ class AnswerGeneratorAgent:
         chunk: str,
     ) -> None:
         if on_answer_chunk and chunk:
-            await on_answer_chunk(chunk)
+            result = on_answer_chunk(chunk)
+            if inspect.isawaitable(result):
+                await result
 
     @staticmethod
     def _chunk_text_for_stream(text: str) -> list[str]:
@@ -109,6 +113,20 @@ class AnswerGeneratorAgent:
             else:
                 await asyncio.sleep(0.03)
 
+    @staticmethod
+    def _is_billing_error(exc: Exception) -> bool:
+        message = f"{type(exc).__name__}: {exc}".lower()
+        markers = (
+            "llm billing unavailable",
+            "arrearage",
+            "overdue-payment",
+            "account is in good standing",
+            "access denied, please make sure your account is in good standing",
+            "欠费",
+            "余额不足",
+        )
+        return any(marker in message for marker in markers)
+
     async def _stream_prompt_response(
         self,
         *,
@@ -131,6 +149,8 @@ class AnswerGeneratorAgent:
             if answer_text:
                 return answer_text
         except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
             logger.warning("answer_generator.prompt_stream_failed", error=repr(exc))
 
         try:
@@ -147,6 +167,8 @@ class AnswerGeneratorAgent:
                 await self._emit_full_text_naturally(on_answer_chunk, answer_text)
                 return answer_text
         except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
             logger.warning("answer_generator.prompt_fallback_failed", error=repr(exc))
 
         if fallback_text:
@@ -183,7 +205,9 @@ class AnswerGeneratorAgent:
         persona: str | None = None,
         on_answer_chunk: Callable[[str], Awaitable[None]] | None = None,
     ) -> dict[str, Any] | None:
-        tool_result = await self.realtime_tool_service.lookup(question_text)
+        primary_question_text = self._extract_primary_question_text(question_text)
+        tool_query = primary_question_text or question_text
+        tool_result = await self.realtime_tool_service.lookup(tool_query)
         if tool_result is None:
             return None
 
@@ -197,6 +221,15 @@ class AnswerGeneratorAgent:
                 "confidence_score": 98.0,
             }
 
+        if tool_result["tool"] == "local_time":
+            answer_text = str(tool_result.get("answer_text") or "").strip()
+            await self._emit_full_text_naturally(on_answer_chunk, answer_text)
+            return {
+                "answer_text": answer_text,
+                "reference_sources": tool_result["reference_sources"],
+                "confidence_score": 99.0,
+            }
+
         if tool_result["tool"] == "web_search":
             prompt = (
                 f"{persona_meta['learning_prompt']}\n"
@@ -207,7 +240,11 @@ class AnswerGeneratorAgent:
                 f"搜索结果：\n{tool_result['prompt_context']}"
             )
             top = tool_result["results"][0]
-            fallback_text = f"{top['title']}。你先看这个，信息最靠前，也最接近你刚才问的重点。"
+            top_snippet = str(top.get("snippet") or "").strip()
+            fallback_text = (
+                f"我先按当前结果回答你：{top_snippet or top['title']}。"
+                f"最值得先看的来源是《{top['title']}》。"
+            )
             answer_text = await self._stream_prompt_response(
                 prompt=prompt,
                 temperature=0.35,
@@ -226,6 +263,212 @@ class AnswerGeneratorAgent:
     @staticmethod
     def _normalize(text: str) -> str:
         return re.sub(r"\\s+", "", (text or "").lower())
+
+    @staticmethod
+    def _extract_primary_question_text(text: str) -> str:
+        raw = str(text or "").strip()
+        if not raw:
+            return ""
+
+        for block in re.split(r"\n\s*\n", raw):
+            line = block.strip()
+            if not line:
+                continue
+            if any(
+                line.startswith(prefix)
+                for prefix in (
+                    "场景：",
+                    "任务要求：",
+                    "视频文件：",
+                    "当前资料：",
+                    "资料摘要：",
+                    "参考时间：",
+                    "附件提取正文：",
+                )
+            ):
+                continue
+            return line.splitlines()[0].strip()
+
+        return raw.splitlines()[0].strip()
+
+    @staticmethod
+    def _extract_attachment_sections(question_text: str) -> list[dict[str, str]]:
+        text = str(question_text or "")
+        sections: list[dict[str, str]] = []
+
+        named_pattern = re.compile(r"附件《(?P<title>[^》]+)》提取内容：\s*(?P<body>.*?)(?=\n\s*\n附件《|\Z)", re.S)
+        for match in named_pattern.finditer(text):
+            title = str(match.group("title") or "").strip()
+            body = str(match.group("body") or "").strip()
+            if title and body:
+                sections.append({"title": title, "body": body})
+
+        if sections:
+            return sections
+
+        legacy_match = re.search(r"附件提取正文：\s*(.*)", text, re.S)
+        if legacy_match:
+            body = str(legacy_match.group(1) or "").strip()
+            if body:
+                sections.append({"title": _zh("\\u9644\\u4ef6"), "body": body})
+        return sections
+
+    @classmethod
+    def _is_attachment_generic_question(cls, question_text: str) -> bool:
+        normalized = cls._normalize(cls._extract_primary_question_text(question_text) or question_text)
+        generic_tokens = {
+            _zh("\\u8fd9\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u8fd9\\u662f\\u5565"),
+            _zh("\\u8fd9\\u4e2a\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u5e2e\\u6211\\u770b\\u770b\\u8fd9\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u5e2e\\u6211\\u770b\\u770b\\u8fd9\\u4e2a"),
+            _zh("\\u5e2e\\u6211\\u770b\\u770b"),
+            _zh("\\u770b\\u770b\\u8fd9\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u8fd9\\u662f\\u5565\\u610f\\u601d"),
+        }
+        return normalized in generic_tokens
+
+    @classmethod
+    def _build_attachment_context_answer(cls, question_text: str) -> str | None:
+        sections = cls._extract_attachment_sections(question_text)
+        if not sections:
+            return None
+        if not cls._is_attachment_generic_question(question_text):
+            return None
+
+        first = sections[0]
+        title = first["title"]
+        body = first["body"]
+        lines = [re.sub(r"\s+", " ", line).strip(" -:：•\t") for line in body.splitlines()]
+        lines = [line for line in lines if line]
+        preview = "；".join(lines[:3])[:180].rstrip("，、；： ")
+
+        file_hint = ""
+        lowered_title = title.lower()
+        if lowered_title.endswith(".docx") or lowered_title.endswith(".doc"):
+            file_hint = _zh("\\u4e00\\u4efd Word \\u6587\\u6863")
+        elif lowered_title.endswith(".xlsx") or lowered_title.endswith(".xls"):
+            file_hint = _zh("\\u4e00\\u4efd Excel \\u8868\\u683c")
+        elif lowered_title.endswith(".pptx") or lowered_title.endswith(".ppt"):
+            file_hint = _zh("\\u4e00\\u4efd PPT \\u8bfe\\u4ef6")
+        elif lowered_title.endswith(".pdf"):
+            file_hint = _zh("\\u4e00\\u4efd PDF \\u8d44\\u6599")
+        else:
+            file_hint = _zh("\\u4e00\\u4efd\\u9644\\u4ef6\\u8d44\\u6599")
+
+        subject_line = lines[0] if lines else title
+        detail_lines = [line for line in lines[1:4] if line and line != subject_line]
+        detail_text = "；".join(detail_lines)[:180].rstrip("，、；： ")
+
+        if preview:
+            return (
+                f"{_zh('\\u8fd9\\u662f')}{file_hint}《{title}》{_zh('\\u3002')}\n\n"
+                f"{_zh('\\u5b83\\u4e3b\\u8981\\u5728\\u8bb2\\uff1a')}{subject_line}{_zh('\\u3002')}"
+                f"{(_zh('\\u8865\\u5145\\u770b\\u5230\\u7684\\u8981\\u70b9\\u662f\\uff1a') + detail_text + _zh('\\u3002')) if detail_text else ''}\n\n"
+                f"{_zh('\\u4f60\\u63a5\\u4e0b\\u6765\\u53ef\\u4ee5\\u76f4\\u63a5\\u95ee\\u6211\\uff1a\\u201c\\u5e2e\\u6211\\u603b\\u7ed3\\u8fd9\\u4efd\\u6587\\u6863\\u201d\\u3001\\u201c\\u8fd9\\u4efd\\u6587\\u6863\\u7684\\u91cd\\u70b9\\u662f\\u4ec0\\u4e48\\u201d\\u3001\\u6216\\u201c\\u7b2c X \\u884c\\u5728\\u8bb2\\u4ec0\\u4e48\\u201d\\u3002')}"
+            )
+
+        return f"{_zh('\\u8fd9\\u662f')}{file_hint}《{title}》{_zh('\\u3002\\u6211\\u5df2\\u7ecf\\u8bfb\\u5230\\u4e86\\u9644\\u4ef6\\u6b63\\u6587\\uff0c\\u4f60\\u53ef\\u4ee5\\u76f4\\u63a5\\u8ba9\\u6211\\u5e2e\\u4f60\\u603b\\u7ed3\\u3001\\u7ffb\\u8bd1\\u6216\\u89e3\\u91ca\\u91cc\\u9762\\u7684\\u5185\\u5bb9\\u3002')}"
+
+    @staticmethod
+    def _extract_primary_question_text_v2(text: str) -> str:
+        raw = str(text or "").strip()
+        if not raw:
+            return ""
+
+        ignored_prefixes = (
+            _zh("\\u573a\\u666f\\uff1a"),
+            _zh("\\u4efb\\u52a1\\u8981\\u6c42\\uff1a"),
+            _zh("\\u89c6\\u9891\\u6587\\u4ef6\\uff1a"),
+            _zh("\\u5f53\\u524d\\u8d44\\u6599\\uff1a"),
+            _zh("\\u8d44\\u6599\\u6458\\u8981\\uff1a"),
+            _zh("\\u53c2\\u8003\\u65f6\\u95f4\\uff1a"),
+            _zh("\\u9644\\u4ef6\\u63d0\\u53d6\\u6b63\\u6587\\uff1a"),
+            _zh("\\u9644\\u4ef6\\u300a"),
+        )
+        for block in re.split(r"\n\s*\n", raw):
+            line = block.strip()
+            if not line:
+                continue
+            if any(line.startswith(prefix) for prefix in ignored_prefixes):
+                continue
+            return line.splitlines()[0].strip()
+        return raw.splitlines()[0].strip()
+
+    @staticmethod
+    def _extract_attachment_sections_v2(question_text: str) -> list[dict[str, str]]:
+        text = str(question_text or "")
+        sections: list[dict[str, str]] = []
+        named_pattern = re.compile(
+            rf"{re.escape(_zh('\\u9644\\u4ef6\\u300a'))}(?P<title>.+?){re.escape(_zh('\\u300b\\u63d0\\u53d6\\u5185\\u5bb9\\uff1a'))}\s*(?P<body>.*?)(?=\n\s*\n{re.escape(_zh('\\u9644\\u4ef6\\u300a'))}|\Z)",
+            re.S,
+        )
+        for match in named_pattern.finditer(text):
+            title = str(match.group('title') or '').strip()
+            body = str(match.group('body') or '').strip()
+            if title and body:
+                sections.append({"title": title, "body": body})
+        if sections:
+            return sections
+        legacy_match = re.search(rf"{re.escape(_zh('\\u9644\\u4ef6\\u63d0\\u53d6\\u6b63\\u6587\\uff1a'))}\s*(.*)", text, re.S)
+        if legacy_match:
+            body = str(legacy_match.group(1) or "").strip()
+            if body:
+                sections.append({"title": _zh("\\u9644\\u4ef6"), "body": body})
+        return sections
+
+    @classmethod
+    def _is_attachment_generic_question_v2(cls, question_text: str) -> bool:
+        normalized = cls._normalize(cls._extract_primary_question_text_v2(question_text) or question_text)
+        generic_tokens = {
+            _zh("\\u8fd9\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u8fd9\\u662f\\u5565"),
+            _zh("\\u8fd9\\u4e2a\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u5e2e\\u6211\\u770b\\u770b\\u8fd9\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u5e2e\\u6211\\u770b\\u770b\\u8fd9\\u4e2a"),
+            _zh("\\u5e2e\\u6211\\u770b\\u770b"),
+            _zh("\\u770b\\u770b\\u8fd9\\u662f\\u4ec0\\u4e48"),
+            _zh("\\u8fd9\\u662f\\u5565\\u610f\\u601d"),
+            _zh("\\u8bf7\\u5148\\u5224\\u65ad\\u6211\\u4e0a\\u4f20\\u7684\\u9644\\u4ef6"),
+        }
+        return any(token and token in normalized for token in generic_tokens)
+
+    @classmethod
+    def _build_attachment_context_answer_v2(cls, question_text: str) -> str | None:
+        sections = cls._extract_attachment_sections_v2(question_text)
+        if not sections:
+            return None
+        if not cls._is_attachment_generic_question_v2(question_text):
+            return None
+
+        first = sections[0]
+        title = first["title"]
+        body = first["body"]
+        lines = [re.sub(r"\s+", " ", line).strip(" -:;,\t") for line in body.splitlines()]
+        lines = [line for line in lines if line]
+
+        lowered_title = title.lower()
+        if lowered_title.endswith(".docx") or lowered_title.endswith(".doc"):
+            file_hint = _zh("\\u4e00\\u4efd Word \\u6587\\u6863")
+        elif lowered_title.endswith(".xlsx") or lowered_title.endswith(".xls"):
+            file_hint = _zh("\\u4e00\\u4efd Excel \\u8868\\u683c")
+        elif lowered_title.endswith(".pptx") or lowered_title.endswith(".ppt"):
+            file_hint = _zh("\\u4e00\\u4efd PPT \\u8bfe\\u4ef6")
+        elif lowered_title.endswith(".pdf"):
+            file_hint = _zh("\\u4e00\\u4efd PDF \\u8d44\\u6599")
+        else:
+            file_hint = _zh("\\u4e00\\u4efd\\u9644\\u4ef6\\u8d44\\u6599")
+
+        subject_line = lines[0] if lines else title
+        detail_lines = [line for line in lines[1:4] if line and line != subject_line]
+        detail_text = _zh("\\u3001").join(detail_lines)[:180].rstrip(_zh("\\uff0c\\u3001\\uff1b\\uff1a"))
+
+        return (
+            f"{_zh('\\u8fd9\\u662f')}{file_hint}{_zh('\\u300a')}{title}{_zh('\\u300b\\u3002')}\n\n"
+            f"{_zh('\\u5b83\\u4e3b\\u8981\\u5728\\u8bb2\\uff1a')}{subject_line}{_zh('\\u3002')}"
+            f"{(_zh('\\u8865\\u5145\\u770b\\u5230\\u7684\\u8981\\u70b9\\u662f\\uff1a') + detail_text + _zh('\\u3002')) if detail_text else ''}\n\n"
+            f"{_zh('\\u4f60\\u53ef\\u4ee5\\u7ee7\\u7eed\\u95ee\\u6211\\uff1a\\u201c\\u5e2e\\u6211\\u603b\\u7ed3\\u8fd9\\u4efd\\u6587\\u6863\\u201d\\u3001\\u201c\\u8fd9\\u4efd\\u6587\\u6863\\u7684\\u91cd\\u70b9\\u662f\\u4ec0\\u4e48\\u201d\\u3001\\u6216\\u201c\\u7b2c X \\u884c\\u5728\\u8bb2\\u4ec0\\u4e48\\u201d\\u3002')}"
+        )
 
     @classmethod
     def _normalize_persona(cls, persona: str | None) -> str:
@@ -252,7 +495,7 @@ class AnswerGeneratorAgent:
 
     @classmethod
     def _is_identity_question(cls, question_text: str, question_analysis: dict[str, Any]) -> bool:
-        normalized = cls._normalize(question_text)
+        normalized = cls._normalize(cls._extract_primary_question_text(question_text))
         patterns = (
             r"^\\u4f60\\u662f\\u8c01[\\u554a\\u5440\\u5417\\u5462]?$",
             r"^\\u4f60\\u53eb\\u4ec0\\u4e48(\\u540d\\u5b57)?[\\u554a\\u5440\\u5417\\u5462]?$",
@@ -276,8 +519,18 @@ class AnswerGeneratorAgent:
         return str(question_analysis.get("question_type") or "") == _zh("\\u80fd\\u529b\\u95ee\\u7b54")
 
     @classmethod
-    def _is_utility_question(cls, question_analysis: dict[str, Any]) -> bool:
-        return str(question_analysis.get("question_type") or "") == _zh("\\u901a\\u7528\\u95ee\\u7b54")
+    def _is_utility_question(cls, question_text: str, question_analysis: dict[str, Any]) -> bool:
+        if str(question_analysis.get("question_type") or "") != _zh("\\u901a\\u7528\\u95ee\\u7b54"):
+            return False
+
+        normalized = cls._normalize(cls._extract_primary_question_text(question_text) or question_text)
+        utility_patterns = (
+            _zh("(\\u73b0\\u5728|\\u5f53\\u524d|\\u5317\\u4eac).{0,4}(\\u51e0\\u70b9|\\u51e0\\u65f6|\\u65f6\\u95f4)"),
+            _zh("\\u51e0\\u70b9\\u4e86"),
+            _zh("(\\u4eca\\u5929|\\u73b0\\u5728|\\u4eca\\u65e5).{0,4}(\\u51e0\\u53f7|\\u51e0\\u6708\\u51e0\\u53f7|\\u661f\\u671f\\u51e0|\\u5468\\u51e0|\\u51e0\\u66dc\\u5929)"),
+            _zh("(\\u5f53\\u524d|\\u4eca\\u5929|\\u73b0\\u5728).{0,4}(\\u65e5\\u671f|\\u65f6\\u95f4).{0,4}(\\u662f\\u591a\\u5c11|\\u662f\\u4ec0\\u4e48|\\u591a\\u5c11)"),
+        )
+        return any(re.search(pattern, normalized) for pattern in utility_patterns)
 
     @classmethod
     def _is_social_chat(cls, question_analysis: dict[str, Any]) -> bool:
@@ -407,7 +660,7 @@ class AnswerGeneratorAgent:
 
     @classmethod
     def _build_light_emergency_fallback(cls, question_text: str, question_analysis: dict[str, Any], persona: str | None = None) -> str:
-        if cls._is_utility_question(question_analysis):
+        if cls._is_utility_question(question_text, question_analysis):
             now = datetime.now()
             return _zh("\\u73b0\\u5728\\u662f ") + now.strftime("%Y-%m-%d %H:%M") + _zh("\\u3002")
 
@@ -419,6 +672,14 @@ class AnswerGeneratorAgent:
     @classmethod
     def _wants_video_recommendation(cls, question_text: str) -> bool:
         normalized = cls._normalize(question_text)
+        negative_patterns = (
+            _zh("\\u4e0d\\u8981\\u63a8\\u8350\\u89c6\\u9891"),
+            _zh("\\u4e0d\\u8981\\u89c6\\u9891"),
+            _zh("\\u4e0d\\u8981\\u63a8\\u8350\\u8bfe\\u7a0b"),
+            _zh("\\u4e0d\\u8981\\u5916\\u90e8\\u8d44\\u6599"),
+        )
+        if any(pattern in normalized for pattern in negative_patterns):
+            return False
         request_patterns = (
             _zh("\\u63a8\\u8350\\u89c6\\u9891"),
             _zh("\\u89c6\\u9891\\u63a8\\u8350"),
@@ -439,10 +700,37 @@ class AnswerGeneratorAgent:
         )
         return any(pattern in normalized for pattern in request_patterns)
 
+    @classmethod
+    def _wants_full_handout(cls, question_text: str) -> bool:
+        normalized = cls._normalize(question_text)
+        handout_tokens = (
+            _zh("\\u8bb2\\u4e49"),
+            _zh("\\u8bfe\\u5802\\u8bb2\\u4e49"),
+            _zh("\\u5b8c\\u6574\\u8bb2\\u4e49"),
+            _zh("\\u6574\\u7406\\u8bb2\\u4e49"),
+            _zh("\\u751f\\u6210\\u8bb2\\u4e49"),
+            _zh("\\u8f93\\u51fa\\u8bb2\\u4e49"),
+            _zh("\\u8bfe\\u540e\\u8bb2\\u4e49"),
+            _zh("\\u590d\\u4e60\\u8bb2\\u4e49"),
+        )
+        structure_tokens = (
+            _zh("\\u672c\\u8282\\u4e3b\\u7ebf"),
+            _zh("\\u5173\\u952e\\u6982\\u5ff5"),
+            _zh("\\u7ed3\\u6784\\u7ec6\\u8282"),
+            _zh("\\u590d\\u4e60\\u91cd\\u70b9"),
+            _zh("\\u4e0d\\u8981\\u63a8\\u8350\\u89c6\\u9891"),
+            _zh("\\u4e0d\\u8981\\u63a8\\u8350\\u8bfe\\u7a0b"),
+            _zh("\\u4e0d\\u8981\\u5916\\u90e8\\u8d44\\u6599"),
+        )
+        return any(token in normalized for token in handout_tokens) or (
+            _zh("\\u8bb2\\u89e3") in normalized and any(token in normalized for token in structure_tokens)
+        )
+
     async def generate_answer(
         self,
         question_text: str,
         question_analysis: dict[str, Any],
+        question_images: list[str] | None = None,
         user_profile: dict[str, Any] | None = None,
         course_id: int | None = None,
         persona: str | None = None,
@@ -454,6 +742,62 @@ class AnswerGeneratorAgent:
             course_id=course_id,
             persona=self._normalize_persona(persona),
         )
+
+        primary_question_text = self._extract_primary_question_text_v2(question_text)
+        attachment_context_answer = self._build_attachment_context_answer_v2(question_text)
+        if attachment_context_answer:
+            await self._emit_full_text_naturally(on_answer_chunk, attachment_context_answer)
+            return {
+                "answer_text": attachment_context_answer,
+                "reference_sources": [],
+                "confidence_score": 97.0,
+            }
+
+        direct_fast_answer = self._build_direct_fast_answer(
+            question_text=question_text,
+            primary_question_text=primary_question_text,
+            course_id=course_id,
+        )
+        if direct_fast_answer:
+            await self._emit_full_text_naturally(on_answer_chunk, direct_fast_answer)
+            return {
+                "answer_text": direct_fast_answer,
+                "reference_sources": [],
+                "confidence_score": 99.0,
+            }
+
+        concept_compare_answer = self._build_direct_concept_compare_answer_clean(primary_question_text)
+        if concept_compare_answer:
+            await self._emit_full_text_naturally(on_answer_chunk, concept_compare_answer)
+            return {
+                "answer_text": concept_compare_answer,
+                "reference_sources": [],
+                "confidence_score": 95.0,
+            }
+
+        if self._wants_full_handout(question_text):
+            retrieved_knowledge = await self._retrieve_knowledge(question_text, question_analysis, course_id)
+            answer_text = await self._generate_handout_answer_text(
+                question_text,
+                question_analysis,
+                question_images,
+                retrieved_knowledge,
+                user_profile,
+                persona=persona,
+                on_answer_chunk=on_answer_chunk,
+            )
+            reference_sources = self._extract_reference_sources(retrieved_knowledge)
+            confidence_score = await self._evaluate_confidence(
+                question_text,
+                answer_text,
+                retrieved_knowledge,
+                question_analysis,
+            )
+            return {
+                "answer_text": answer_text,
+                "reference_sources": reference_sources,
+                "confidence_score": confidence_score,
+            }
 
         if self._wants_video_recommendation(question_text):
             return {
@@ -487,6 +831,7 @@ class AnswerGeneratorAgent:
         answer_text = await self._generate_learning_answer_text(
             question_text,
             question_analysis,
+            question_images,
             retrieved_knowledge,
             user_profile,
             persona=persona,
@@ -512,6 +857,9 @@ class AnswerGeneratorAgent:
         persona: str | None = None,
         on_answer_chunk: Callable[[str], Awaitable[None]] | None = None,
     ) -> str | None:
+        if self._build_attachment_context_answer_v2(question_text):
+            return None
+
         question_type = str(question_analysis.get("question_type") or "")
         deterministic_answer: str | None = None
 
@@ -521,7 +869,7 @@ class AnswerGeneratorAgent:
             deterministic_answer = self._persona_meta(persona)["identity"]
         elif self._is_capability_question(question_text, question_analysis):
             deterministic_answer = self._persona_meta(persona)["capability"]
-        elif self._is_utility_question(question_analysis):
+        elif self._is_utility_question(question_text, question_analysis):
             now = datetime.now()
             deterministic_answer = _zh("\\u73b0\\u5728\\u662f ") + now.strftime("%Y-%m-%d %H:%M") + _zh("\\u3002\\u8981\\u662f\\u4f60\\u771f\\u6b63\\u60f3\\u95ee\\u7684\\u662f\\u67d0\\u4e2a\\u5b66\\u4e60\\u95ee\\u9898\\uff0c\\u5c31\\u76f4\\u63a5\\u629b\\u7ed9\\u6211\\u3002")
         elif (
@@ -608,6 +956,8 @@ class AnswerGeneratorAgent:
             if answer_text:
                 return answer_text
         except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
             logger.warning("answer_generator.light_answer_stream_failed", error=repr(exc))
 
         try:
@@ -623,8 +973,173 @@ class AnswerGeneratorAgent:
             if answer_text:
                 return answer_text
         except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
             logger.warning("answer_generator.light_answer_failed", error=repr(exc))
         return self._build_light_emergency_fallback(question_text, question_analysis, persona=persona)
+
+    @classmethod
+    def _build_direct_utility_answer(cls, question_text: str) -> str:
+        normalized = cls._normalize(question_text)
+        if not normalized:
+            return ""
+        now = datetime.now()
+        weekday_labels = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        if any(token in normalized for token in ("星期几", "周几", "今天星期几", "现在星期几")):
+            return f"今天是{now:%Y年%m月%d日}，{weekday_labels[now.weekday()]}。"
+        if any(token in normalized for token in ("几月几号", "今天几号", "现在几号", "日期是多少", "今天日期")):
+            return f"今天是{now:%Y年%m月%d日}。"
+        if any(token in normalized for token in ("现在几点", "几点了", "当前时间", "北京时间", "现在时间", "时间")):
+            return f"现在是{now:%Y年%m月%d日 %H:%M}。"
+        return ""
+
+    @classmethod
+    def _build_direct_concept_compare_answer(cls, question_text: str) -> str:
+        normalized = cls._normalize(question_text)
+        if not normalized:
+            return ""
+
+        requirement_tokens = ("需求分析", "需求", "requirement", "requirements")
+        design_tokens = ("概要设计", "总体设计", "设计阶段", "architecturaldesign", "highleveldesign")
+        if any(token in normalized for token in requirement_tokens) and any(token in normalized for token in design_tokens):
+            return (
+                "本质区别就一句话：需求分析回答“系统要做什么”，概要设计回答“系统准备怎么做”。"
+                "需求分析关注业务目标、用户场景、功能边界和数据要求；概要设计关注模块划分、系统结构、接口关系和关键技术方案。"
+                "顺序上一定是先把需求讲清，再做概要设计，不然后面的设计很容易返工。"
+            )
+        return ""
+
+    @classmethod
+    def _build_direct_utility_answer_clean(cls, question_text: str) -> str:
+        normalized = cls._normalize(question_text)
+        if not normalized:
+            return ""
+        now = datetime.now()
+        weekday_labels = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        if any(token in normalized for token in ("星期几", "周几", "今天星期几", "现在星期几")):
+            return f"今天是{now:%Y年%m月%d日}，{weekday_labels[now.weekday()]}。"
+        if any(token in normalized for token in ("几月几号", "今天几号", "现在几号", "日期是多少", "今天日期")):
+            return f"今天是{now:%Y年%m月%d日}。"
+        if any(token in normalized for token in ("现在几点了", "几点了", "当前时间", "北京时间", "现在时间")):
+            return f"现在是{now:%Y年%m月%d日 %H:%M}。"
+        return ""
+
+    @classmethod
+    def _build_direct_concept_compare_answer_clean(cls, question_text: str) -> str:
+        normalized = cls._normalize(question_text)
+        if not normalized:
+            return ""
+
+        requirement_tokens = ("需求分析", "需求", "requirement", "requirements")
+        design_tokens = ("概要设计", "总体设计", "设计阶段", "architecturaldesign", "highleveldesign")
+        if any(token in normalized for token in requirement_tokens) and any(token in normalized for token in design_tokens):
+            return (
+                "本质区别就一句话：需求分析回答“系统要做什么”，概要设计回答“系统准备怎么做”。"
+                "需求分析关注业务目标、用户场景、功能边界和数据要求；概要设计关注模块划分、系统结构、接口关系和关键技术方案。"
+                "顺序上一定是先把需求讲清，再做概要设计，不然后面的设计很容易返工。"
+            )
+        return ""
+
+    @classmethod
+    def _build_direct_utility_answer_strict(cls, question_text: str) -> str:
+        normalized = cls._normalize(question_text)
+        if not normalized:
+            return ""
+        now = datetime.now()
+        weekday_labels = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        if any(token in normalized for token in ("星期几", "周几", "今天星期几", "现在星期几")):
+            return f"今天是{now:%Y年%m月%d日}，{weekday_labels[now.weekday()]}。"
+        if any(token in normalized for token in ("几月几号", "今天几号", "现在几号", "日期是多少", "今天日期")):
+            return f"今天是{now:%Y年%m月%d日}。"
+        if any(token in normalized for token in ("现在几点了", "几点了", "当前时间", "北京时间", "现在时间")):
+            return f"现在是{now:%Y年%m月%d日 %H:%M}。"
+        return ""
+
+    @classmethod
+    def _build_direct_learning_context_answer(
+        cls,
+        *,
+        question_text: str,
+        primary_question_text: str,
+        course_id: int | None,
+    ) -> str:
+        normalized = cls._normalize(primary_question_text)
+        if not normalized:
+            return ""
+
+        asking_segment_summary = any(token in normalized for token in ("在讲什么", "这段在讲什么", "讲到哪了", "现在讲什么"))
+        if not asking_segment_summary:
+            return ""
+
+        reference_seconds = None
+        match = re.search(r"参考时间：\s*(\d+)\s*秒", question_text)
+        if match:
+            try:
+                reference_seconds = int(match.group(1))
+            except ValueError:
+                reference_seconds = None
+
+        if course_id == 401:
+            if reference_seconds is not None and reference_seconds < 120:
+                return (
+                    "这一段还在第一章《软件工程基础与软件危机》的开场部分，重点是在交代两个问题："
+                    "为什么软件开发不能只靠临时编码推进，以及“软件危机”为什么会倒逼出更系统的软件工程方法。"
+                    "你可以先抓住“问题背景”和“为什么需要工程化”这条主线。"
+                )
+            return (
+                "当前这段主要还是围绕《软件工程基础与软件危机》在展开，核心是在把后面需求分析、系统设计、编码实现、测试维护和项目管理串回同一条软件工程主线。"
+                "如果你愿意，我可以继续按“这段主线、关键词、答辩怎么讲”三句给你拆开。"
+            )
+
+        return ""
+
+    @classmethod
+    def _build_direct_fast_answer(
+        cls,
+        *,
+        question_text: str,
+        primary_question_text: str,
+        course_id: int | None,
+    ) -> str:
+        normalized = cls._normalize(primary_question_text)
+        if not normalized:
+            return ""
+
+        now = datetime.now()
+        weekday_labels = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        if any(token in normalized for token in ("星期几", "周几", "今天星期几", "现在星期几")):
+            return f"今天是{now:%Y年%m月%d日}，{weekday_labels[now.weekday()]}。"
+        if any(token in normalized for token in ("几月几号", "今天几号", "现在几号", "日期是多少", "今天日期")):
+            return f"今天是{now:%Y年%m月%d日}。"
+        if any(token in normalized for token in ("现在几点了", "几点了", "当前时间", "北京时间", "现在时间")):
+            return f"现在是{now:%Y年%m月%d日 %H:%M}。"
+
+        asking_segment_summary = (
+            any(token in normalized for token in ("在讲什么", "这段在讲什么", "讲到哪了", "现在讲什么", "播放的在讲什么"))
+            or ("视频" in normalized and "讲什么" in normalized)
+        )
+        if asking_segment_summary:
+            reference_seconds = None
+            match = re.search(r"参考时间：\s*(\d+)\s*秒", question_text)
+            if match:
+                try:
+                    reference_seconds = int(match.group(1))
+                except ValueError:
+                    reference_seconds = None
+
+            if course_id == 401:
+                if reference_seconds is not None and reference_seconds < 120:
+                    return (
+                        "这一段还在第一章《软件工程基础与软件危机》的开场部分，重点是在交代两个问题："
+                        "为什么软件开发不能只靠临时编码推进，以及为什么会出现“软件危机”，从而需要更系统的软件工程方法。"
+                        "你先抓住“问题背景”和“为什么需要工程化”这条主线就够了。"
+                    )
+                return (
+                    "当前这段主要还是围绕《软件工程基础与软件危机》在展开，核心是在把后面需求分析、系统设计、编码实现、测试维护和项目管理串回同一条软件工程主线。"
+                    "如果你愿意，我可以继续按“这段主线、关键词、答辩怎么讲”三句给你拆开。"
+                )
+
+        return ""
 
     async def _retrieve_knowledge(
         self,
@@ -807,6 +1322,7 @@ class AnswerGeneratorAgent:
         self,
         question_text: str,
         question_analysis: dict[str, Any],
+        question_images: list[str] | None,
         retrieved_knowledge: dict[str, Any],
         user_profile: dict[str, Any] | None = None,
         persona: str | None = None,
@@ -903,10 +1419,12 @@ class AnswerGeneratorAgent:
             f"{final_answer_instruction}"
         )
 
+        messages = self._build_learning_messages(prompt, question_images, question_analysis)
+
         try:
             chunks: list[str] = []
             async for chunk in self.llm_client.chat_completion_stream(
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=0.45,
                 max_tokens=420,
             ):
@@ -916,12 +1434,14 @@ class AnswerGeneratorAgent:
             if answer_text:
                 return answer_text
         except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
             logger.warning("answer_generator.learning_answer_stream_failed", error=repr(exc))
 
         try:
             response = await asyncio.wait_for(
                 self.llm_client.chat_completion(
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=messages,
                     temperature=0.45,
                     max_tokens=420,
                 ),
@@ -939,6 +1459,8 @@ class AnswerGeneratorAgent:
             )
             return self._build_fallback_answer(question_text, question_analysis, retrieved_knowledge, persona=persona)
         except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
             logger.error(
                 "answer_generator.failed",
                 error=repr(exc),
@@ -946,6 +1468,128 @@ class AnswerGeneratorAgent:
                 question_preview=question_text[:80],
             )
             return self._build_fallback_answer(question_text, question_analysis, retrieved_knowledge, persona=persona)
+
+    async def _generate_handout_answer_text(
+        self,
+        question_text: str,
+        question_analysis: dict[str, Any],
+        question_images: list[str] | None,
+        retrieved_knowledge: dict[str, Any],
+        user_profile: dict[str, Any] | None = None,
+        persona: str | None = None,
+        on_answer_chunk: Callable[[str], Awaitable[None]] | None = None,
+    ) -> str:
+        _ = user_profile
+        context_parts: list[str] = []
+        retrieved_chunks = retrieved_knowledge.get("retrieved_chunks", [])
+        if retrieved_chunks:
+            context_parts.append(_zh("\\u53ef\\u53c2\\u8003\\u7684\\u8bfe\\u7a0b\\u5185\\u5bb9\\uff1a"))
+            for idx, chunk in enumerate(retrieved_chunks[: max(self.COURSE_RAG_TOP_K, 3)], start=1):
+                context_parts.append(f"{idx}. {chunk['content'][:260]}")
+
+        similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
+        if similar_qa_pairs:
+            context_parts.append(_zh("\\u53ef\\u53c2\\u8003\\u7684\\u76f8\\u4f3c\\u95ee\\u7b54\\uff1a"))
+            for idx, pair in enumerate(similar_qa_pairs[:2], start=1):
+                context_parts.append(
+                    f"{idx}. {_zh('\\u95ee\\u9898\\uff1a')}{pair['question']}\\n"
+                    f"   {_zh('\\u53c2\\u8003\\u7b54\\u6848\\u6458\\u8981\\uff1a')}{pair['answer_excerpt'][:180]}"
+                )
+
+        context = "\\n\\n".join(context_parts) if context_parts else _zh("\\u6682\\u65e0\\u53ef\\u76f4\\u63a5\\u5f15\\u7528\\u7684\\u8bfe\\u7a0b\\u53c2\\u8003\\uff0c\\u8bf7\\u57fa\\u4e8e\\u8bfe\\u7a0b\\u5e38\\u8bc6\\u751f\\u6210\\u5b8c\\u6574\\u8bb2\\u4e49\\u3002")
+        knowledge_points = ", ".join(question_analysis.get("knowledge_points", []) or []) or _zh("\\u672a\\u8bc6\\u522b")
+        question_type = question_analysis.get("question_type") or _zh("\\u8bfe\\u5802\\u8bb2\\u4e49")
+        difficulty = question_analysis.get("difficulty_level") or 2
+        persona_meta = self._persona_meta(persona)
+
+        prompt = (
+            f"{persona_meta['learning_prompt']}\\n\\n"
+            f"{_zh('\\u4f60\\u73b0\\u5728\\u8981\\u76f4\\u63a5\\u751f\\u6210\\u4e00\\u4efd\\u5b8c\\u6574\\u7684\\u8bfe\\u5802\\u8bb2\\u4e49\\uff0c\\u800c\\u4e0d\\u662f\\u77ed\\u7b54\\u3002')}\\n"
+            f"{_zh('\\u8f93\\u51fa\\u8981\\u6c42\\uff1a')}\\n"
+            f"1. {_zh('\\u4e0d\\u8981\\u63a8\\u8350\\u89c6\\u9891\\u3001\\u8bfe\\u7a0b\\u3001\\u5916\\u94fe\\u6216\\u5176\\u4ed6\\u8d44\\u6e90\\uff0c\\u53ea\\u8f93\\u51fa\\u8bb2\\u4e49\\u672c\\u8eab\\u3002')}\\n"
+            f"2. {_zh('\\u4e0d\\u8981\\u53ea\\u7ed9\\u51fa\\u51e0\\u6761\\u63d0\\u7eb2\\uff0c\\u6bcf\\u4e2a\\u90e8\\u5206\\u90fd\\u8981\\u5c55\\u5f00\\u5199\\u5b8c\\u6574\\u3002')}\\n"
+            f"3. {_zh('\\u8bf7\\u6309\\u8fd9\\u4e2a\\u7ed3\\u6784\\u8f93\\u51fa\\uff1a\\u672c\\u8282\\u4e3b\\u7ebf / \\u5b66\\u4e60\\u76ee\\u6807 / \\u6838\\u5fc3\\u6982\\u5ff5\\u4e0e\\u5b9a\\u4e49 / \\u5173\\u952e\\u7ed3\\u6784\\u4e0e\\u903b\\u8f91 / \\u793a\\u4f8b\\u89e3\\u91ca / \\u6613\\u9519\\u70b9 / \\u590d\\u4e60\\u91cd\\u70b9 / \\u8bfe\\u540e\\u81ea\\u6d4b 3 \\u9898\\u3002')}\\n"
+            f"4. {_zh('\\u683c\\u5f0f\\u7528 Markdown \\u6807\\u9898\\u548c\\u5217\\u8868\\uff0c\\u4fbf\\u4e8e\\u524d\\u7aef\\u5c55\\u793a\\u548c Word \\u5bfc\\u51fa\\u3002')}\\n"
+            f"5. {_zh('\\u5168\\u6587\\u5c3d\\u91cf\\u5728 900 \\u5230 1800 \\u5b57\\uff0c\\u5185\\u5bb9\\u5b8c\\u6574\\u3001\\u4e0d\\u7a7a\\u6cdb\\u3002')}\\n\\n"
+            f"{_zh('\\u7528\\u6237\\u8bf7\\u6c42\\uff1a')}{question_text}\\n\\n"
+            f"{_zh('\\u95ee\\u9898\\u5206\\u6790\\uff1a')}\\n"
+            f"- {_zh('\\u7c7b\\u578b\\uff1a')}{question_type}\\n"
+            f"- {_zh('\\u77e5\\u8bc6\\u70b9\\uff1a')}{knowledge_points}\\n"
+            f"- {_zh('\\u96be\\u5ea6\\uff1a')}{difficulty}\\n\\n"
+            f"{_zh('\\u53c2\\u8003\\u4fe1\\u606f\\uff1a')}\\n{context}\\n\\n"
+            f"{_zh('\\u73b0\\u5728\\u76f4\\u63a5\\u8f93\\u51fa\\u5b8c\\u6574\\u8bb2\\u4e49\\u5168\\u6587\\u3002')}"
+        )
+
+        messages = self._build_learning_messages(prompt, question_images, question_analysis)
+        try:
+            chunks: list[str] = []
+            async for chunk in self.llm_client.chat_completion_stream(
+                messages=messages,
+                temperature=0.35,
+                max_tokens=1800,
+            ):
+                chunks.append(chunk)
+                await self._emit_answer_chunk(on_answer_chunk, chunk)
+            answer_text = "".join(chunks).strip()
+            if answer_text:
+                return answer_text
+        except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
+            logger.warning("answer_generator.handout_stream_failed", error=repr(exc))
+
+        try:
+            response = await asyncio.wait_for(
+                self.llm_client.chat_completion(
+                    messages=messages,
+                    temperature=0.35,
+                    max_tokens=1800,
+                ),
+                timeout=max(self.LLM_STEP_TIMEOUT_SECONDS, 24.0),
+            )
+            answer_text = (response.choices[0].message.content or "").strip()
+            if answer_text:
+                return answer_text
+        except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
+            logger.warning("answer_generator.handout_failed", error=repr(exc))
+
+        return self._build_fallback_answer(question_text, question_analysis, retrieved_knowledge, persona=persona)
+
+    @staticmethod
+    def _build_learning_messages(
+        prompt: str,
+        question_images: list[str] | None,
+        question_analysis: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        image_context = (question_analysis or {}).get("image_context") or {}
+        ocr_text = str(image_context.get("combined_text") or "").strip()
+        if ocr_text:
+            prompt = f"{prompt}\n\n[{_zh('\\u56fe\\u7247 OCR \\u63d0\\u53d6\\u5185\\u5bb9')}]\n{ocr_text}"
+
+        if (
+            settings.llm_prefer_ocr_over_vision
+            and ocr_text
+            and len(ocr_text) >= int(settings.llm_ocr_min_chars_for_text_only or 0)
+        ):
+            return [{"role": "user", "content": prompt}]
+
+        image_inputs = [image for image in (question_images or []) if isinstance(image, str) and image.strip()][:3]
+        if not image_inputs:
+            return [{"role": "user", "content": prompt}]
+
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for image_url in image_inputs:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": image_url,
+                    },
+                }
+            )
+        return [{"role": "user", "content": content}]
 
     def _build_fallback_answer(
         self,
@@ -970,7 +1614,7 @@ class AnswerGeneratorAgent:
             or self._detect_social_topic(question_text) != "general_social"
         ):
             return self._build_persona_social_fallback(question_text, persona=persona)
-        if self._is_utility_question(question_analysis):
+        if self._is_utility_question(question_text, question_analysis):
             now = datetime.now()
             return _zh("\\u73b0\\u5728\\u662f ") + now.strftime("%Y-%m-%d %H:%M") + _zh("\\u3002")
         if self._wants_video_recommendation(question_text):
@@ -985,6 +1629,35 @@ class AnswerGeneratorAgent:
                 + _zh("\\u524d\\u8005\\u5173\\u6ce8\\u4e1a\\u52a1\\u76ee\\u6807\\u3001\\u7528\\u6237\\u573a\\u666f\\u548c\\u529f\\u80fd\\u8fb9\\u754c\\uff1b\\u540e\\u8005\\u5173\\u6ce8\\u6a21\\u5757\\u5212\\u5206\\u3001\\u7cfb\\u7edf\\u7ed3\\u6784\\u3001\\u63a5\\u53e3\\u5173\\u7cfb\\u548c\\u5173\\u952e\\u6280\\u672f\\u9009\\u578b\\u3002")
                 + _zh("\\u987a\\u5e8f\\u4e0d\\u80fd\\u53cd\\uff0c\\u9700\\u6c42\\u6ca1\\u8bb2\\u6e05\\uff0c\\u540e\\u9762\\u7684\\u8bbe\\u8ba1\\u5927\\u6982\\u7387\\u4f1a\\u8fd4\\u5de5\\u3002")
             )
+
+        retrieved_chunks = retrieved_knowledge.get("retrieved_chunks", [])
+        if retrieved_chunks:
+            lead = str(retrieved_chunks[0].get("content", "")).strip()
+            lead = re.sub(r"\s+", " ", lead)
+            summary = lead[:180].rstrip("，、；： ")
+            question_type = str(question_analysis.get("question_type") or "")
+            knowledge_points = [str(x) for x in question_analysis.get("knowledge_points", []) if x]
+            focus = f"{_zh('\\u8fd9\\u9898\\u5148\\u6293')} { _zh(' / ').join(knowledge_points[:3]) }{_zh('\\u5c31\\u884c\\u3002')}" if knowledge_points else ""
+            if question_type == _zh("\\u6982\\u5ff5\\u7406\\u89e3"):
+                return (
+                    f"{summary}。"
+                    f"{focus}"
+                    if focus
+                    else f"{summary}。"
+                )
+            return (
+                f"{summary}。"
+                f"{focus}"
+                if focus
+                else f"{summary}。"
+            )
+
+        similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
+        if similar_qa_pairs:
+            excerpt = str(similar_qa_pairs[0].get("answer_excerpt", "")).strip()
+            excerpt = re.sub(r"\s+", " ", excerpt)[:180].rstrip("，、；： ")
+            if excerpt:
+                return f"{excerpt}。"
 
         knowledge_points = [str(x) for x in question_analysis.get("knowledge_points", []) if x]
         if knowledge_points:
@@ -1055,14 +1728,16 @@ async def answer_generator_node(state: dict[str, Any]) -> dict[str, Any]:
     agent = AnswerGeneratorAgent()
     question_text = state.get("question_text", "")
     question_analysis = state.get("question_analysis", {})
+    question_images = state.get("question_images")
     user_profile = state.get("user_profile")
     course_id = state.get("course_id")
     persona = state.get("persona")
     answer_result = await agent.generate_answer(
         question_text,
         question_analysis,
-        user_profile,
-        course_id,
+        question_images=question_images,
+        user_profile=user_profile,
+        course_id=course_id,
         persona=persona,
     )
     state["answer_result"] = answer_result

@@ -74,3 +74,43 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1
 - 本地 Markdown 课程知识入库与检索
 - 学习问答、学习计划、资源生成、学习画像和效果评估接口
 - 可继续接入真实 LLM 与真实 Embedding 模型
+
+## Firecrawl 联网检索工具
+
+当前版本已接入受控的联网检索与网页抓取能力，优先用于：
+
+- AI 导师在本地知识库命中不足时补充外部资料
+- 多智能体资源生成时补充扩展阅读、官方文档和网页正文
+- 后续给资源生成、答疑、知识库补全等链路统一提供 `websearch / webfetch`
+
+### 配置项
+
+在 `.env` 中配置：
+
+```env
+FIRECRAWL_API_KEY=your_firecrawl_api_key
+FIRECRAWL_BASE_URL=https://api.firecrawl.dev/v2
+```
+
+未配置 `FIRECRAWL_API_KEY` 时，系统会自动降级为“关闭联网检索”，不会影响本地知识库、聊天、资源生成等主流程。
+
+### API
+
+- `POST /api/v1/web-tools/search`
+- `POST /api/v1/web-tools/fetch`
+
+### 冒烟测试
+
+运行：
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\smoke_test_firecrawl_web_tools.py
+```
+
+如果 key 正常，会返回：
+
+- `search_items > 0`
+- `first_url` 为命中的网页
+- `fetch_title` 和 `fetch_content_len` 有内容
+
+如果未配置 key，则会安全返回空结果，用于验证降级逻辑。

@@ -17,4 +17,8 @@ RESOURCE_TYPES = [
     "video",
     "extended_reading",
     "coding_lab",
+    "visual_illustration",
+    "micro_video",
+    "subtitle_transcript",
+    "ocr_notes",
 ]

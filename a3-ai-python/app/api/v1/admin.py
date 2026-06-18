@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
@@ -135,10 +135,11 @@ async def get_admin_overview() -> dict:
 
 @router.post("/knowledge/{course_code}/ingest")
 async def ingest_knowledge(course_code: str) -> dict:
-    if not settings.milvus_enabled:
-        raise HTTPException(status_code=503, detail="Milvus is disabled in this deployment.")
     pipeline = KnowledgeIngestPipeline()
-    return await pipeline.run(course_code)
+    result = await pipeline.run(course_code)
+    if not settings.milvus_enabled and result.get("status") == "success":
+        result["message"] = "Knowledge indexed into local SQLite/Markdown fallback mode."
+    return result
 
 
 @router.get("/llm/ping")

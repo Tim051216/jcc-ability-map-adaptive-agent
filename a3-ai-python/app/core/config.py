@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=18080, alias="APP_PORT")
     app_debug: bool = Field(default=False, alias="APP_DEBUG")
+    local_demo_sqlite_only: bool = Field(default=True, alias="LOCAL_DEMO_SQLITE_ONLY")
+    rag_local_markdown_first: bool = Field(default=False, alias="RAG_LOCAL_MARKDOWN_FIRST")
     auth_bearer_tokens: str = Field(default="student-demo:1001,admin-demo:9001", alias="AUTH_BEARER_TOKENS")
 
     postgres_dsn: str = Field(alias="POSTGRES_DSN")
@@ -51,9 +53,13 @@ class Settings(BaseSettings):
     llm_provider: str = Field(alias="LLM_PROVIDER")
     llm_model: str = Field(alias="LLM_MODEL")
     llm_fallback_models: str = Field(default="", alias="LLM_FALLBACK_MODELS")
+    llm_vision_model: str | None = Field(default=None, alias="LLM_VISION_MODEL")
+    llm_vision_fallback_models: str = Field(default="", alias="LLM_VISION_FALLBACK_MODELS")
     llm_api_key: str = Field(alias="LLM_API_KEY")
     llm_base_url: str = Field(alias="LLM_BASE_URL")
     llm_timeout_seconds: int = Field(default=30, alias="LLM_TIMEOUT_SECONDS")
+    llm_prefer_ocr_over_vision: bool = Field(default=True, alias="LLM_PREFER_OCR_OVER_VISION")
+    llm_ocr_min_chars_for_text_only: int = Field(default=24, alias="LLM_OCR_MIN_CHARS_FOR_TEXT_ONLY")
 
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
@@ -64,6 +70,19 @@ class Settings(BaseSettings):
     # 智能辅导：敏感词过滤（逗号分隔，空则不拦截）
     tutoring_sensitive_filter_enabled: bool = Field(default=True, alias="TUTORING_SENSITIVE_FILTER_ENABLED")
     tutoring_sensitive_words: str = Field(default="", alias="TUTORING_SENSITIVE_WORDS")
+    guardrails_enabled: bool = Field(default=True, alias="GUARDRAILS_ENABLED")
+    guardrails_block_on_input: bool = Field(default=True, alias="GUARDRAILS_BLOCK_ON_INPUT")
+    guardrails_block_on_output: bool = Field(default=True, alias="GUARDRAILS_BLOCK_ON_OUTPUT")
+    guardrails_hallucination_enabled: bool = Field(default=True, alias="GUARDRAILS_HALLUCINATION_ENABLED")
+    guardrails_sensitive_words: str = Field(default="", alias="GUARDRAILS_SENSITIVE_WORDS")
+    xfyun_content_safety_enabled: bool = Field(default=False, alias="XFYUN_CONTENT_SAFETY_ENABLED")
+    xfyun_content_safety_base_url: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_BASE_URL")
+    xfyun_content_safety_app_id: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_APP_ID")
+    xfyun_content_safety_api_key: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_API_KEY")
+    xfyun_content_safety_api_secret: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_API_SECRET")
+
+    firecrawl_api_key: str = Field(default="", alias="FIRECRAWL_API_KEY")
+    firecrawl_base_url: str = Field(default="https://api.firecrawl.dev/v2", alias="FIRECRAWL_BASE_URL")
 
 
 settings = Settings()  # type: ignore[call-arg]

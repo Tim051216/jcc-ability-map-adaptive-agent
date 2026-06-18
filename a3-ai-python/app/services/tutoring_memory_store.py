@@ -12,6 +12,8 @@ class TutoringMemoryStore:
         self.questions: dict[int, dict[str, Any]] = {}
         self.answers: dict[int, dict[str, Any]] = {}
         self.answer_by_question: dict[int, int] = {}
+        self.errors_by_question: dict[int, str] = {}
+        self.generating_questions: set[int] = set()
 
     @staticmethod
     def _generate_id() -> int:
@@ -50,6 +52,7 @@ class TutoringMemoryStore:
             "update_time": now,
         }
         self.questions[question_id] = record
+        self.errors_by_question.pop(question_id, None)
         return {"question_id": question_id, "session_id": resolved_session_id}
 
     def get_question(self, question_id: int) -> dict[str, Any] | None:
@@ -60,6 +63,19 @@ class TutoringMemoryStore:
         if answer_id is None:
             return None
         return self.answers.get(answer_id)
+
+    def get_error(self, question_id: int) -> str | None:
+        return self.errors_by_question.get(question_id)
+
+    def mark_generating(self, question_id: int) -> None:
+        self.errors_by_question.pop(question_id, None)
+        self.generating_questions.add(question_id)
+
+    def unmark_generating(self, question_id: int) -> None:
+        self.generating_questions.discard(question_id)
+
+    def is_generating(self, question_id: int) -> bool:
+        return question_id in self.generating_questions
 
     def save_answer(self, question_id: int, result: dict[str, Any]) -> dict[str, Any]:
         question = self.questions[question_id]
@@ -93,6 +109,8 @@ class TutoringMemoryStore:
         }
         self.answers[answer_id] = answer
         self.answer_by_question[question_id] = answer_id
+        self.errors_by_question.pop(question_id, None)
+        self.generating_questions.discard(question_id)
 
         return {
             "question_id": question_id,
@@ -108,6 +126,14 @@ class TutoringMemoryStore:
             "question_type": question["question_type"],
             "knowledge_points": question["knowledge_points"],
         }
+
+    def save_error(self, question_id: int, message: str) -> None:
+        question = self.questions.get(question_id)
+        if question is None:
+            return
+        question["update_time"] = datetime.now()
+        self.errors_by_question[question_id] = message
+        self.generating_questions.discard(question_id)
 
     def list_history(
         self,

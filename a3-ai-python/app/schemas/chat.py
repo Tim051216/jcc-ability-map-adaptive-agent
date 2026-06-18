@@ -22,6 +22,8 @@ class ChatResponse(BaseModel):
     generated_plan: dict | None = None
     generated_resources: list[dict] = Field(default_factory=list)
     generated_evaluation: dict | None = None
+    safety_review: dict | None = None
+    hallucination_review: dict | None = None
 
 
 class ChatTaskSubmitResponse(BaseModel):
@@ -121,3 +123,53 @@ class ChatTicketSummaryResponse(BaseModel):
     by_status: dict[str, int] = Field(default_factory=dict)
     by_priority: dict[str, int] = Field(default_factory=dict)
     latest_ticket_at: str | None = None
+
+
+class ImSessionSummaryResponse(BaseModel):
+    session_id: int
+    peer_user_id: int | None = None
+    title: str
+    scene: str | None = None
+    conversation_type: str | None = None
+    subtitle: str | None = None
+    badge_label: str | None = None
+    participant_label: str | None = None
+    member_count: int | None = None
+    unread_count: int = 0
+    latest_message: str | None = None
+    latest_message_at: str | None = None
+
+
+class ImSessionListResponse(BaseModel):
+    items: list[ImSessionSummaryResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class ImMessageResponse(BaseModel):
+    message_id: int
+    session_id: int
+    role: str
+    content: str
+    created_at: str | None = None
+
+
+class ImMessageListResponse(BaseModel):
+    items: list[ImMessageResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class ImSessionReadResponse(BaseModel):
+    session_id: int
+    user_id: int
+    last_read_message_id: int
+    unread_count: int = 0
+
+
+class ImSessionCreateRequest(BaseModel):
+    peer_user_id: int
+    peer_name: str | None = None
+    owner_name: str | None = None
+
+
+class ImSendMessageRequest(BaseModel):
+    content: str

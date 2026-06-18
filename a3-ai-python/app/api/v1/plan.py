@@ -9,7 +9,7 @@ from app.schemas.plan import (
 )
 from app.services.course_context_service import CourseContextService
 from app.services.plan_summary_service import PlanSummaryService
-from app.services.plan_service import PlanService
+from app.services.stable_plan_service import PlanService
 
 router = APIRouter()
 
@@ -30,16 +30,11 @@ async def get_latest_plan(
     course_context = await CourseContextService().resolve(course_id=course_id, course_code=course_code)
     plan = await service.get_latest_plan(user_id=user_id, course_code=course_context.course_code)
     if plan is None:
-        target = f"围绕 {course_context.course_name or course_context.course_code} 建立当前阶段学习路径"
-        return await service.generate_plan(
-            LearningPlanRequest(
-                user_id=user_id,
-                course_id=course_context.course_id,
-                course_code=course_context.course_code,
-                target=target,
-                available_days=7,
-                daily_study_minutes=35,
-            )
+        return service.build_starter_plan(
+            user_id=user_id,
+            course_code=course_context.course_code,
+            course_id=course_context.course_id,
+            course_name=course_context.course_name,
         )
     return plan
 

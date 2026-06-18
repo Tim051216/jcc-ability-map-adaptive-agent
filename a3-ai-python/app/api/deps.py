@@ -4,13 +4,18 @@ from fastapi import Header, HTTPException, Query, WebSocket
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.session import get_db
+from app.db.session import get_ai_data_db, get_db
 
 logger = get_logger(__name__)
 
 
 async def get_db_session() -> AsyncGenerator:
     async with get_db() as session:
+        yield session
+
+
+async def get_ai_data_db_session() -> AsyncGenerator:
+    async with get_ai_data_db() as session:
         yield session
 
 
@@ -51,20 +56,23 @@ def resolve_current_user_id(
     authorization: str | None = None,
     query_user_id: int | None = None,
     access_token: str | None = None,
+    allow_local_default: bool = True,
 ) -> int:
-    # 明确优先级：Bearer Token > 网关注入头 > 查询参数，避免调试参数覆盖正式身份。
+    # 本地演示场景下优先使用前端显式传入的用户身份，便于切换多名 demo 用户。
     bearer_value = authorization
     if access_token:
         bearer_value = f"Bearer {access_token}"
 
+    if x_user_id is not None:
+        return x_user_id
     if bearer_value:
         user_id = _resolve_user_id_from_bearer(bearer_value)
         if user_id is not None:
             return user_id
-    if x_user_id is not None:
-        return x_user_id
     if query_user_id is not None:
         return query_user_id
+    if allow_local_default and settings.app_env == "local":
+        return 1001
     raise HTTPException(status_code=401, detail="missing authentication")
 
 
@@ -96,4 +104,5 @@ def get_websocket_user_id(websocket: WebSocket) -> int:
         authorization=websocket.headers.get("authorization"),
         query_user_id=parsed_query_user_id,
         access_token=access_token,
+        allow_local_default=False,
     )

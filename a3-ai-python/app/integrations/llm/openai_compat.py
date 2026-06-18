@@ -8,6 +8,11 @@ from app.integrations.llm.base import BaseLLMProvider, LLMMessage
 
 
 class OpenAICompatProvider(BaseLLMProvider):
+    @staticmethod
+    def _is_billing_error(detail: str) -> bool:
+        normalized = (detail or "").lower()
+        return "arrearage" in normalized or "overdue-payment" in normalized or "account is in good standing" in normalized
+
     def _build_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {settings.llm_api_key}",
@@ -18,6 +23,23 @@ class OpenAICompatProvider(BaseLLMProvider):
     def _candidate_models(preferred_model: str | None = None) -> list[str]:
         models: list[str] = []
         for raw in [preferred_model or "", settings.llm_model, *(settings.llm_fallback_models or "").split(",")]:
+            model = raw.strip()
+            if model and model not in models:
+                models.append(model)
+        return models
+
+    @staticmethod
+    def _contains_multimodal_content(messages: list[LLMMessage]) -> bool:
+        for message in messages:
+            content = message.content
+            if isinstance(content, list) and any(isinstance(item, dict) and item.get("type") == "image_url" for item in content):
+                return True
+        return False
+
+    @staticmethod
+    def _vision_candidate_models(preferred_model: str | None = None) -> list[str]:
+        models: list[str] = []
+        for raw in [preferred_model or "", settings.llm_vision_model or "", *(settings.llm_vision_fallback_models or "").split(",")]:
             model = raw.strip()
             if model and model not in models:
                 models.append(model)
@@ -35,12 +57,18 @@ class OpenAICompatProvider(BaseLLMProvider):
             raise ValueError("LLM base url or api key is missing")
 
         message_payload = [{"role": message.role, "content": message.content} for message in messages]
+        candidate_models = (
+            self._vision_candidate_models(model)
+            if self._contains_multimodal_content(messages) and self._vision_candidate_models(model)
+            else self._candidate_models(model)
+        )
         timeout_seconds = max(int(settings.llm_timeout_seconds or 0), 90)
         timeout = httpx.Timeout(timeout_seconds, connect=15.0, write=30.0, pool=15.0)
         last_error: Exception | None = None
+        billing_blocked_models: list[str] = []
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            for model_name in self._candidate_models(model):
+            for model_name in candidate_models:
                 payload = {
                     "model": model_name,
                     "messages": message_payload,
@@ -70,6 +98,15 @@ class OpenAICompatProvider(BaseLLMProvider):
                     except httpx.HTTPStatusError as exc:
                         last_error = exc
                         detail = exc.response.text.strip()
+                        if self._is_billing_error(detail):
+                            billing_blocked_models.append(model_name)
+                            logger.warning(
+                                "LLM model billing unavailable, trying next candidate",
+                                model=model_name,
+                                status_code=exc.response.status_code,
+                                detail=detail[:300],
+                            )
+                            break
                         logger.warning(
                             "LLM model request failed, trying next candidate",
                             status_code=exc.response.status_code,
@@ -87,9 +124,13 @@ class OpenAICompatProvider(BaseLLMProvider):
                         )
                         break
 
+        if billing_blocked_models and len(billing_blocked_models) == len(candidate_models):
+            raise RuntimeError(
+                f"LLM billing unavailable for all candidate models: {', '.join(billing_blocked_models)}"
+            ) from last_error
         if last_error is not None:
             raise RuntimeError(
-                f"LLM request failed for all candidate models: {', '.join(self._candidate_models(model))}"
+                f"LLM request failed for all candidate models: {', '.join(candidate_models)}"
             ) from last_error
         raise RuntimeError("No LLM candidate models configured")
 
@@ -105,12 +146,18 @@ class OpenAICompatProvider(BaseLLMProvider):
             raise ValueError("LLM base url or api key is missing")
 
         message_payload = [{"role": message.role, "content": message.content} for message in messages]
+        candidate_models = (
+            self._vision_candidate_models(model)
+            if self._contains_multimodal_content(messages) and self._vision_candidate_models(model)
+            else self._candidate_models(model)
+        )
         timeout_seconds = max(int(settings.llm_timeout_seconds or 0), 90)
         timeout = httpx.Timeout(timeout_seconds, connect=15.0, write=30.0, pool=15.0)
         last_error: Exception | None = None
+        billing_blocked_models: list[str] = []
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            for model_name in self._candidate_models(model):
+            for model_name in candidate_models:
                 payload = {
                     "model": model_name,
                     "messages": message_payload,
@@ -148,6 +195,15 @@ class OpenAICompatProvider(BaseLLMProvider):
                 except httpx.HTTPStatusError as exc:
                     last_error = exc
                     detail = exc.response.text.strip()
+                    if self._is_billing_error(detail):
+                        billing_blocked_models.append(model_name)
+                        logger.warning(
+                            "LLM stream model billing unavailable, trying next candidate",
+                            model=model_name,
+                            status_code=exc.response.status_code,
+                            detail=detail[:300],
+                        )
+                        continue
                     logger.warning(
                         "LLM stream request failed, falling back to non-stream or next candidate",
                         status_code=exc.response.status_code,
@@ -163,9 +219,13 @@ class OpenAICompatProvider(BaseLLMProvider):
                         error=detail or exc.__class__.__name__,
                     )
 
+        if billing_blocked_models and len(billing_blocked_models) == len(candidate_models):
+            raise RuntimeError(
+                f"LLM billing unavailable for all candidate models: {', '.join(billing_blocked_models)}"
+            ) from last_error
         if last_error is not None:
             raise RuntimeError(
-                f"LLM stream request failed for all candidate models: {', '.join(self._candidate_models(model))}"
+                f"LLM stream request failed for all candidate models: {', '.join(candidate_models)}"
             ) from last_error
         raise RuntimeError("No LLM candidate models configured")
 

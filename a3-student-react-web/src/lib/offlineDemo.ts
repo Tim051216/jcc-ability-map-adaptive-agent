@@ -13,9 +13,17 @@ import type {
   PlanProgressResponse,
   ResourceCard,
 } from "./studentApi";
+import { getCurrentLoggedInUserId, getCurrentLoggedInUserName } from "./currentUser";
 
 export const OFFLINE_DEMO_ENABLED = import.meta.env.VITE_ENABLE_OFFLINE_DEMO !== "false";
 export const OFFLINE_DEMO_MESSAGE = "后端未连接，当前展示离线演示内容。";
+
+function getOfflineActiveUser() {
+  return {
+    id: getCurrentLoggedInUserId(),
+    name: getCurrentLoggedInUserName("演示学生"),
+  };
+}
 
 export async function resolveWithOfflineDemo<T>(
   loader: () => Promise<T>,
@@ -114,6 +122,14 @@ export const overviewDemo = {
     lesson_id: 40101,
     latest_section_id: 40111,
     moment: 0,
+    teachers: [
+      {
+        id: 401,
+        name: "课程教研组",
+        role: "主讲教师",
+        intro: "离线演示课程教师信息。",
+      },
+    ],
     chapters: [
       {
         id: 4011,
@@ -439,6 +455,29 @@ export const evaluationDemo = {
   ] satisfies EvaluationGeneratedQuestion[],
 };
 
+export function buildEvaluationDemo() {
+  const activeUser = getOfflineActiveUser();
+  return {
+    ...evaluationDemo,
+    plan: {
+      ...evaluationDemo.plan,
+      user_id: activeUser.id,
+    },
+    progress: {
+      ...evaluationDemo.progress,
+      user_id: activeUser.id,
+    },
+    trend: {
+      ...evaluationDemo.trend,
+      user_id: activeUser.id,
+    },
+    paperSummary: {
+      ...evaluationDemo.paperSummary,
+      user_id: activeUser.id,
+    },
+  };
+}
+
 export const courseLearningDemo = {
   course: {
     id: 401,
@@ -449,6 +488,14 @@ export const courseLearningDemo = {
     lesson_id: 40101,
     latest_section_id: 40111,
     moment: 0,
+    teachers: [
+      {
+        id: 401,
+        name: "课程教研组",
+        role: "主讲教师",
+        intro: "离线演示课程教师信息。",
+      },
+    ],
     chapters: [
       {
         id: 4011,
@@ -555,3 +602,20 @@ export const courseLearningDemo = {
     40132: [],
   } satisfies Record<number, LearningNoteSummary[]>,
 };
+
+export function buildCourseLearningDemo() {
+  const activeUser = getOfflineActiveUser();
+  return {
+    ...courseLearningDemo,
+    notesBySection: Object.fromEntries(
+      Object.entries(courseLearningDemo.notesBySection).map(([sectionId, notes]) => [
+        sectionId,
+        notes.map((note) => ({
+          ...note,
+          authorId: activeUser.id,
+          authorName: activeUser.name,
+        })),
+      ]),
+    ) as Record<number, LearningNoteSummary[]>,
+  };
+}

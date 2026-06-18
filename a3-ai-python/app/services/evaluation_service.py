@@ -1,8 +1,12 @@
 import asyncio
+import hashlib
+import json
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from sqlalchemy import delete, func, select
 
+from app.db.models import EvaluationQuestion as EvaluationQuestionModel
 from app.db.repositories.evaluation_paper_repository import EvaluationPaperRepository
 from app.db.repositories.evaluation_repository import EvaluationRepository
 from app.db.session import async_session_factory
@@ -17,6 +21,8 @@ from app.schemas.evaluation import (
     EvaluationPaperSubmitRequest,
     EvaluationRequest,
     EvaluationResponse,
+    QuestionGenerateRequest,
+    QuestionGenerateResponse,
     WrongQuestionItem,
     WrongQuestionListResponse,
 )
@@ -25,62 +31,84 @@ from app.services.evaluation_agent_service import EvaluationAgentService
 
 
 class EvaluationService:
-    PAPER_AGENT_TIMEOUT_SECONDS = 6
+    PAPER_AGENT_TIMEOUT_SECONDS = 60
+    QUESTION_BANK_USE_AGENT = True
+    QUESTION_BANK_SINGLE_TIMEOUT_SECONDS = 55
+    QUESTION_BANK_MAX_CONCURRENCY = 1
+    QUESTION_BANK_SINGLE_RETRY_COUNT = 2
+    QUESTION_BANK_CACHE_PREFIX = "question_bank_cache:v2:"
     FALLBACK_SINGLE_CHOICE_VARIANTS = [
         {
-            "prompt_template": "关于“{point}”的下列表述中，哪一项最符合课程要求？",
-            "options_template": [
-                "A. 只记定义，不关心它与前后流程的关系",
-                "B. 结合概念、常见误区与实际场景一起理解",
-                "C. 只刷题，不回到知识结构中整理",
-                "D. 完全依赖生成结果，不做主动复盘",
+            "keywords": ["需求分析", "需求工程", "需求获取", "需求建模"],
+            "prompt": "在软件工程中，关于需求分析阶段的目标，下列说法哪一项最准确？",
+            "options": [
+                "A. 直接确定数据库表结构和索引方案",
+                "B. 明确用户需求、业务规则以及系统边界",
+                "C. 只编写最终测试报告，不关心业务流程",
+                "D. 主要完成代码重构和性能调优",
             ],
             "correct_answer": "B",
-            "explanation_template": "本题考查对“{point}”的理解方式。更合理的学习方式是把概念、误区和应用场景一起掌握，而不是孤立记忆。",
+            "explanation": "需求分析的核心是明确系统目标、用户需求和业务约束，而不是直接进入设计实现。",
         },
         {
-            "prompt_template": "在学习“{point}”时，哪种做法更能体现软件工程课程的训练目标？",
-            "options_template": [
-                "A. 只背术语，不分析它解决什么问题",
-                "B. 只看结论，不关心过程与约束条件",
-                "C. 能说明它在项目流程中的作用，并结合案例分析",
-                "D. 看到相似题型后直接套模板",
-            ],
-            "correct_answer": "C",
-            "explanation_template": "软件工程课程强调把知识点放进项目流程中理解。“{point}”只有和场景、约束、案例结合，才算真正掌握。",
-        },
-        {
-            "prompt_template": "如果要判断自己是否真正掌握了“{point}”，以下哪项证据最有效？",
-            "options_template": [
-                "A. 能解释关键概念，并说明适用场景与常见错误",
-                "B. 只会复述教材原句",
-                "C. 只记住老师给出的标准答案",
-                "D. 只收藏资料但从不练习",
+            "keywords": ["概要设计", "总体设计", "高层设计", "架构设计"],
+            "prompt": "在概要设计阶段，最应该优先完成的工作是哪一项？",
+            "options": [
+                "A. 确定系统模块划分及模块间接口关系",
+                "B. 为每个函数逐行编写源代码",
+                "C. 只整理用户培训手册",
+                "D. 只修复已经上线的历史缺陷",
             ],
             "correct_answer": "A",
-            "explanation_template": "真正掌握“{point}”不仅要会说概念，还要能说明场景、误区和应用边界，这比单纯背诵更能反映理解深度。",
+            "explanation": "概要设计的重点是建立系统整体结构、模块边界和接口关系。",
         },
         {
-            "prompt_template": "围绕“{point}”进行阶段复盘时，哪一种做法最合理？",
-            "options_template": [
-                "A. 只看对错，不分析错因",
-                "B. 只追求做题速度，不总结规律",
-                "C. 错题全都跳过，等下次再说",
-                "D. 记录错因，并把知识点回连到流程图或章节结构",
-            ],
-            "correct_answer": "D",
-            "explanation_template": "阶段复盘的重点是把“{point}”相关错因回连到整体知识结构，帮助后续规划和资源推荐更准确。",
-        },
-        {
-            "prompt_template": "针对“{point}”的薄弱问题，哪一项最适合作为下一步强化动作？",
-            "options_template": [
-                "A. 继续重复同一题，不看解析",
-                "B. 先补概念，再做一个贴近项目情境的小练习",
-                "C. 不看薄弱点，直接换一个完全无关章节",
-                "D. 只看答案，不自己表达",
+            "keywords": ["详细设计", "低层设计", "模块设计"],
+            "prompt": "下列哪一项更属于详细设计阶段的产出？",
+            "options": [
+                "A. 项目立项申请书",
+                "B. 模块内部算法、数据结构与处理流程说明",
+                "C. 用户市场推广海报",
+                "D. 软件验收后的总结表彰方案",
             ],
             "correct_answer": "B",
-            "explanation_template": "对“{point}”的强化应遵循“补概念 + 做场景练习”的顺序，这样更利于把测评结果转成真正的能力提升。",
+            "explanation": "详细设计关注模块内部实现，包括算法、数据结构和处理流程。",
+        },
+        {
+            "keywords": ["软件测试", "测试", "单元测试", "集成测试", "系统测试"],
+            "prompt": "关于软件测试的目的，下列说法哪一项更合理？",
+            "options": [
+                "A. 证明程序绝对没有任何缺陷",
+                "B. 通过执行程序发现缺陷并评估软件质量",
+                "C. 用测试完全代替需求评审与设计评审",
+                "D. 只在项目结束后象征性运行一次程序",
+            ],
+            "correct_answer": "B",
+            "explanation": "测试的目标是发现缺陷并评估质量，而不是证明软件绝对无错。",
+        },
+        {
+            "keywords": ["可行性分析", "可行性研究"],
+            "prompt": "可行性分析通常不重点评估下列哪一项？",
+            "options": [
+                "A. 技术可行性",
+                "B. 经济可行性",
+                "C. 操作可行性",
+                "D. 源代码命名风格是否统一",
+            ],
+            "correct_answer": "D",
+            "explanation": "可行性分析关注技术、经济、操作等宏观层面，不会先讨论具体编码风格。",
+        },
+        {
+            "keywords": ["维护", "软件维护"],
+            "prompt": "下列哪一种维护活动属于适应性维护？",
+            "options": [
+                "A. 修复线上已发现的程序错误",
+                "B. 为适配新操作系统版本而修改软件",
+                "C. 优化变量命名但不改变任何行为",
+                "D. 删除废弃项目的全部历史文档",
+            ],
+            "correct_answer": "B",
+            "explanation": "适应性维护是为适应外部环境变化而做的修改，例如系统平台变化。",
         },
     ]
 
@@ -116,7 +144,261 @@ class EvaluationService:
             course_code=request.course_code,
             paper_type=request.paper_type,
             status="generated",
+            source="fallback" if any(item.source == "fallback" for item in questions) else "ai",
             questions=questions,
+        )
+
+    async def generate_question_bank(self, request: QuestionGenerateRequest) -> QuestionGenerateResponse:
+        course_context = (request.course_context or "").strip()
+        provided_points = [item.strip() for item in (request.knowledge_points or []) if item and item.strip()]
+        course_context_hint = course_context or (provided_points[0] if provided_points else "当前课程")
+        count = max(int(request.count or 1), 1)
+        resolved_points = provided_points[:] if provided_points else [course_context_hint]
+        point_batches = [resolved_points[index % len(resolved_points)] for index in range(count)]
+        paper_type = "stage" if request.difficulty_level >= 2 else "diagnostic"
+        cache_key = self._build_question_bank_cache_key(
+            request=request,
+            resolved_points=resolved_points,
+            course_context_hint=course_context_hint,
+        )
+        cached_questions = await self._load_cached_question_bank(cache_key=cache_key, count=count)
+        if len(cached_questions) >= count:
+            return self._build_question_generate_response(
+                test_id=request.test_id,
+                questions=cached_questions[:count],
+                response_source="cache",
+            )
+        fallback_request = EvaluationPaperGenerateRequest(
+            user_id=1,
+            course_id=request.test_id or None,
+            target=course_context_hint,
+            knowledge_points=resolved_points,
+            paper_type=paper_type,
+            question_count=count,
+        )
+
+        generated_questions: list[EvaluationQuestion] = []
+        if self.QUESTION_BANK_USE_AGENT:
+            async def _build_indexed_question(index: int, point: str) -> EvaluationQuestion | None:
+                agent_question = await self._build_single_question_with_retries(
+                    point=point,
+                    course_id=request.test_id or None,
+                    target=course_context_hint,
+                    paper_type=paper_type,
+                )
+                if not agent_question:
+                    return None
+                return agent_question.model_copy(
+                    update={
+                        "question_id": f"q{index}",
+                        "knowledge_point": point,
+                    }
+                )
+
+            semaphore = asyncio.Semaphore(self.QUESTION_BANK_MAX_CONCURRENCY)
+
+            async def _run_limited(index: int, point: str) -> EvaluationQuestion | None:
+                async with semaphore:
+                    return await _build_indexed_question(index, point)
+
+            generated_candidates = await asyncio.gather(
+                *(_run_limited(index, point) for index, point in enumerate(point_batches, start=1))
+            )
+            generated_questions = [item for item in generated_candidates if item]
+
+        if len(generated_questions) < count:
+            fallback_questions = [
+                item.model_copy(update={"source": "fallback", "question_id": f"q{len(generated_questions) + idx + 1}"})
+                for idx, item in enumerate(self._build_questions(fallback_request))
+            ]
+            generated_questions.extend(fallback_questions[: count - len(generated_questions)])
+
+        await self._save_cached_question_bank(
+            cache_key=cache_key,
+            test_id=request.test_id,
+            questions=generated_questions,
+        )
+        return self._build_question_generate_response(
+            test_id=request.test_id,
+            questions=generated_questions,
+        )
+
+    async def _build_single_question_with_retries(
+        self,
+        *,
+        point: str,
+        course_id: int | None,
+        target: str,
+        paper_type: str,
+    ) -> EvaluationQuestion | None:
+        last_question: EvaluationQuestion | None = None
+        for _ in range(self.QUESTION_BANK_SINGLE_RETRY_COUNT):
+            try:
+                agent_questions = await asyncio.wait_for(
+                    self._build_questions_with_agent(
+                        EvaluationPaperGenerateRequest(
+                            user_id=1,
+                            course_id=course_id,
+                            target=target,
+                            knowledge_points=[point],
+                            paper_type=paper_type,
+                            question_count=1,
+                        )
+                    ),
+                    timeout=self.QUESTION_BANK_SINGLE_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                continue
+            if not agent_questions:
+                continue
+            last_question = agent_questions[0]
+            if last_question.source == "ai":
+                return last_question
+        return last_question
+
+    def _build_question_generate_response(
+        self,
+        *,
+        test_id: int,
+        questions: list[EvaluationQuestion],
+        response_source: str | None = None,
+    ) -> QuestionGenerateResponse:
+        fallback_points = [item.knowledge_point for item in questions if item.source == "fallback"]
+        source = response_source or ("fallback" if fallback_points else "ai")
+        return QuestionGenerateResponse(
+            test_id=test_id,
+            questions=[
+                {
+                    "question_content": item.prompt,
+                    "question_options": [
+                        {"key": option.split(".", 1)[0].strip(), "value": option.split(".", 1)[1].strip() if "." in option else option}
+                        for option in item.options
+                    ],
+                    "correct_answer": item.correct_answer,
+                    "answer_analysis": item.explanation,
+                    "knowledge_point": item.knowledge_point,
+                    "difficulty_level": 2 if item.difficulty == "advanced" else 1,
+                    "question_type": 1 if item.question_type == "single_choice" else 2,
+                    "quality_score": 1.0 if item.source == "ai" else 0.6,
+                }
+                for item in questions
+            ],
+            layered_questions=None,
+            total_count=len(questions),
+            fallback_count=len(fallback_points),
+            fallback_knowledge_points=fallback_points,
+            safety_review=None,
+            hallucination_review=None,
+            source=source,
+        )
+
+    def _build_question_bank_cache_key(
+        self,
+        *,
+        request: QuestionGenerateRequest,
+        resolved_points: list[str],
+        course_context_hint: str,
+    ) -> str:
+        payload = {
+            "test_id": request.test_id,
+            "difficulty_level": request.difficulty_level,
+            "question_type": request.question_type,
+            "generate_layered": request.generate_layered,
+            "knowledge_points": resolved_points,
+            "course_context_hint": course_context_hint,
+            "course_context": (request.course_context or "").strip()[:1800],
+        }
+        digest = hashlib.sha1(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+        return f"{self.QUESTION_BANK_CACHE_PREFIX}{digest}"
+
+    async def _load_cached_question_bank(self, *, cache_key: str, count: int) -> list[EvaluationQuestion]:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(EvaluationQuestionModel)
+                .where(
+                    EvaluationQuestionModel.generation_prompt == cache_key,
+                    EvaluationQuestionModel.status == 1,
+                )
+                .order_by(EvaluationQuestionModel.order_num.asc(), EvaluationQuestionModel.id.asc())
+                .limit(count)
+            )
+            rows = result.scalars().all()
+        questions = [self._db_question_to_schema(item) for item in rows]
+        if self.QUESTION_BANK_USE_AGENT and questions and all(item.source == "fallback" for item in questions):
+            return []
+        return questions
+
+    async def _save_cached_question_bank(
+        self,
+        *,
+        cache_key: str,
+        test_id: int,
+        questions: list[EvaluationQuestion],
+    ) -> None:
+        async with async_session_factory() as session:
+            await session.execute(
+                delete(EvaluationQuestionModel).where(EvaluationQuestionModel.generation_prompt == cache_key)
+            )
+            next_id = await self._get_next_cached_question_id(session)
+            for index, item in enumerate(questions, start=1):
+                session.add(
+                    EvaluationQuestionModel(
+                        id=next_id,
+                        test_id=test_id,
+                        question_type=1 if item.question_type == "single_choice" else 2,
+                        difficulty_level=2 if item.difficulty == "advanced" else 1,
+                        knowledge_point=item.knowledge_point,
+                        question_content=item.prompt,
+                        question_options=self._schema_options_to_db_options(item.options),
+                        correct_answer=item.correct_answer,
+                        answer_analysis=item.explanation,
+                        score=10.0,
+                        order_num=index,
+                        generation_prompt=cache_key,
+                        generation_model=f"cached_{item.source}",
+                        quality_score=1.0 if item.source == "ai" else 0.6,
+                        status=1,
+                    )
+                )
+                next_id += 1
+            await session.commit()
+
+    async def _get_next_cached_question_id(self, session) -> int:
+        result = await session.execute(select(func.coalesce(func.max(EvaluationQuestionModel.id), 0)))
+        current_max = result.scalar_one()
+        return int(current_max or 0) + 1
+
+    @staticmethod
+    def _schema_options_to_db_options(options: list[str]) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        for index, option in enumerate(options):
+            if "." in option:
+                key, value = option.split(".", 1)
+                normalized.append({"key": key.strip(), "value": value.strip()})
+            else:
+                normalized.append({"key": chr(ord("A") + index), "value": option.strip()})
+        return normalized
+
+    def _db_question_to_schema(self, item: EvaluationQuestionModel) -> EvaluationQuestion:
+        db_options = item.question_options or []
+        options = []
+        for index, option in enumerate(db_options):
+            if isinstance(option, dict):
+                key = str(option.get("key") or chr(ord("A") + index)).strip()
+                value = str(option.get("value") or "").strip()
+                options.append(f"{key}. {value}" if value else key)
+            else:
+                options.append(str(option))
+        return EvaluationQuestion(
+            question_id=f"q{item.order_num or item.id}",
+            question_type="single_choice" if item.question_type == 1 else "multiple_choice",
+            prompt=item.question_content,
+            options=options,
+            correct_answer=item.correct_answer,
+            explanation=item.answer_analysis or "",
+            knowledge_point=item.knowledge_point,
+            difficulty="advanced" if item.difficulty_level >= 2 else "basic",
+            source="fallback" if (item.generation_model or "").endswith("fallback") else "ai",
         )
 
     async def get_paper(self, paper_id: int) -> EvaluationPaperResponse | None:
@@ -130,6 +412,9 @@ class EvaluationService:
                 course_code=paper.course_code,
                 paper_type=paper.paper_type,
                 status=paper.status,
+                source="fallback"
+                if any((item.get("source") == "fallback") for item in (paper.questions_data or []))
+                else "ai",
                 questions=[EvaluationQuestion.model_validate(item) for item in paper.questions_data or []],
             )
 
@@ -405,7 +690,11 @@ class EvaluationService:
             generated = []
         if generated:
             return generated[: request.question_count]
-        return self._build_questions(request)
+        fallback_questions = self._build_questions(request)
+        return [
+            item.model_copy(update={"source": "fallback"})
+            for item in fallback_questions
+        ]
 
     async def _build_questions_with_agent(
         self,
@@ -417,6 +706,15 @@ class EvaluationService:
             f"{request.course_code} 典型错因",
         ]
         try:
+            course_context = "\n".join(
+                [
+                    f"课程代码: {request.course_code}",
+                    f"测评目标: {request.target or request.course_code}",
+                    "请严格围绕课程知识点出题，题目要符合常见刷题/面试软件的单题模式，优先单选题，少量多选题，避免空泛和模板化表述。",
+                    "每道题都要有明确题干、4 个选项、唯一或明确正确答案、简短解析。",
+                    f"重点知识点: {', '.join(knowledge_points)}",
+                ]
+            )
             result = await EvaluationAgentService().generate_questions(
                 QuestionGenerateRequest(
                     test_id=0,
@@ -425,7 +723,7 @@ class EvaluationService:
                     question_type=1,
                     count=request.question_count,
                     generate_layered=False,
-                    course_context=request.course_code,
+                    course_context=course_context,
                     persist_to_db=False,
                 )
             )
@@ -433,6 +731,7 @@ class EvaluationService:
             return []
 
         questions: list[EvaluationQuestion] = []
+        is_fallback_result = bool(getattr(result, "fallback_count", 0))
         for index, item in enumerate(result.questions, start=1):
             options = item.question_options or []
             normalized_options = [
@@ -449,6 +748,7 @@ class EvaluationService:
                     explanation=item.answer_analysis,
                     knowledge_point=item.knowledge_point or knowledge_points[(index - 1) % len(knowledge_points)],
                     difficulty=self._map_difficulty_value(item.difficulty_level),
+                    source="fallback" if is_fallback_result else "ai",
                 )
             )
         return questions
@@ -463,17 +763,25 @@ class EvaluationService:
         for index in range(request.question_count):
             point = points[index % len(points)]
             question_no = index + 1
-            variant = self.FALLBACK_SINGLE_CHOICE_VARIANTS[index % len(self.FALLBACK_SINGLE_CHOICE_VARIANTS)]
+            variant = next(
+                (
+                    item
+                    for item in self.FALLBACK_SINGLE_CHOICE_VARIANTS
+                    if any(keyword in point for keyword in item.get("keywords", []))
+                ),
+                self.FALLBACK_SINGLE_CHOICE_VARIANTS[index % len(self.FALLBACK_SINGLE_CHOICE_VARIANTS)],
+            )
             questions.append(
                 EvaluationQuestion(
                     question_id=f"q{question_no}",
                     question_type="single_choice",
-                    prompt=variant["prompt_template"].format(point=point),
-                    options=variant["options_template"],
+                    prompt=variant["prompt"],
+                    options=variant["options"],
                     correct_answer=variant["correct_answer"],
-                    explanation=variant["explanation_template"].format(point=point),
+                    explanation=variant["explanation"],
                     knowledge_point=point,
                     difficulty="basic" if index < 2 else "advanced",
+                    source="fallback",
                 )
             )
         return questions

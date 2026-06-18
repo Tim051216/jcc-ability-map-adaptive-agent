@@ -89,6 +89,50 @@ class TutoringCoordinator:
         return False
 
     @staticmethod
+    def _looks_like_realtime_query(question_text: str, question_images: list[str] | None) -> bool:
+        if question_images:
+            return False
+        text = (question_text or "").strip()
+        if not text:
+            return False
+        learning_context_tokens = (
+            "学习",
+            "复习",
+            "课程",
+            "章节",
+            "这章",
+            "本章",
+            "顺序",
+            "步骤",
+            "重点",
+            "怎么学",
+            "如何学",
+            "继续学",
+            "安排",
+        )
+        if any(token in text for token in learning_context_tokens):
+            return False
+        realtime_tokens = (
+            "天气",
+            "气温",
+            "温度",
+            "下雨",
+            "降雨",
+            "降水",
+            "空气质量",
+            "最新",
+            "实时",
+            "今天",
+            "今日",
+        )
+        if any(token in text for token in realtime_tokens):
+            return True
+        return bool(
+            re.search(r"(现在|此刻|当前).{0,8}(几点|几号|日期|星期|时间)", text)
+            or re.search(r"(几点|几号|日期|星期|时间).{0,8}(现在|此刻|当前)", text)
+        )
+
+    @staticmethod
     def _build_fast_light_analysis(question_text: str) -> dict[str, Any]:
         text = (question_text or "").strip()
         normalized = re.sub(r"\s+", "", text.lower())
@@ -187,6 +231,7 @@ class TutoringCoordinator:
             "persona": persona or "haibara",
         }
         preclassified_light = self._looks_like_light_conversation(question_text, question_images)
+        preclassified_realtime = self._looks_like_realtime_query(question_text, question_images)
 
         async with self._runtime_logger.track(
             agent_name="tutoring_coordinator",
@@ -199,7 +244,7 @@ class TutoringCoordinator:
             },
             error_message="tutoring_coordinator failed",
         ):
-            if preclassified_light:
+            if preclassified_light or preclassified_realtime:
                 analysis = self._build_fast_light_analysis(question_text)
             else:
                 await self._emit(
@@ -226,6 +271,7 @@ class TutoringCoordinator:
 
             should_short_circuit = (
                 preclassified_light
+                or preclassified_realtime
                 or self._should_short_circuit(analysis, question_images)
                 or self._looks_like_light_conversation(question_text, question_images)
             )
@@ -250,6 +296,7 @@ class TutoringCoordinator:
                     answer_result = await self._answer_gen.generate_answer(
                         question_text,
                         analysis,
+                        question_images=question_images,
                         user_profile=user_profile,
                         course_id=course_id,
                         persona=persona,
@@ -258,11 +305,27 @@ class TutoringCoordinator:
 
                 confidence = float(answer_result.get("confidence_score") or 0)
                 should_escalate = confidence < 60.0
+                videos: list[Any] = []
+                if AnswerGeneratorAgent._wants_video_recommendation(question_text):
+                    async with self._runtime_logger.track(
+                        agent_name="video_recommender_agent",
+                        start_message="video_recommender_agent started",
+                        success_message="video_recommender_agent completed",
+                        start_payload={**payload, "routing": "short_circuit"},
+                        error_message="video_recommender_agent failed",
+                    ):
+                        video_result = await self._video_rec.recommend_videos(
+                            question_text,
+                            analysis,
+                            user_profile=user_profile,
+                            course_id=course_id,
+                        )
+                        videos = (video_result.get("videos") or []) if video_result else []
                 merged: dict[str, Any] = {
                     "answer_text": answer_result.get("answer_text", ""),
                     "reference_sources": answer_result.get("reference_sources") or [],
                     "answer_diagrams": [],
-                    "answer_videos": [],
+                    "answer_videos": videos,
                     "confidence_score": confidence,
                     "question_analysis": analysis,
                     "should_escalate": should_escalate,
@@ -276,7 +339,7 @@ class TutoringCoordinator:
                         "content": {
                             "answer_text": merged["answer_text"],
                             "diagrams": [],
-                            "videos": [],
+                            "videos": videos,
                             "reference_sources": merged["reference_sources"],
                             "confidence_score": confidence,
                             "should_escalate": should_escalate,
@@ -311,6 +374,7 @@ class TutoringCoordinator:
                     return await self._answer_gen.generate_answer(
                         question_text,
                         analysis,
+                        question_images=question_images,
                         user_profile=user_profile,
                         course_id=course_id,
                         persona=persona,

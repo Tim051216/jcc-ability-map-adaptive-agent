@@ -1,59 +1,18 @@
 import { chromium, type Page } from "playwright";
 
-type VideoExpectation = {
-  fileId: string;
-  resourceId: string;
-  expectedSectionId: number;
-  expectedVideoPath: string;
-  expectedEpisodeTitle: string;
-};
-
-type VideoCheckResult = {
-  fileId: string;
-  resourceId: string;
-  expectedSectionId: number;
-  expectedVideoPath: string;
-  expectedEpisodeTitle: string;
-  resourceUrl?: string;
-  learnUrl?: string;
-  focusedCardExists?: number;
-  focusedFileExists?: number;
-  activeEpisodeTitle?: string | null;
-  videoState?: {
-    currentSrc: string;
-    currentTime: number;
-    paused: boolean;
-    muted: boolean;
-    readyState: number;
-  };
+type LearnFlowCheckResult = {
+  courseUrl: string;
+  entryNodeId?: string;
+  previewUrl?: string;
+  finalUrl?: string;
+  previewButtonCount?: number;
+  previewWorkspaceCount?: number;
+  passed?: boolean;
   error?: string;
 };
 
 const BASE_URL = "http://127.0.0.1:3002";
-
-const EXPECTATIONS: VideoExpectation[] = [
-  {
-    fileId: "902",
-    resourceId: "900002",
-    expectedSectionId: 0,
-    expectedVideoPath: "/videos/software-engineering-4th/visio-flow-demo.mp4",
-    expectedEpisodeTitle: "第一章：核心系统架构模式与状态边界",
-  },
-  {
-    fileId: "901",
-    resourceId: "900001",
-    expectedSectionId: 1,
-    expectedVideoPath: "/videos/software-engineering-4th/project-demo.mp4",
-    expectedEpisodeTitle: "第二章：Hooks组合设计与Context多维切片",
-  },
-  {
-    fileId: "903",
-    resourceId: "900003",
-    expectedSectionId: 2,
-    expectedVideoPath: "/videos/software-engineering-4th/cloud-app-demo.mp4",
-    expectedEpisodeTitle: "第三章：子组件级联渲染深度优化精讲",
-  },
-];
+const TARGET_URL = `${BASE_URL}/resources?courseId=series-2`;
 
 async function primeSession(page: Page) {
   await page.addInitScript(() => {
@@ -61,69 +20,26 @@ async function primeSession(page: Page) {
       "bililearn-user-session",
       JSON.stringify({
         id: "demo2024",
-        name: "联合研学契约 (灰原 & 乌萨奇)",
+        name: "联合研学图像已接入",
         avatar: "/src/assets/images/haibara_academic_1779716437995.png",
         loggedIn: true,
       }),
     );
-    sessionStorage.setItem("hasSeenWelcome", "1");
+    sessionStorage.setItem("hasSeenWelcome", "true");
   });
 }
 
-async function getActiveEpisodeTitle(page: Page) {
-  const buttons = page.locator("aside section").filter({ hasText: "本课题下辖章节目录" }).locator("button");
-  const count = await buttons.count();
-  for (let i = 0; i < count; i += 1) {
-    const button = buttons.nth(i);
-    const className = (await button.getAttribute("class")) || "";
-    if (className.includes("border-[#fb7299]/40")) {
-      const text = await button.innerText();
-      return text.split("\n")[0]?.trim() || null;
-    }
+async function login(page: Page) {
+  await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.waitForTimeout(500);
+  const idInput = page.locator("#login-id-input");
+  if (await idInput.count()) {
+    await idInput.fill("demo2024");
+    await page.locator("#login-password-input").fill("bililearn");
+    await page.locator("#login-submit-btn").click({ force: true });
+    await page.waitForURL("**/", { timeout: 20_000 });
+    await page.waitForTimeout(800);
   }
-  return null;
-}
-
-async function checkVideoFlow(page: Page, expectation: VideoExpectation): Promise<VideoCheckResult> {
-  const result: VideoCheckResult = {
-    ...expectation,
-  };
-
-  try {
-    const resourceUrl = `${BASE_URL}/resources?courseId=series-2&resourceId=${expectation.resourceId}`;
-    await page.goto(resourceUrl, { waitUntil: "networkidle", timeout: 60_000 });
-    await page.waitForTimeout(1_500);
-
-    result.resourceUrl = page.url();
-    result.focusedCardExists = await page.locator(`#resource-binder-grid-${expectation.resourceId}`).count();
-    result.focusedFileExists = await page.locator(`#file-node-${expectation.fileId}`).count();
-
-    await page.locator(`#file-node-${expectation.fileId}`).click({ timeout: 15_000 });
-    await page.waitForURL(/\/learn\?/, { timeout: 30_000 });
-    await page.waitForLoadState("networkidle", { timeout: 60_000 });
-    await page.waitForTimeout(2_500);
-
-    result.learnUrl = page.url();
-    result.activeEpisodeTitle = await getActiveEpisodeTitle(page);
-
-    const video = page.locator("#classroom-video-tag");
-    if (await video.count()) {
-      result.videoState = await video.evaluate((node) => {
-        const element = node as HTMLVideoElement;
-        return {
-          currentSrc: element.currentSrc,
-          currentTime: Number(element.currentTime.toFixed(2)),
-          paused: element.paused,
-          muted: element.muted,
-          readyState: element.readyState,
-        };
-      });
-    }
-  } catch (error) {
-    result.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-  }
-
-  return result;
 }
 
 async function main() {
@@ -131,16 +47,70 @@ async function main() {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 960 },
   });
+  const result: LearnFlowCheckResult = {
+    courseUrl: TARGET_URL,
+  };
 
-  await primeSession(page);
+  try {
+    await primeSession(page);
+    await login(page);
 
-  const results: VideoCheckResult[] = [];
-  for (const expectation of EXPECTATIONS) {
-    results.push(await checkVideoFlow(page, expectation));
+    await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+    await page.waitForSelector("[id^='file-node-']", { timeout: 20_000 });
+
+    const firstNode = page.locator("[id^='file-node-']").first();
+    const entryNodeId = await firstNode.getAttribute("id");
+    result.entryNodeId = entryNodeId || undefined;
+
+    await firstNode.click({ timeout: 20_000, force: true });
+    await page.waitForFunction(
+      () => window.location.pathname === "/learn" || window.location.pathname === "/resources/preview",
+      undefined,
+      { timeout: 30_000 },
+    );
+    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+    await page.waitForTimeout(1800);
+
+    result.previewUrl = page.url();
+
+    if (page.url().includes("/resources/preview")) {
+      await page.waitForSelector("#resource-source-preview-workspace", { timeout: 20_000 });
+      result.previewButtonCount = await page.locator("#preview-enter-classroom-btn, #current-file-enter-classroom-btn").count();
+      result.previewWorkspaceCount = await page.locator("#resource-source-preview-workspace").count();
+    }
+
+    result.finalUrl = page.url();
+    result.passed =
+      Boolean(result.entryNodeId) &&
+      result.previewUrl?.includes("/resources/preview?courseId=series-2") === true &&
+      result.finalUrl.includes("/resources/preview?courseId=series-2") &&
+      result.previewWorkspaceCount === 1;
+  } catch (error) {
+    result.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    result.passed = false;
   }
 
   await browser.close();
-  console.log(JSON.stringify({ checks: results }, null, 2));
+
+  console.log(
+    JSON.stringify(
+      {
+        summary: {
+          total: 1,
+          passed: result.passed ? 1 : 0,
+          failed: result.passed ? 0 : 1,
+        },
+        checks: [result],
+      },
+      null,
+      2,
+    ),
+  );
+
+  if (!result.passed) {
+    process.exitCode = 1;
+  }
 }
 
 void main();

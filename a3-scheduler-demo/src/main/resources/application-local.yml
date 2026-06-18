@@ -1,0 +1,7 @@
+a3:
+  review-reminder:
+    scheduler:
+      enabled: false
+      fixed-delay-ms: 60000
+    learning-base-url: http://127.0.0.1:8086
+    message-base-url: http://127.0.0.1:8089
