@@ -113,8 +113,10 @@ if (-not $SkipServiceRestart) {
     $processes = Get-CimInstance Win32_Process |
         Where-Object {
             $_.Name -eq "java.exe" -and (
-                $_.CommandLine -like "*a3-learning*spring-boot:run*" -or
-                $_.CommandLine -like "*$repoRoot\\a3-learning*"
+                $_.CommandLine -like "*a3-learning\pom.xml*" -or
+                $_.CommandLine -like "*a3-learning/pom.xml*" -or
+                $_.CommandLine -like "*\a3-learning\target\classes*" -or
+                $_.CommandLine -like "*/a3-learning/target/classes*"
             )
         }
 
@@ -124,15 +126,12 @@ if (-not $SkipServiceRestart) {
 
     Start-Sleep -Seconds 2
 
-    $arguments = @(
-        "-f", ".\a3-learning\pom.xml",
-        "spring-boot:run",
-        "-DskipTests",
-        "-Dspring-boot.run.profiles=local"
-    )
+    $env:JAVA_TOOL_OPTIONS = "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
 
-    Start-Process -FilePath $mvnw `
-        -ArgumentList $arguments `
+    $commandLine = "`"$mvnw`" -f `"$learningPom`" spring-boot:run -DskipTests -Dspring-boot.run.profiles=local"
+
+    Start-Process -FilePath "cmd.exe" `
+        -ArgumentList @("/c", $commandLine) `
         -WorkingDirectory $repoRoot `
         -RedirectStandardOutput $serviceLog `
         -RedirectStandardError $serviceErrLog `

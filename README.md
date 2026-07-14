@@ -89,6 +89,14 @@ a3-learning-agent-system/
 
 ## Quick Start
 
+Windows 本地完整启动推荐直接使用一键脚本：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-full-local.ps1 -NoOpenPages
+```
+
+脚本会启动依赖容器、初始化 MySQL、启动 `a3-learning`、`a3-ai-python`、`a3-gateway`、学生端和管理端，并在必需健康检查通过后返回 `0`。
+
 建议按下面顺序启动本地环境：
 
 1. 启动依赖容器

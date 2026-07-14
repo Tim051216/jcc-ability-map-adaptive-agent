@@ -1,5 +1,15 @@
 # 本地启动说明
 
+## 一键完整启动
+
+在 Windows PowerShell 中进入仓库根目录后运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-full-local.ps1 -NoOpenPages
+```
+
+脚本会启动 Docker 依赖、初始化 MySQL、启动学习服务、AI 服务、网关、学生端和管理端，并执行健康检查。只有必需服务全部就绪时才会返回退出码 `0`。
+
 ## 1. 启动顺序
 
 建议按下面顺序启动：
