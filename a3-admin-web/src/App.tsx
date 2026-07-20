@@ -1,23 +1,100 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { AdminPanelDrawer, PanelType } from './components/panels/AdminPanels';
 import { ViewType } from './types';
-import { describeError, getAdminSessionState, getAgentRuntimeSummary, getAuditLogSummary, getDashboardSummary, getNotifications, getReviewSummary, setAdminActor } from './lib/adminApi';
+import {
+  describeError,
+  getAIOpsOverview,
+  getAdminPing,
+  getAdminSessionState,
+  getAgentLogs,
+  getAgentRuntimeSummary,
+  getAgentStatus,
+  getAuditLogSummary,
+  getConfigHistorySummary,
+  getConfigSummary,
+  getDashboardSummary,
+  getDeployments,
+  getEmbeddingPing,
+  getHealth,
+  getLlmPing,
+  getMCPOverview,
+  getNotifications,
+  getReviewSummary,
+  getReviews,
+  getSystemConfigHistory,
+  getSystemConfigs,
+  getUserStatusHistory,
+  getUsers,
+  setAdminActor,
+} from './lib/adminApi';
 
-const Overview = lazy(() => import('./components/dashboard/Overview').then((module) => ({ default: module.Overview })));
-const UserGovernance = lazy(() => import('./components/dashboard/UserGovernance').then((module) => ({ default: module.UserGovernance })));
-const ServiceOperations = lazy(() => import('./components/dashboard/ServiceOperations').then((module) => ({ default: module.ServiceOperations })));
-const ContentCompliance = lazy(() => import('./components/dashboard/ContentCompliance').then((module) => ({ default: module.ContentCompliance })));
-const AIMonitoring = lazy(() => import('./components/dashboard/AIMonitoring').then((module) => ({ default: module.AIMonitoring })));
-const SystemManagement = lazy(() => import('./components/dashboard/SystemManagement').then((module) => ({ default: module.SystemManagement })));
+const viewImporters = {
+  overview: () => import('./components/dashboard/Overview').then((module) => ({ default: module.Overview })),
+  governance: () => import('./components/dashboard/UserGovernance').then((module) => ({ default: module.UserGovernance })),
+  operations: () => import('./components/dashboard/ServiceOperations').then((module) => ({ default: module.ServiceOperations })),
+  compliance: () => import('./components/dashboard/ContentCompliance').then((module) => ({ default: module.ContentCompliance })),
+  monitoring: () => import('./components/dashboard/AIMonitoring').then((module) => ({ default: module.AIMonitoring })),
+  management: () => import('./components/dashboard/SystemManagement').then((module) => ({ default: module.SystemManagement })),
+} satisfies Record<ViewType, () => Promise<{ default: ComponentType<{ onNavigate: (view: ViewType) => void }> }>>;
+
+const Overview = lazy(viewImporters.overview);
+const UserGovernance = lazy(viewImporters.governance);
+const ServiceOperations = lazy(viewImporters.operations);
+const ContentCompliance = lazy(viewImporters.compliance);
+const AIMonitoring = lazy(viewImporters.monitoring);
+const SystemManagement = lazy(viewImporters.management);
+
+function preloadView(view: ViewType) {
+  void viewImporters[view]?.();
+}
+
+function scheduleViewWarmup() {
+  const views: ViewType[] = ['overview', 'governance', 'operations', 'compliance', 'monitoring', 'management'];
+  const warm = () => {
+    views.forEach((view, index) => {
+      window.setTimeout(() => preloadView(view), index * 120);
+    });
+  };
+
+  if ('requestIdleCallback' in window) {
+    const idleId = (window as Window & {
+      requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback: (id: number) => void;
+    }).requestIdleCallback(warm, { timeout: 1200 });
+    return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+  }
+
+  const timer = window.setTimeout(warm, 600);
+  return () => window.clearTimeout(timer);
+}
+
+function scheduleDataWarmup() {
+  const batches: Array<Array<() => Promise<unknown>>> = [
+    [getDashboardSummary, getNotifications, getAdminSessionState],
+    [getUsers, getUserStatusHistory],
+    [getHealth, getAdminPing, getLlmPing, getEmbeddingPing],
+    [getReviewSummary, () => getReviews()],
+    [getAgentStatus, () => getAgentLogs(), () => getAgentRuntimeSummary(), getMCPOverview],
+    [getConfigSummary, getConfigHistorySummary, () => getSystemConfigs(false), getSystemConfigHistory, getAIOpsOverview, getDeployments],
+  ];
+
+  batches.forEach((batch, batchIndex) => {
+    window.setTimeout(() => {
+      batch.forEach((task, taskIndex) => {
+        window.setTimeout(() => {
+          void task().catch(() => undefined);
+        }, taskIndex * 140);
+      });
+    }, 500 + batchIndex * 420);
+  });
+}
 
 function ViewFallback() {
   return (
-    <div className="flex min-h-[280px] items-center justify-center rounded-3xl border border-slate-200 bg-white text-sm font-semibold text-slate-500">
-      正在加载管理视图...
-    </div>
+    <div className="min-h-[120px] rounded-3xl border border-slate-200 bg-white/60" aria-hidden="true" />
   );
 }
 
@@ -84,6 +161,13 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => scheduleViewWarmup(), []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(scheduleDataWarmup, 900);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     if (!activePanel) {
       return;
@@ -137,6 +221,7 @@ export default function App() {
         navBadges={navBadges}
         notificationCount={notificationCount}
         historyCount={historyCount}
+        onPreloadView={preloadView}
       />
       <div className="ml-[88px] flex min-h-screen flex-col md:ml-[220px] lg:ml-[248px] xl:ml-[280px]">
         <Header

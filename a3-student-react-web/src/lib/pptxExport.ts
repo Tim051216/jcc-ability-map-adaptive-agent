@@ -4,6 +4,13 @@ export type DeckSlide = {
   subtitle?: string;
   bullets: string[];
   accent?: string;
+  background?: string;
+  speakerNote?: string;
+  illustration?: {
+    title: string;
+    caption: string;
+    type?: "concept" | "flow" | "scenario" | "summary";
+  };
 };
 
 type ZipEntry = {
@@ -14,6 +21,7 @@ type ZipEntry = {
 const textEncoder = new TextEncoder();
 const SLIDE_WIDTH = 12192000;
 const SLIDE_HEIGHT = 6858000;
+const PPT_ILLUSTRATION_ASSET_PATH = "/generated-resource-illustrations/ppt/software-engineering-classroom.svg";
 
 function xmlEscape(value: string) {
   return value
@@ -231,9 +239,123 @@ function buildTextBoxXml(
       </p:txBody>
     </p:sp>`;
 }
+function buildPictureXml(id: number, name: string, x: number, y: number, cx: number, cy: number) {
+  return `
+    <p:pic>
+      <p:nvPicPr>
+        <p:cNvPr id="${id}" name="${xmlEscape(name)}" descr="${xmlEscape(name)}"/>
+        <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
+        <p:nvPr/>
+      </p:nvPicPr>
+      <p:blipFill>
+        <a:blip r:embed="rId2"/>
+        <a:stretch><a:fillRect/></a:stretch>
+      </p:blipFill>
+      <p:spPr>
+        <a:xfrm>
+          <a:off x="${x}" y="${y}"/>
+          <a:ext cx="${cx}" cy="${cy}"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      </p:spPr>
+    </p:pic>`;
+}
+
+function buildEllipseXml(id: number, name: string, x: number, y: number, cx: number, cy: number, fill: string) {
+  return `
+    <p:sp>
+      <p:nvSpPr>
+        <p:cNvPr id="${id}" name="${xmlEscape(name)}"/>
+        <p:cNvSpPr/>
+        <p:nvPr/>
+      </p:nvSpPr>
+      <p:spPr>
+        <a:xfrm>
+          <a:off x="${x}" y="${y}"/>
+          <a:ext cx="${cx}" cy="${cy}"/>
+        </a:xfrm>
+        <a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>
+        <a:solidFill><a:srgbClr val="${fill}"/></a:solidFill>
+        <a:ln><a:noFill/></a:ln>
+      </p:spPr>
+      <p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>
+    </p:sp>`;
+}
+
+function getSlideIllustration(slide: DeckSlide) {
+  return (
+    slide.illustration || {
+      title: slide.kind === "ending" ? "学习闭环图" : slide.kind === "agenda" ? "章节路线图" : "概念结构图",
+      caption: slide.subtitle || slide.bullets[0] || "用插画把本页内容转成更容易讲解的视觉线索。",
+      type: slide.kind === "ending" ? "summary" : slide.kind === "agenda" ? "flow" : "concept",
+    }
+  );
+}
+
+function getPptTemplateKey(slide: DeckSlide) {
+  const value = String(slide.accent || "").toLowerCase();
+  if (value === "defense" || value === "warm" || value === "chalkboard" || value === "techgrid" || value === "minimalreport") {
+    return value;
+  }
+  return "academic";
+}
+
+function resolvePptAccentColor(slide: DeckSlide, fallback = "FB7299") {
+  const value = String(slide.accent || "").trim();
+  if (/^[0-9a-f]{6}$/i.test(value)) return value.toUpperCase();
+  const templateKey = getPptTemplateKey(slide);
+  if (templateKey === "defense") return "2F6BFF";
+  if (templateKey === "warm") return "F97316";
+  if (templateKey === "chalkboard") return "DFF7EF";
+  if (templateKey === "techgrid") return "20D3EE";
+  if (templateKey === "minimalreport") return "111827";
+  return fallback;
+}
+
+function buildIllustrationXml(idStart: number, x: number, y: number, cx: number, cy: number, accent: string, slide: DeckSlide) {
+  const illustration = getSlideIllustration(slide);
+  const templateKey = getPptTemplateKey(slide);
+  const secondary =
+    templateKey === "defense"
+      ? "D9E6FF"
+      : templateKey === "warm"
+        ? "FED7AA"
+        : templateKey === "chalkboard"
+          ? "102A2A"
+          : templateKey === "techgrid"
+            ? "1E1B4B"
+            : templateKey === "minimalreport"
+              ? "E2E8F0"
+              : "F3E3D8";
+  const tertiary =
+    templateKey === "defense"
+      ? "EAF1FF"
+      : templateKey === "warm"
+        ? "FFF7ED"
+        : templateKey === "chalkboard"
+          ? "F8D47A"
+          : templateKey === "techgrid"
+            ? "7C3AED"
+            : templateKey === "minimalreport"
+              ? "F8FAFC"
+              : "EEF3D8";
+  const imageX = x + Math.round(cx * 0.07);
+  const imageY = y + Math.round(cy * 0.08);
+  const imageCx = Math.round(cx * 0.86);
+  const imageCy = Math.round(cy * 0.66);
+
+  return `
+      ${buildShapeXml(idStart, "Illustration Card", x, y, cx, cy, "FFFFFF", 18000)}
+      ${buildShapeXml(idStart + 1, "Illustration Wash", x + 120000, y + 120000, cx - 240000, cy - 240000, tertiary, 18000)}
+      ${buildShapeXml(idStart + 2, "Illustration Back Plate", imageX - 50000, imageY - 50000, imageCx + 100000, imageCy + 100000, secondary, 14000)}
+      ${buildPictureXml(idStart + 3, "Software Engineering Classroom Illustration", imageX, imageY, imageCx, imageCy)}
+      ${buildTextBoxXml(idStart + 17, "Illustration Title", x + Math.round(cx * 0.09), y + Math.round(cy * 0.81), Math.round(cx * 0.78), Math.round(cy * 0.08), buildTextParagraphs([illustration.title], 1150, "111827"))}
+      ${buildTextBoxXml(idStart + 18, "Illustration Caption", x + Math.round(cx * 0.09), y + Math.round(cy * 0.89), Math.round(cx * 0.78), Math.round(cy * 0.09), buildTextParagraphs([illustration.caption], 900, "667085"))}
+  `;
+}
 
 function buildCoverSlideXml(slide: DeckSlide) {
-  const accent = slide.accent || "FB7299";
+  const accent = resolvePptAccentColor(slide, "FB7299");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld>
@@ -267,6 +389,7 @@ function buildCoverSlideXml(slide: DeckSlide) {
         buildTextParagraphs([slide.subtitle || slide.bullets[0] || "围绕当前课程自动整理的学习课件草案"], 1800, "667085"),
       )}
       ${buildTextBoxXml(9, "Cover Footer", 1780000, 5050000, 5200000, 420000, buildTextParagraphs(["生成方式：多智能体协同整理 · 可继续扩展为讲义、导图、练习"], 1200, accent))}
+      ${buildIllustrationXml(20, 8200000, 1240000, 2600000, 4200000, accent, slide)}
     </p:spTree>
   </p:cSld>
   <p:clrMapOvr>
@@ -276,7 +399,7 @@ function buildCoverSlideXml(slide: DeckSlide) {
 }
 
 function buildAgendaSlideXml(slide: DeckSlide) {
-  const accent = slide.accent || "5B8FF9";
+  const accent = resolvePptAccentColor(slide, "5B8FF9");
   const agenda = slide.bullets.slice(0, 6).map((item, index) => `${String(index + 1).padStart(2, "0")}  ${item}`);
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
@@ -311,6 +434,7 @@ function buildAgendaSlideXml(slide: DeckSlide) {
       ${buildTextBoxXml(7, "Agenda Items", 1240000, 2480000, 6000000, 2700000, buildTextParagraphs(agenda, 1800, "243042"))}
       ${buildShapeXml(8, "Accent Dot", 8700000, 1120000, 1800000, 1800000, "FFE4ED")}
       ${buildShapeXml(9, "Accent Dot 2", 9150000, 1550000, 900000, 900000, accent)}
+      ${buildIllustrationXml(20, 7900000, 3180000, 3100000, 2100000, accent, slide)}
     </p:spTree>
   </p:cSld>
   <p:clrMapOvr>
@@ -320,7 +444,7 @@ function buildAgendaSlideXml(slide: DeckSlide) {
 }
 
 function buildContentSlideXml(slide: DeckSlide) {
-  const accent = slide.accent || "FB7299";
+  const accent = resolvePptAccentColor(slide, "FB7299");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld>
@@ -352,17 +476,7 @@ function buildContentSlideXml(slide: DeckSlide) {
       )}
       ${buildShapeXml(6, "Content Panel", 780000, 2060000, 7200000, 3700000, "FFF8FB", 16000)}
       ${buildTextBoxXml(7, "Content Bullets", 1120000, 2380000, 6500000, 3000000, buildTextParagraphs(slide.bullets, 1800, "243042", 0, true))}
-      ${buildShapeXml(8, "Right Accent Panel", 9060000, 1320000, 1950000, 4100000, "F8FAFC", 16000)}
-      ${buildTextBoxXml(9, "Right Accent Label", 9400000, 1800000, 1300000, 1200000, buildTextParagraphs(["KEY", "POINTS"], 1800, accent))}
-      ${buildTextBoxXml(
-        10,
-        "Right Accent Hint",
-        9340000,
-        3320000,
-        1400000,
-        1200000,
-        buildTextParagraphs(["建议边看边对照课程内容继续补充案例和练习。"], 1100, "667085"),
-      )}
+      ${buildIllustrationXml(20, 8640000, 1320000, 2600000, 4100000, accent, slide)}
     </p:spTree>
   </p:cSld>
   <p:clrMapOvr>
@@ -372,7 +486,7 @@ function buildContentSlideXml(slide: DeckSlide) {
 }
 
 function buildEndingSlideXml(slide: DeckSlide) {
-  const accent = slide.accent || "FB7299";
+  const accent = resolvePptAccentColor(slide, "FB7299");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld>
@@ -403,6 +517,7 @@ function buildEndingSlideXml(slide: DeckSlide) {
         buildTextParagraphs([slide.subtitle || "可以继续让 AI 导师扩展为讲义、导图、练习或资料包"], 1600, "667085"),
       )}
       ${buildTextBoxXml(6, "Ending Bullets", 2560000, 3840000, 6200000, 900000, buildTextParagraphs(slide.bullets, 1300, accent))}
+      ${buildIllustrationXml(20, 8120000, 1780000, 2100000, 2800000, accent, slide)}
     </p:spTree>
   </p:cSld>
   <p:clrMapOvr>
@@ -481,6 +596,7 @@ const staticPptxParts = {
   slideRels: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/software-engineering-classroom.svg"/>
 </Relationships>`,
   slideLayout: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="titleAndObj" preserve="1">
@@ -558,6 +674,7 @@ function buildContentTypesXml(slideCount: number) {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="svg" ContentType="image/svg+xml"/>
   <Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.presentationml.printerSettings"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
   <Override PartName="/ppt/presProps.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presProps+xml"/>
@@ -572,10 +689,19 @@ function buildContentTypesXml(slideCount: number) {
 </Types>`;
 }
 
-export function exportDeckAsPptx(fileName: string, slides: DeckSlide[]) {
+async function loadPptIllustrationAsset() {
+  const response = await fetch(PPT_ILLUSTRATION_ASSET_PATH);
+  if (!response.ok) {
+    throw new Error(`Failed to load PPT illustration asset: ${PPT_ILLUSTRATION_ASSET_PATH}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+export async function exportDeckAsPptx(fileName: string, slides: DeckSlide[]) {
   const safeSlides = slides.length
     ? slides
     : [{ kind: "content" as const, title: "课件提纲", subtitle: "暂无生成内容", bullets: ["当前没有可导出的内容。"] }];
+  const illustrationAsset = await loadPptIllustrationAsset();
 
   const entries: ZipEntry[] = [
     { name: "[Content_Types].xml", data: encodeText(buildContentTypesXml(safeSlides.length)) },
@@ -593,6 +719,7 @@ export function exportDeckAsPptx(fileName: string, slides: DeckSlide[]) {
     { name: "ppt/viewProps.xml", data: encodeText(staticPptxParts.viewProps) },
     { name: "ppt/tableStyles.xml", data: encodeText(staticPptxParts.tableStyles) },
     { name: "ppt/printerSettings/printerSettings1.bin", data: staticPptxParts.printerSettings },
+    { name: "ppt/media/software-engineering-classroom.svg", data: illustrationAsset },
   ];
 
   safeSlides.forEach((slide, index) => {
@@ -616,3 +743,4 @@ export function exportDeckAsPptx(fileName: string, slides: DeckSlide[]) {
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
 }
+

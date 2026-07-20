@@ -61,7 +61,7 @@ const GENERATED_RESOURCE_META: Record<GeneratedResourceUiKind, GeneratedResource
     label: "PPT 课件",
     actionLabel: "导出 PPT",
     resultLabel: "PPT 结果",
-    description: "课件草案 / 分页汇报",
+    description: "课件草稿 / 分页汇报",
     pillClass: "bg-[#eef4ff] text-[#2563eb]",
     cardClass: "border-[#d9e5ff] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]",
     borderClass: "border-[#BED5F7]",

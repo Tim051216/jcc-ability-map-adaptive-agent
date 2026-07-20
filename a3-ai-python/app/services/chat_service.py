@@ -198,6 +198,7 @@ class ChatService:
                     return normalized[:220]
 
                 summary_lines = [
+                    "基于本地知识库的回答：",
                     "我先根据项目知识库直接给你结论：",
                     *[
                         f"{index + 1}. {hit.get('title')}: {compact_summary(str(hit.get('content') or ''))}"

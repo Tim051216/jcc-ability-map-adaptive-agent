@@ -245,7 +245,7 @@ class ResourceService:
             content = self._build_handout(course_code, title_focus, source_titles)
             return ResourceCard(
                 resource_type="lecture_note",
-                title=f"{course_label} · {title_focus} 课堂讲义",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="围绕当前章节整理出的完整讲义，可直接用于预习、复习和答辩表达。",
                 content_markdown=content,
                 source_titles=source_titles,
@@ -255,7 +255,7 @@ class ResourceService:
             content = self._build_mindmap(title_focus, source_titles)
             return ResourceCard(
                 resource_type="mind_map",
-                title=f"{course_label} · {title_focus} 知识导图",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="按章节主线整理出的导图，适合快速建立结构感。",
                 content_markdown=content,
                 source_titles=source_titles,
@@ -265,7 +265,7 @@ class ResourceService:
             content = self._build_teaching_plan(course_code, title_focus, source_titles)
             return ResourceCard(
                 resource_type="teaching_plan",
-                title=f"{course_label} · {title_focus} PPT 草案",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="按课堂讲解顺序组织的课件草案，适合导出演示稿。",
                 content_markdown=content,
                 source_titles=source_titles,
@@ -275,7 +275,7 @@ class ResourceService:
             content = self._build_quiz_json(title_focus, source_titles)
             return ResourceCard(
                 resource_type="quiz_set",
-                title=f"{course_label} · {title_focus} 随堂练习",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="覆盖概念理解、结构辨析和场景迁移的练习题。",
                 content_markdown=content,
                 source_titles=source_titles,
@@ -284,7 +284,7 @@ class ResourceService:
         if resource_type == "extended_reading":
             return ResourceCard(
                 resource_type="extended_reading",
-                title=f"{course_label} · {title_focus} 拓展阅读",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="补充概念背景、工程案例和延伸材料，适合继续加深理解。",
                 content_markdown=self._build_extended_reading(course_label, title_focus, source_titles),
                 source_titles=source_titles,
@@ -293,7 +293,7 @@ class ResourceService:
         if resource_type in {"coding_lab", "case_study"}:
             return ResourceCard(
                 resource_type="coding_lab",
-                title=f"{course_label} · {title_focus} 实操任务",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="围绕当前知识点拆成可直接动手的练习步骤，适合边做边学。",
                 content_markdown=self._build_coding_lab(course_label, title_focus, source_titles),
                 source_titles=source_titles,
@@ -302,7 +302,7 @@ class ResourceService:
         if resource_type == "visual_illustration":
             return ResourceCard(
                 resource_type="visual_illustration",
-                title=f"{course_label} · {title_focus} 教学插图说明",
+                title=self._resource_title(course_code, resource_type, title_focus, source_titles),
                 summary="为讲义、课件和答疑准备的图示说明，可辅助解释结构和流程。",
                 content_markdown=self._build_visual_illustration(title_focus, source_titles),
                 source_titles=source_titles,
@@ -451,6 +451,23 @@ class ResourceService:
         )
 
     def _build_quiz_json(self, title_focus: str, source_titles: list[str]) -> str:
+        import json
+
+        questions = {
+            "questions": [
+                {"id": "q1", "question": "使用数组实现栈时，`top` 表示栈顶元素下标。执行 `push(x)` 前应优先判断哪一项？", "options": ["`top == capacity - 1`", "`top == -1`", "`x == 0`", "数组是否已经升序"], "answer": ["A"], "explanation": "数组栈容量固定，入栈前必须判断栈满，否则写入会越界。", "question_type": "single", "knowledge_tag": "数据结构：栈"},
+                {"id": "q2", "question": "括号匹配、浏览器后退、函数调用栈这些场景共同依赖哪种访问规则？", "options": ["FIFO", "LIFO", "随机访问", "按 key 哈希访问"], "answer": ["B"], "explanation": "这些场景都要求后进入的数据先处理，符合栈的 LIFO 规则。", "question_type": "single", "knowledge_tag": "数据结构：栈"},
+                {"id": "q3", "question": "下面哪些结构或场景符合队列的 FIFO 特性？", "options": ["打印任务排队", "消息队列消费", "广度优先搜索 BFS", "递归函数调用返回"], "answer": ["A", "B", "C"], "explanation": "打印任务、消息消费和 BFS 都典型使用队列；递归返回更接近栈。", "question_type": "multiple", "knowledge_tag": "数据结构：队列"},
+                {"id": "q4", "question": "对长度为 n 的无序数组进行线性查找，最坏情况下时间复杂度是多少？", "options": ["O(1)", "O(log n)", "O(n)", "O(n log n)"], "answer": ["C"], "explanation": "最坏情况下目标元素不存在或位于最后，需要检查 n 个元素。", "question_type": "single", "knowledge_tag": "算法复杂度"},
+                {"id": "q5", "question": "判断题：二分查找可以直接用于任意无序数组。", "options": ["正确", "错误"], "answer": ["B"], "explanation": "二分查找依赖有序性，不能直接用于无序数组。", "question_type": "single", "knowledge_tag": "二分查找"},
+                {"id": "q6", "question": "阅读 Java 代码：`int[] a = {2, 4, 6}; System.out.println(a[2]);` 输出结果是什么？", "options": ["2", "4", "6", "数组越界"], "answer": ["C"], "explanation": "Java 数组下标从 0 开始，`a[2]` 是第三个元素 6。", "question_type": "single", "knowledge_tag": "Java 数组"},
+                {"id": "q7", "question": "在 Java 中使用 `HashMap<String, Integer>` 统计单词出现次数时，核心操作有哪些？", "options": ["按 key 查询旧次数", "将新次数写回 key", "每次都排序整个数组", "用下标直接访问字符串地址"], "answer": ["A", "B"], "explanation": "词频统计的关键是根据 key 读取旧值，再把新值写回。", "question_type": "multiple", "knowledge_tag": "Java 集合"},
+                {"id": "q8", "question": "数据库用户表中 `email` 字段要求不能重复，并且经常按邮箱登录查询，应该优先考虑什么设计？", "options": ["给 `email` 建唯一索引", "把邮箱字段改成更长的名字", "每次登录全表扫描", "删除主键"], "answer": ["A"], "explanation": "唯一索引既能约束邮箱不重复，也能提升按邮箱查询的效率。", "question_type": "single", "knowledge_tag": "数据库索引"},
+                {"id": "q9", "question": "多个线程同时修改共享计数器，如果没有锁或原子操作，最可能出现什么问题？", "options": ["竞态条件", "DNS 解析失败", "SQL 语法错误", "数组自动扩容"], "answer": ["A"], "explanation": "共享变量并发读写缺少同步时，执行顺序不确定，可能导致结果丢失或不一致。", "question_type": "single", "knowledge_tag": "操作系统：线程同步"},
+                {"id": "q10", "question": f"结合《{title_focus}》，请设计一个“小型在线题库”的核心数据结构或表结构，并说明至少 2 个关键字段为什么这样设计。", "options": [], "answer": [], "explanation": "可从题目表、选项表、提交记录表展开，说明题目 id、知识点、题型、正确答案、用户答案、提交时间等字段的作用。", "question_type": "short", "knowledge_tag": "综合应用"},
+            ]
+        }
+        return json.dumps(questions, ensure_ascii=False, indent=2)
         if source_titles and self._course_label("software_engineering_4th") in source_titles[0]:
             profile = self._software_engineering_profile(source_titles)
             questions = {"questions": profile["questions"]}
@@ -771,6 +788,74 @@ class ResourceService:
             if normalized and normalized != course_label and not self._is_placeholder_text(normalized):
                 return normalized
         return course_label
+
+    def _resource_title(self, course_code: str, resource_type: str, title_focus: str, source_titles: list[str]) -> str:
+        normalized_type = {
+            "lecture_notes": "lecture_note",
+            "mindmap": "mind_map",
+            "slides": "teaching_plan",
+            "practice_set": "quiz_set",
+            "case_study": "coding_lab",
+        }.get(resource_type, resource_type)
+
+        if course_code == "software_engineering_4th":
+            profile = self._software_engineering_profile(source_titles)
+            theme = str(profile.get("theme") or title_focus)
+            chapter = str(profile.get("chapter") or "")
+
+            if "需求" in theme or "第三章" in chapter:
+                titles = {
+                    "lecture_note": "从访谈到规格说明：需求分析课堂手册",
+                    "mind_map": "需求边界、用例与数据流图速查图",
+                    "teaching_plan": "需求评审课件草案：场景、模型与验收标准",
+                    "quiz_set": "需求描述纠错与建模自测题单",
+                    "extended_reading": "真实项目需求变更案例阅读",
+                    "coding_lab": "需求条目验收标准拆解任务",
+                    "visual_illustration": "用户诉求到系统需求转化示意图",
+                }
+            elif "可行性" in theme or "第二章" in chapter:
+                titles = {
+                    "lecture_note": "立项之前先问什么：可行性分析讲义",
+                    "mind_map": "技术、经济、运行、法律四维判断图",
+                    "teaching_plan": "研发策划汇报稿：范围、里程碑与风险",
+                    "quiz_set": "项目立项判断随堂题",
+                    "extended_reading": "失败立项案例与风险预案阅读",
+                    "coding_lab": "项目风险清单与优先级排序任务",
+                    "visual_illustration": "从项目想法到研发计划流程图",
+                }
+            elif "设计" in theme or "测试" in theme or "管理" in theme or "第四章" in chapter:
+                titles = {
+                    "lecture_note": "从需求到交付：设计、测试与管理讲义",
+                    "mind_map": "模块设计、测试层次与风险控制总览",
+                    "teaching_plan": "工程交付闭环课件草案",
+                    "quiz_set": "设计评审与测试策略练习题",
+                    "extended_reading": "缺陷复盘与质量保证案例阅读",
+                    "coding_lab": "接口清单与测试用例补全任务",
+                    "visual_illustration": "需求、设计、测试追踪关系图",
+                }
+            else:
+                titles = {
+                    "lecture_note": "软件危机为什么会发生：第一章导学讲义",
+                    "mind_map": "生命周期与过程模型一页图",
+                    "teaching_plan": "软件工程导论课件草案",
+                    "quiz_set": "软件危机与过程模型课堂小测",
+                    "extended_reading": "从延期返工看软件工程方法阅读",
+                    "coding_lab": "过程模型场景匹配练习任务",
+                    "visual_illustration": "软件项目从想法到维护阶段图",
+                }
+            return titles.get(normalized_type, f"{theme}学习资料")
+
+        clean_focus = str(title_focus or "").strip() or self._course_label(course_code)
+        generic_titles = {
+            "lecture_note": f"{clean_focus}课堂手册",
+            "mind_map": f"{clean_focus}结构速查图",
+            "teaching_plan": f"{clean_focus}汇报课件草案",
+            "quiz_set": f"{clean_focus}自测题单",
+            "extended_reading": f"{clean_focus}案例延伸阅读",
+            "coding_lab": f"{clean_focus}动手练习任务",
+            "visual_illustration": f"{clean_focus}流程示意图",
+        }
+        return generic_titles.get(normalized_type, f"{clean_focus}学习资料")
 
     def _software_engineering_profile(self, source_titles: list[str]) -> dict:
         focus_title = self._primary_focus_title(source_titles, "software_engineering_4th")

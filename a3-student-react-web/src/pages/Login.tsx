@@ -1,14 +1,15 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   Lock,
   Mail,
+  MessageCircleMore,
   Sparkles,
 } from "lucide-react";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../App";
 import assetHaibaraAcademic from "../assets/images/haibara_academic_1779716437995.webp";
 import assetUsagiStudy from "../assets/images/usagi_perfect_1779717893221.webp";
+import StudyAssistant3D from "../components/StudyAssistant3D";
 
 import { DEMO_USER_PROFILES, getDemoUserProfile } from "../lib/userProfiles";
 
@@ -28,6 +30,10 @@ interface LoginProps {
 }
 
 type PresetState = "default" | "idFocus" | "pwdFocus" | "typing" | "error" | "success";
+type LoginTutorMessage = {
+  role: "assistant" | "user";
+  content: string;
+};
 
 const DEMO_ACCOUNTS = DEMO_USER_PROFILES;
 const LOGIN_HIGHLIGHTS = [
@@ -49,6 +55,76 @@ const LOGIN_POSTER_METRICS = [
 ];
 const BRAND_NAME = "BiliLearn";
 
+class LoginModelBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Login 3D model failed:", error);
+  }
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
+function LoginModelFallback({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={`flex h-full w-full items-center justify-center rounded-[32px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(255,248,251,0.92))] text-center shadow-[0_24px_52px_rgba(15,23,42,0.08)] ${compact ? "min-h-[190px]" : "min-h-[300px]"}`}
+    >
+      <div className="max-w-[240px] px-4 py-5">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[#F6B6CA] bg-white text-[#fb7299] shadow-[0_14px_30px_rgba(251,114,153,0.16)]">
+          <MessageCircleMore className="h-7 w-7" />
+        </div>
+        <div className="mt-3 text-sm font-black text-[#111827]">AI 导师入口</div>
+        <div className="mt-1 text-[12px] leading-5 text-[#667085]">3D 模型暂未加载成功，入口页仍可正常使用。</div>
+      </div>
+    </div>
+  );
+}
+
+function useTypewriterText(text: string, enabled: boolean, speed = 28, delay = 0) {
+  const [value, setValue] = useState("");
+
+  useEffect(() => {
+    if (!enabled) {
+      setValue("");
+      return;
+    }
+
+    const chars = Array.from(text);
+    let startTimer = 0;
+    let intervalTimer = 0;
+
+    setValue("");
+    startTimer = window.setTimeout(() => {
+      let index = 0;
+      intervalTimer = window.setInterval(() => {
+        index += 1;
+        setValue(chars.slice(0, index).join(""));
+        if (index >= chars.length) {
+          window.clearInterval(intervalTimer);
+        }
+      }, speed);
+    }, delay);
+
+    return () => {
+      window.clearTimeout(startTimer);
+      window.clearInterval(intervalTimer);
+    };
+  }, [delay, enabled, speed, text]);
+
+  return value;
+}
+
 export default function Login({ onLoginSuccess }: LoginProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -69,12 +145,26 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [posterParallax, setPosterParallax] = useState({ x: 0, y: 0 });
   const [introReady, setIntroReady] = useState(false);
   const [hoveredHighlight, setHoveredHighlight] = useState<string | null>(null);
+  const [loginTutorBubbleOpen, setLoginTutorBubbleOpen] = useState(false);
+  const [loginTutorInput, setLoginTutorInput] = useState("");
+  const [loginTutorMessages, setLoginTutorMessages] = useState<LoginTutorMessage[]>([
+    {
+      role: "assistant",
+      content: "我在入口页，可以回答登录、账号切换、进入后能做什么这些问题。",
+    },
+  ]);
+  const loginTutorMessagesRef = useRef<HTMLDivElement | null>(null);
+  const heroTitleLeft = useTypewriterText("AI学习空间", introReady, 42, 220);
+  const heroTitleRight = useTypewriterText("一键进入", introReady, 42, 980);
+  const heroCopy = useTypewriterText("以动态学习画像为起点，联动规划、资源生成、答疑和测评反馈，形成完整学习闭环。", introReady, 16, 1500);
+  const loginTitle = useTypewriterText("进入你的 BiliLearn", introReady, 34, 480);
+  const loginCopy = useTypewriterText("选择账号进入个性化学习闭环，系统会接续画像、课程进度、生成资源和答疑上下文。", introReady, 16, 1150);
   const recognizedProfile = recognizedAccount ? getDemoUserProfile(recognizedAccount) : null;
   const selectedProfile = studentId ? getDemoUserProfile(studentId) : recognizedProfile;
   const accountOptions = [
     ...(recognizedProfile ? [recognizedProfile] : []),
     ...DEMO_ACCOUNTS.filter((account) => account.id !== recognizedAccount),
-  ].slice(0, 6);
+  ].slice(0, 8);
 
   const haibaraSpeech = {
     default: "哼，又是需要重构的难题吗？稍微动一动脑筋，倒也是不错的消遣。",
@@ -116,6 +206,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const frame = window.requestAnimationFrame(() => setIntroReady(true));
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    if (!loginTutorBubbleOpen) return;
+    window.requestAnimationFrame(() => {
+      const messageLists = [
+        loginTutorMessagesRef.current,
+        ...Array.from(document.querySelectorAll<HTMLDivElement>('div[class*="space-y-2"][class*="overflow-y"]')),
+      ].filter((messageList): messageList is HTMLDivElement => Boolean(messageList));
+      messageLists.forEach((messageList) => {
+        messageList.scrollTop = messageList.scrollHeight;
+      });
+    });
+  }, [loginTutorBubbleOpen, loginTutorMessages]);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/";
 
@@ -215,6 +318,78 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setPosterParallax({ x: 0, y: 0 });
   };
 
+  const handleOpenLoginTutor = () => {
+    setLoginTutorBubbleOpen(true);
+  };
+
+  const buildLoginTutorReply = (question: string) => {
+    const normalizedQuestion = question.toLowerCase().replace(/[？?！!。,.，、\s]/g, "");
+    if (normalizedQuestion.includes("密码") || normalizedQuestion.includes("登录") || normalizedQuestion.includes("账号")) {
+      return "这里可以选择演示账号，也可以手动输入账号密码。当前演示账号常用口令会自动填入，确认后就能回到学习空间。";
+    }
+    if (normalizedQuestion.includes("如何使用") || normalizedQuestion.includes("怎么使用") || normalizedQuestion.includes("系统怎么用") || normalizedQuestion.includes("功能")) {
+      return "系统围绕学习闭环工作：先从画像和测评了解当前状态，再进入课堂学习，随后生成讲义、PPT、导图和练习，最后用报告和复习提醒跟踪进展。登录后从首页导航进入对应模块即可。";
+    }
+    if (normalizedQuestion.includes("课堂") || normalizedQuestion.includes("视频") || normalizedQuestion.includes("资源")) {
+      return "进入后可以从课堂页继续看视频，在资源页生成讲义、PPT、练习和代码任务，AI 导师会带着当前课程上下文回答。";
+    }
+    if (normalizedQuestion.includes("画像") || normalizedQuestion.includes("测评") || normalizedQuestion.includes("路径") || normalizedQuestion.includes("学习情况")) {
+      return "系统会用学习画像、测评结果和历史进度生成个性化路径，再把课堂、资源、练习和报告串成闭环。";
+    }
+    if (normalizedQuestion.includes("ai导师") || normalizedQuestion.includes("答疑") || normalizedQuestion.includes("问问题")) {
+      return "AI 导师会根据当前页面和已保存的学习上下文回答问题。课堂页会结合当前视频内容，资源页会结合当前资源，其他页面则依据本地知识库和你的学习记录回答。";
+    }
+    if (normalizedQuestion.includes("讲义") || normalizedQuestion.includes("ppt") || normalizedQuestion.includes("导图") || normalizedQuestion.includes("练习")) {
+      return "在课堂页进入资源生成区，选择讲义、PPT、导图或练习即可生成对应资源。系统会优先展示知识库中已有的结果，避免重复等待。";
+    }
+    return "可以的。你可以问我登录入口怎么用、进入后先看哪里、AI 导师会读取哪些学习上下文。";
+  };
+
+  const buildSmartLoginTutorReply = (question: string) => {
+    const normalizedQuestion = question.trim().toLowerCase();
+    const hasAny = (keywords: string[]) => keywords.some((keyword) => normalizedQuestion.includes(keyword.toLowerCase()));
+
+    if (hasAny(["密码", "口令", "登录", "账号", "切换", "demo", "demo2024", "bililearn", "1001"])) {
+      return "登录这里支持两种方式：点“切换账号”选择演示账号，或手动输入账号密码。原始 Demo 账号是 demo2024，口令是 bililearn；普通演示账号也会在选择后自动填入口令，确认即可进入。";
+    }
+    if (hasAny(["进不去", "无法进入", "失败", "错误", "报错", "没反应", "卡住"])) {
+      return "先检查账号和口令是否都有内容，再看是否选中了正确账号。若你只是想快速演示，建议切到“原始 Demo”或 1001 演示账号后直接进入。";
+    }
+    if (hasAny(["进入后", "进去后", "能看到", "首页", "概览", "开始"])) {
+      return "进入后会先恢复你的学习画像和最近进度，再从概览、学习路径、课堂、资源中心、测评和报告几个页面继续学习闭环。";
+    }
+    if (hasAny(["课堂", "视频", "播放", "暂停", "当前时间", "提问"])) {
+      return "课堂页会记录视频上下文。你在课堂里点击“直接对当前视频提问”时，会带上当前视频和播放时间，方便 AI 导师围绕这段内容回答。";
+    }
+    if (hasAny(["资源", "资料", "ppt", "讲义", "练习", "代码", "生成"])) {
+      return "资源中心可以区分原始资料和 AI 生成资料，支持生成讲义、PPT、练习、代码任务等内容，并能继续进入预览或下载。";
+    }
+    if (hasAny(["画像", "测评", "路径", "个性化", "推荐", "计划"])) {
+      return "系统会结合学习画像、测评结果、课程进度和薄弱点生成个性化路径，推荐下一步课程、资源和练习。";
+    }
+    if (hasAny(["导师", "ai", "问答", "助手", "聊天"])) {
+      return "AI 导师会尽量带着当前页面上下文回答。登录页这里只提供轻量说明，进入学习空间后可以在课堂、资源、路径等页面继续问更具体的问题。";
+    }
+    if (hasAny(["收藏", "报告", "消息", "im", "沟通"])) {
+      return "收藏页用于沉淀常用资料，报告页汇总阶段成果和薄弱点，消息页处理课程群和私聊协作。";
+    }
+
+    const fallbackReply = buildLoginTutorReply(question);
+    return fallbackReply || `我先按入口页理解你的问题：“${question}”。如果你想快速体验，可以选择原始 Demo 账号进入；如果你想了解功能，可以问我“资源怎么生成”“课堂怎么提问”“学习路径怎么推荐”。`;
+  };
+
+  const handleLoginTutorSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const question = loginTutorInput.trim();
+    if (!question) return;
+    setLoginTutorMessages((messages) => [
+      ...messages,
+      { role: "user", content: question },
+      { role: "assistant", content: buildSmartLoginTutorReply(question) },
+    ]);
+    setLoginTutorInput("");
+  };
+
   return (
     <main
       className="relative min-h-screen overflow-hidden bg-[#f6f8fb] px-3 py-3 md:px-5 md:py-4"
@@ -296,6 +471,26 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           opacity: 0.08;
           pointer-events: none;
         }
+        div[class*="space-y-2"][class*="overflow-y-auto"],
+        div[class*="space-y-2"][class*="overflow-y-scroll"] {
+          overflow-y: scroll;
+          scrollbar-width: thin;
+          scrollbar-color: #fb7299 #fff1f6;
+        }
+        div[class*="space-y-2"][class*="overflow-y-auto"]::-webkit-scrollbar,
+        div[class*="space-y-2"][class*="overflow-y-scroll"]::-webkit-scrollbar {
+          width: 8px;
+        }
+        div[class*="space-y-2"][class*="overflow-y-auto"]::-webkit-scrollbar-track,
+        div[class*="space-y-2"][class*="overflow-y-scroll"]::-webkit-scrollbar-track {
+          border-radius: 999px;
+          background: #fff1f6;
+        }
+        div[class*="space-y-2"][class*="overflow-y-auto"]::-webkit-scrollbar-thumb,
+        div[class*="space-y-2"][class*="overflow-y-scroll"]::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: rgba(251, 114, 153, 0.62);
+        }
         @keyframes loginAuroraDrift {
           0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.62; }
           50% { transform: translate3d(24px, -18px, 0) scale(1.08); opacity: 0.9; }
@@ -351,6 +546,52 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           50% { opacity: 0.72; transform: translate3d(-50%, -4px, 0) scale(1.03); }
         }
       `}</style>
+      {loginTutorBubbleOpen ? (
+        <div className="fixed bottom-20 right-5 z-[80] w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-[24px] border border-[#ffd5e2] bg-white/96 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl xl:hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[#f3e2e9] px-4 py-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">AI Tutor</div>
+              <div className="text-sm font-black text-[#111827]">入口页小助手</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLoginTutorBubbleOpen(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-[#eef2f6] bg-white text-sm font-black text-[#667085] shadow-sm"
+              aria-label="关闭入口页小助手"
+            >
+              ×
+            </button>
+          </div>
+          <div ref={loginTutorMessagesRef} className="max-h-[260px] space-y-2 overflow-y-scroll px-4 py-3 [scrollbar-color:#fb7299_#fff1f6] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#fb7299]/60 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[#fff1f6]">
+            {loginTutorMessages.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={`max-w-[88%] rounded-[18px] px-3 py-2 text-sm leading-5 ${
+                  message.role === "user"
+                    ? "ml-auto bg-[#fb7299] text-white"
+                    : "bg-[#fff5f8] text-[#344054]"
+                }`}
+              >
+                {message.content}
+              </div>
+            ))}
+          </div>
+          <form onSubmit={handleLoginTutorSubmit} className="flex gap-2 border-t border-[#f3e2e9] p-3">
+            <input
+              value={loginTutorInput}
+              onChange={(event) => setLoginTutorInput(event.target.value)}
+              placeholder="问登录、资源、课堂怎么用..."
+              className="min-w-0 flex-1 rounded-full border border-[#eef2f6] bg-[#f8fafc] px-3 py-2 text-sm font-semibold text-[#111827] outline-none focus:border-[#fb7299]"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-[#111827] px-4 py-2 text-sm font-black text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]"
+            >
+              发送
+            </button>
+          </form>
+        </div>
+      ) : null}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_16%,rgba(255,133,172,0.10),transparent_22%),linear-gradient(135deg,#fff9fb_0%,#fff6f9_52%,#fffafc_100%)]" />
         <div className="absolute left-[-4%] top-[10%] h-72 w-72 rounded-full ui-ui-bg-brand/10 blur-3xl" style={{ animation: "loginAuroraDrift 14s ease-in-out infinite" }} />
@@ -390,19 +631,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   Personalized Learning Runtime
                 </div>
                 <h1 className="mt-2 max-w-[560px] text-[38px] font-black leading-[0.95] tracking-[-0.07em] text-[#1f2937] xl:text-[44px]">
-                  AI 学习空间
+                  <span>{heroTitleLeft}</span>
                   <span className="ml-3 bg-[linear-gradient(135deg,#ff8cb0_0%,#ffb47a_42%,#81c9ff_100%)] bg-clip-text text-transparent">
-                    一键进入
+                    {heroTitleRight}
                   </span>
                 </h1>
                 <p className="mt-2 max-w-[500px] text-[14px] leading-6 text-[#c6b8c1]">
-                  以动态学习画像为起点，联动规划、资源生成、答疑和测评反馈，形成完整学习闭环。
+                  {heroCopy}
                 </p>
               </div>
             </div>
 
             <div
-              className={`login-scanlines relative mt-2 flex-1 overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(145deg,rgba(255,250,252,0.92)_0%,rgba(249,245,251,0.92)_42%,rgba(244,248,252,0.92)_100%)] p-5 shadow-[0_36px_100px_rgba(15,23,42,0.10)] transition-all duration-[1200ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              className={`login-scanlines relative mt-2 flex-1 overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(145deg,rgba(255,250,252,0.92)_0%,rgba(249,245,251,0.92)_42%,rgba(244,248,252,0.92)_100%)] p-5 shadow-[0_36px_100px_rgba(15,23,42,0.10)] transition-all duration-[1200ms] ease-[cubic-bezier(0.22,1,0.36,1)] lg:overflow-visible ${
                 introReady ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-10 scale-[0.96]"
               }`}
               onMouseMove={handlePosterParallaxMove}
@@ -496,9 +737,85 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   </div>
                   <div className="absolute left-[60%] top-[42%] h-24 w-24 -translate-x-1/2 rounded-full border border-white/70 bg-white/45 shadow-[0_0_40px_rgba(255,255,255,0.35)] backdrop-blur-sm" />
 
+                  <div className="absolute right-[-2%] top-[-78%] z-[30] hidden w-[310px] xl:block xl:w-[330px]">
+                    <button
+                      type="button"
+                      onClick={handleOpenLoginTutor}
+                      className="group relative block w-full overflow-visible text-left"
+                      aria-label="点击 3D 模型咨询系统相关问题"
+                      title="点击 3D 模型咨询系统相关问题"
+                    >
+                      <span className="absolute right-8 top-2 z-20 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/82 px-3 py-1.5 text-[10px] font-black text-[#fb7299] shadow-[0_10px_24px_rgba(251,114,153,0.14)] backdrop-blur-sm transition group-hover:-translate-y-0.5">
+                        <MessageCircleMore className="h-3.5 w-3.5" />
+                        点我问系统
+                      </span>
+                      <span className="absolute left-3 top-[76px] z-20 inline-flex items-center gap-1.5 rounded-full border border-[#ffd5e2] bg-white/94 px-3 py-1.5 text-[10px] font-black text-[#fb7299] shadow-[0_10px_24px_rgba(251,114,153,0.12)] backdrop-blur-sm">
+                        <MessageCircleMore className="h-3 w-3" />
+                        问我
+                      </span>
+                      <span className="absolute inset-x-4 top-8 h-[360px] rounded-[48px] bg-[radial-gradient(circle_at_50%_20%,rgba(251,114,153,0.12),transparent_40%),radial-gradient(circle_at_70%_18%,rgba(125,211,252,0.10),transparent_30%)] blur-2xl" />
+                      <LoginModelBoundary fallback={<LoginModelFallback />}>
+                        <StudyAssistant3D
+                          className="relative z-10 h-[500px] w-full -translate-y-2"
+                          minHeightClassName="min-h-[500px]"
+                          minRenderWidth={310}
+                          minRenderHeight={500}
+                          modelYOffset={0.78}
+                          modelScale={2.72}
+                        />
+                      </LoginModelBoundary>
+                    </button>
+                    {loginTutorBubbleOpen ? (
+                      <div className="absolute right-[calc(100%+16px)] top-[118px] z-[80] w-[min(360px,calc(100vw-2rem))] max-w-[360px] overflow-hidden rounded-[24px] border border-[#ffd5e2] bg-white/96 text-left shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+                        <div className="flex items-center justify-between gap-3 border-b border-[#f3e2e9] px-4 py-3">
+                          <div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">AI Tutor</div>
+                            <div className="text-sm font-black text-[#111827]">入口页小助手</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setLoginTutorBubbleOpen(false)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-[#eef2f6] bg-white text-sm font-black text-[#667085] shadow-sm"
+                            aria-label="关闭入口页小助手"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="max-h-[min(340px,calc(100vh-250px))] space-y-2 overflow-y-auto px-4 py-3">
+                          {loginTutorMessages.map((message, index) => (
+                            <div
+                              key={`${message.role}-${index}`}
+                              className={`max-w-[88%] rounded-[18px] px-3 py-2 text-sm leading-5 ${
+                                message.role === "user"
+                                  ? "ml-auto bg-[#fb7299] text-white"
+                                  : "bg-[#fff5f8] text-[#344054]"
+                              }`}
+                            >
+                              {message.content}
+                            </div>
+                          ))}
+                        </div>
+                        <form onSubmit={handleLoginTutorSubmit} className="flex gap-2 border-t border-[#f3e2e9] p-3">
+                          <input
+                            value={loginTutorInput}
+                            onChange={(event) => setLoginTutorInput(event.target.value)}
+                            placeholder="问登录、资源、课堂怎么用..."
+                            className="min-w-0 flex-1 rounded-full border border-[#eef2f6] bg-[#f8fafc] px-3 py-2 text-sm font-semibold text-[#111827] outline-none focus:border-[#fb7299]"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-full bg-[#111827] px-4 py-2 text-sm font-black text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]"
+                          >
+                            发送
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div
-                    className="absolute left-[36%] top-[4%] z-[1] w-[330px] -translate-x-1/2 rounded-[34px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(255,255,255,0.56))] p-3.5 shadow-[0_28px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl transition-transform duration-300 ease-out xl:w-[374px]"
-                    style={{ transform: `translate3d(calc(-50% + ${posterParallax.x * 0.18}px), ${posterParallax.y * 0.12}px, 0)` }}
+                    className="absolute left-0 top-[7%] z-[5] w-[258px] rounded-[28px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(255,255,255,0.56))] p-3 shadow-[0_28px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl transition-transform duration-300 ease-out xl:w-[282px]"
+                    style={{ transform: `translate3d(${posterParallax.x * 0.18}px, ${posterParallax.y * 0.12}px, 0)` }}
                   >
                     <div className="absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,rgba(251,114,153,0),rgba(251,114,153,0.9),rgba(125,211,252,0.8),rgba(251,114,153,0))]" />
                     <div className="flex items-start justify-between gap-3">
@@ -607,6 +924,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <div className="relative mt-5 overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,250,252,0.94),rgba(249,245,251,0.92)_42%,rgba(244,248,252,0.90)_100%)] p-4 shadow-[0_20px_48px_rgba(15,23,42,0.10)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(251,114,153,0.12),transparent_22%),radial-gradient(circle_at_82%_18%,rgba(125,211,252,0.10),transparent_24%),radial-gradient(circle_at_50%_88%,rgba(255,255,255,0.45),transparent_28%)]" />
               <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenLoginTutor}
+                  className="absolute right-0 top-0 z-20 inline-flex items-center gap-1.5 rounded-full border border-[#ffd5e2] bg-white/94 px-3 py-1.5 text-[10px] font-black text-[#fb7299] shadow-[0_10px_24px_rgba(251,114,153,0.12)] backdrop-blur-sm"
+                >
+                  <MessageCircleMore className="h-3 w-3" />
+                  问我
+                </button>
                 <div className="flex items-center justify-between gap-3">
                   <div className="rounded-full border border-white/80 bg-white/76 px-3 py-1.5 text-[10px] font-black uppercase ui-ui-tracking-brand ui-text-secondary backdrop-blur-sm">
                     {BRAND_NAME} Stage
@@ -615,6 +940,24 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     Multi-Agent Online
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleOpenLoginTutor}
+                  className="relative mt-4 block w-full overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.88))] text-left shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-[#fb7299]/15"
+                  aria-label="点击 3D 模型打开入口页小助手"
+                >
+                  <LoginModelBoundary fallback={<LoginModelFallback compact />}>
+                    <StudyAssistant3D
+                      className="h-[300px] w-full -translate-y-8"
+                      minHeightClassName="min-h-[300px]"
+                      minRenderWidth={280}
+                      minRenderHeight={300}
+                      modelYOffset={1.4}
+                      modelScale={2.65}
+                    />
+                  </LoginModelBoundary>
+                </button>
 
                 <div className="mt-4 text-[20px] font-black leading-tight tracking-[-0.05em] ui-ui-text-ink">
                     从画像到资源生成，一次进入完整学习闭环
@@ -661,13 +1004,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     {BRAND_NAME}
                   </div>
                   <h2 className="mt-2 text-[22px] font-black tracking-[-0.08em] ui-ui-text-ink sm:text-[26px]">
-                    进入你的
-                    <span className="block bg-[linear-gradient(135deg,#111827_0%,#344054_48%,#6b7280_100%)] bg-clip-text text-transparent">
-                      {BRAND_NAME}
-                    </span>
+                    {loginTitle}
                   </h2>
                   <p className="mt-1 max-w-[340px] text-[11px] leading-5 ui-text-secondary">
-                    选择账号进入个性化学习闭环，系统会接续画像、课程进度、生成资源和答疑上下文。
+                    {loginCopy}
                   </p>
                 </div>
               </div>

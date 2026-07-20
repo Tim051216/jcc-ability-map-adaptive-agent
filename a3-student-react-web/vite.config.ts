@@ -110,6 +110,12 @@ export default defineConfig(({mode}) => {
             if (id.includes('react-dom')) {
               return 'react-dom';
             }
+            if (id.includes('/three/')) {
+              return 'three-runtime';
+            }
+            if (id.includes('nprogress')) {
+              return 'app-shell';
+            }
             if (id.includes('/react/')) {
               return 'react-core';
             }
@@ -154,7 +160,21 @@ export default defineConfig(({mode}) => {
               id.includes('property-information') ||
               id.includes('vfile') ||
               id.includes('bail') ||
-              id.includes('trough')
+              id.includes('trough') ||
+              id.includes('markdown-table') ||
+              id.includes('inline-style-parser') ||
+              id.includes('style-to-js') ||
+              id.includes('style-to-object') ||
+              id.includes('unist-util') ||
+              id.includes('@ungap/structured-clone') ||
+              id.includes('comma-separated-tokens') ||
+              id.includes('space-separated-tokens') ||
+              id.includes('decode-named-character-reference') ||
+              id.includes('html-url-attributes') ||
+              id.includes('longest-streak') ||
+              id.includes('trim-lines') ||
+              id.includes('ccount') ||
+              id.includes('extend')
             ) {
               return 'markdown-runtime';
             }

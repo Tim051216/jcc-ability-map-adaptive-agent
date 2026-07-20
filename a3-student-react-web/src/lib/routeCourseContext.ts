@@ -22,9 +22,34 @@ export function persistLastRouteCourseId(courseId?: string | null) {
 
 export function buildResourcesRoute(courseId?: string | null, search?: string) {
   const params = new URLSearchParams();
-  params.set("courseId", (courseId || readLastRouteCourseId()).trim() || DEFAULT_ROUTE_COURSE_ID);
+  params.set("courseId", DEFAULT_ROUTE_COURSE_ID);
   if (search?.trim()) {
     params.set("search", search.trim());
   }
   return `/resources?${params.toString()}`;
+}
+
+export function buildSearchRoute(search: string) {
+  const params = new URLSearchParams();
+  if (search.trim()) {
+    params.set("q", search.trim());
+  }
+  return `/search?${params.toString()}`;
+}
+
+export function resolveSearchRouteCourseId(search: string, fallbackCourseId?: string | null) {
+  const normalized = search.trim().toLowerCase();
+  if (!normalized) {
+    return (fallbackCourseId || readLastRouteCourseId()).trim() || DEFAULT_ROUTE_COURSE_ID;
+  }
+
+  if (/软件|需求|测试|项目管理|项目计划|生命周期|瀑布|螺旋|用例|uml|系统设计|接口|维护|工程/.test(normalized)) {
+    return "series-2";
+  }
+
+  if (/vue|react|前端|网页|页面|组件|设计系统|交互|css|html|javascript|typescript|vite/.test(normalized)) {
+    return "series-1";
+  }
+
+  return (fallbackCourseId || readLastRouteCourseId()).trim() || DEFAULT_ROUTE_COURSE_ID;
 }

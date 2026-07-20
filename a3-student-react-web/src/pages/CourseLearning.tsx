@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import gsap from "gsap";
 import {
   Tv,
   BookOpen,
@@ -26,9 +25,11 @@ import {
   ChevronDown,
   ChevronUp,
   ListRestart,
+  Play,
   Send,
   ThumbsUp,
   Presentation,
+  Video,
 } from "lucide-react";
 import { COURSES } from "../constants";
 import { getCurrentLoggedInUserId, getCurrentLoggedInUserName } from "../lib/currentUser";
@@ -46,12 +47,14 @@ import {
   type ResourceCard,
   type VideoDanmakuItem,
 } from "../lib/studentApi";
-import { exportDeckAsPptx, type DeckSlide } from "../lib/pptxExport";
+import type { DeckSlide } from "../lib/pptxExport";
 import {
   persistCourseResourceWorkspace,
   readPersistedCourseResourceWorkspace,
+  sanitizeWorkspaceText,
   type RecentPptArtifact,
   type RecentResourceArtifact,
+  type PptExplanationVideoArtifact,
   type StoredMindmapNode,
   type StoredPracticeQuestion,
 } from "../lib/courseResourceWorkspace";
@@ -60,10 +63,30 @@ import { resolveBackendCourseCode, resolveBackendCourseId } from "../lib/courseR
 import { persistLastRouteCourseId } from "../lib/routeCourseContext";
 import { OPEN_TUTOR_PANEL_EVENT, openTutorPanel, saveActiveTutorContext } from "../lib/tutorPanel";
 import { getCourseVideoInsightMeta, getCourseVideoPlaylist } from "../lib/videoCatalog";
-import HorizontalMindmap from "../components/HorizontalMindmap";
 import { getGeneratedResourceIcon, getGeneratedResourceUiMeta } from "../lib/generatedResourceUi";
-import AILoadingLottie from "../components/AILoadingLottie";
 import { beginUiProgress, finishUiProgress, setUiProgress } from "../lib/uiProgress";
+
+const HorizontalMindmap = lazy(() => import("../components/HorizontalMindmap"));
+const AILoadingLottie = lazy(() => import("../components/AILoadingLottie"));
+
+function LazyAiLoading(props: React.ComponentProps<typeof AILoadingLottie>) {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-2xl border border-[#E6EDF5] bg-white/80 px-4 py-3 text-center text-xs font-bold text-[#64748B]">
+          正在准备生成动效...
+        </div>
+      }
+    >
+      <AILoadingLottie {...props} />
+    </Suspense>
+  );
+}
+
+async function exportPptxOnDemand(fileName: string, slides: DeckSlide[]) {
+  const { exportDeckAsPptx } = await import("../lib/pptxExport");
+  await exportDeckAsPptx(fileName, slides);
+}
 
 type DanmakuMode = "scroll" | "top" | "bottom";
 
@@ -73,6 +96,13 @@ type PersistedPresetDanmaku = {
   mode?: DanmakuMode;
   time: number;
 };
+
+function formatGenerationTime() {
+  return new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 type ActiveCourseDanmaku = {
   id: string;
@@ -186,7 +216,8 @@ const DANMAKU_SCROLL_GAP_PX = 124;
 const DANMAKU_SEEK_LOOKAHEAD_SECONDS = 0.45;
 const DANMAKU_MAX_FIXED_STACK = 1;
 const COURSE_RUNTIME_STORAGE_PREFIX = "a3-course-runtime";
-const RESOURCE_GENERATION_TIMEOUT_MS = 45000;
+const RESOURCE_GENERATION_TIMEOUT_MS = 3000;
+const RESOURCE_REUSE_LOOKUP_TIMEOUT_MS = 1800;
 
 // Bullet comments presets based on distinct academic courses
 const PRESET_DANMAKUS_BY_COURSE: Record<string, PersistedPresetDanmaku[]> = {
@@ -250,6 +281,17 @@ const PRESET_COMMENTS_BY_COURSE: Record<string, Array<{ userId: number; content:
 
 function getPlaybackStorageKey(courseId: string, episodeIndex: number) {
   return `a3-course-playback:${courseId}:${episodeIndex}`;
+}
+
+function readSavedPlaybackTime(courseId: string, episodeIndex: number) {
+  if (typeof window === "undefined") return 0;
+  const value = Number(window.localStorage.getItem(getPlaybackStorageKey(courseId, episodeIndex)) || "0");
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function formatPlaybackClock(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  return `${String(Math.floor(safeSeconds / 60)).padStart(2, "0")}:${String(safeSeconds % 60).padStart(2, "0")}`;
 }
 
 function getCourseRuntimeStorageKey(courseId: string) {
@@ -561,7 +603,7 @@ function parseMermaidMindmap(markdown: string, fallbackTitle: string): MindmapNo
 }
 
 function parseTeachingPlanSlides(resources: ResourceCard[], courseTitle: string, sectionTitle: string): DeckSlide[] {
-  const teachingPlan = resources.find((item) => item.resource_type === "teaching_plan");
+  const teachingPlan = resources.find((item) => item.resource_type === "ppt" || item.resource_type === "teaching_plan");
   if (!teachingPlan?.content_markdown) return [];
 
   const lines = teachingPlan.content_markdown
@@ -573,9 +615,10 @@ function parseTeachingPlanSlides(resources: ResourceCard[], courseTitle: string,
   const slideMap = new Map<string, string[]>();
   let currentSlideTitle = "";
   for (const line of lines) {
-    const titleMatch = line.match(/^###\s+第\s*\d+\s*页\s+(.+)$/);
-    if (titleMatch) {
-      currentSlideTitle = titleMatch[1].trim();
+    const headingMatch = line.match(/^###\s+(.+)$/);
+    const headingText = headingMatch?.[1]?.trim() || "";
+    if (headingText && /^\D*\d+/.test(headingText)) {
+      currentSlideTitle = headingText.replace(/^\D*\d+\s*\D{0,3}\s*/, "").trim() || headingText;
       slideMap.set(currentSlideTitle, []);
       continue;
     }
@@ -609,13 +652,63 @@ function parseTeachingPlanSlides(resources: ResourceCard[], courseTitle: string,
   ];
 }
 
-function buildCourseDeckSlides(resources: ResourceCard[], courseTitle: string, sectionTitle: string): DeckSlide[] {
+function buildCourseDeckSlides(
+  resources: ResourceCard[],
+  courseTitle: string,
+  sectionTitle: string,
+  outlineLines: string[] = [],
+  templateId: PptTemplateId = "academic",
+): DeckSlide[] {
+  const planSlides = parseTeachingPlanSlides(resources, courseTitle, sectionTitle);
+  const cleanOutline = outlineLines.map((item) => item.trim()).filter(Boolean).slice(0, 8);
+  if (cleanOutline.length >= 3) {
+    const generatedSlides: DeckSlide[] = [
+      {
+        kind: "cover" as const,
+        title: courseTitle,
+        subtitle: sectionTitle,
+        bullets: ["按已确认大纲生成，可继续编辑、播放和导出"],
+      },
+      {
+        kind: "agenda" as const,
+        title: "课件目录",
+        subtitle: "先确认结构，再展开内容",
+        bullets: cleanOutline.slice(0, 6),
+      },
+      ...cleanOutline.map((outline, index) => ({
+        kind: "content" as const,
+        title: `${String(index + 1).padStart(2, "0")} ${outline}`,
+        subtitle:
+          index === 0
+            ? "先说明本页为什么重要"
+            : index === cleanOutline.length - 1
+              ? "收束到复习、练习或答辩表达"
+              : "围绕本页主题展开关键结构",
+        bullets: [
+          `核心观点：${outline}`,
+          "讲解方式：先给定义或背景，再说明结构关系",
+          "课堂落点：结合当前章节案例或项目任务解释",
+          "检查方式：用一个问题、练习或答辩表达验证理解",
+        ],
+      })),
+      {
+        kind: "ending" as const,
+        title: "学习闭环",
+        subtitle: "讲义、导图、课件和练习保持同一条主线",
+        bullets: ["回看大纲是否完整", "补充需要展开的细节", "用练习验证是否真正掌握"],
+      },
+    ];
+    return attachPptIllustrations(applyPptTemplate(generatedSlides, templateId), courseTitle, sectionTitle);
+  }
   if (courseTitle.includes("软件工程")) {
     const profile = buildSoftwareEngineeringChapterProfile(courseTitle, sectionTitle);
-    const planSlides = parseTeachingPlanSlides(resources, courseTitle, sectionTitle);
-    return planSlides.length ? [planSlides[0], ...profile.pptSlides.slice(1)] : profile.pptSlides;
+    const slides = planSlides.length >= 6
+      ? planSlides
+      : planSlides.length
+        ? [planSlides[0], ...profile.pptSlides.slice(1)]
+        : profile.pptSlides;
+    return attachPptIllustrations(applyPptTemplate(slides, templateId), courseTitle, sectionTitle);
   }
-  const planSlides = parseTeachingPlanSlides(resources, courseTitle, sectionTitle);
   const resourceLines = dedupePreviewLines(
     resources.flatMap((item) => extractResourceOutline(item.content_markdown || "")),
     24,
@@ -716,17 +809,17 @@ function buildCourseDeckSlides(resources: ResourceCard[], courseTitle: string, s
   ].filter((slide) => slide.bullets.length > 0) satisfies DeckSlide[];
 
   if (!contentSlides.length) {
-    return [
+    return attachPptIllustrations([
       {
         kind: "cover" as const,
         title: courseTitle,
         subtitle: sectionTitle,
         bullets: ["当前没有足够的课件内容可以导出。"],
       },
-    ];
+    ], courseTitle, sectionTitle);
   }
 
-  return [
+  return attachPptIllustrations(applyPptTemplate([
     {
       kind: "cover" as const,
       title: professionalContext,
@@ -750,17 +843,470 @@ function buildCourseDeckSlides(resources: ResourceCard[], courseTitle: string, s
         "如果被问“如何证明有效”：回答用生成成功率、复习触达率、掌握度提升和证据复用率验证",
       ],
     },
-  ];
+  ], templateId), courseTitle, sectionTitle);
 }
 
 function buildResourceSummary(resource?: ResourceCard | null, fallback?: string) {
   const outline = extractResourceOutline(resource?.content_markdown || "");
-  return (
+  return sanitizeWorkspaceText(
     outline.find((line) => line.length >= 10) ||
     resource?.study_suggestion ||
     resource?.summary ||
     fallback ||
-    "已根据当前课堂内容完成整理。"
+    "已根据当前课堂内容完成整理。",
+    fallback || "已根据当前课堂内容完成整理。",
+  );
+}
+
+function buildDefaultResourceOutline(courseTitle: string, sectionTitle: string) {
+  const normalizedSection = sectionTitle.trim() || "当前章节";
+  if (courseTitle.includes("软件工程")) {
+    return [
+      `${normalizedSection} 的课程定位与学习目标`,
+      "核心概念、关键术语和边界辨析",
+      "软件工程流程中的阶段产出与协作关系",
+      "结合课程设计或项目案例说明应用方式",
+      "易错点、答辩表达和课后练习安排",
+    ];
+  }
+  return [
+    `${normalizedSection} 的问题背景与学习目标`,
+    "核心概念和关键结构拆解",
+    "重要流程、公式或方法的使用边界",
+    "课堂案例与真实任务中的应用方式",
+    "易错点总结和课后巩固任务",
+  ];
+}
+
+function parseEditableOutline(value: string, courseTitle: string, sectionTitle: string) {
+  const lines = value
+    .split("\n")
+    .map((line) => normalizeResourceLine(line))
+    .filter(Boolean);
+  return (lines.length ? lines : buildDefaultResourceOutline(courseTitle, sectionTitle)).slice(0, 8);
+}
+
+function buildOutlineMarkdown(outlineLines: string[]) {
+  return outlineLines.map((line, index) => `${index + 1}. ${line}`).join("\n");
+}
+
+type PptTemplateId = "academic" | "defense" | "warm" | "chalkboard" | "techGrid" | "minimalReport";
+
+const PPT_TEMPLATE_OPTIONS: Array<{
+  id: PptTemplateId;
+  label: string;
+  detail: string;
+  source: string;
+  layout: "whiteboard" | "report" | "warmClass" | "chalkboard" | "techGrid" | "minimal";
+  swatches: string[];
+}> = [
+  {
+    id: "academic",
+    label: "学术白板",
+    detail: "适合课程讲解，页面克制、留白清楚。",
+    source: "参考 Canva 教育课件",
+    layout: "whiteboard",
+    swatches: ["#FFFFFF", "#DEB7A8", "#DDE7B5"],
+  },
+  {
+    id: "defense",
+    label: "蓝色答辩",
+    detail: "适合项目汇报，重点突出、结构更硬朗。",
+    source: "参考 Slidesgo 技术答辩",
+    layout: "report",
+    swatches: ["#0F2A5F", "#2F6BFF", "#EAF1FF"],
+  },
+  {
+    id: "warm",
+    label: "暖色课堂",
+    detail: "适合教学展示，亲和、层次更明显。",
+    source: "参考 SlidesCarnival 教学模板",
+    layout: "warmClass",
+    swatches: ["#FFF7ED", "#F97316", "#FED7AA"],
+  },
+  {
+    id: "chalkboard",
+    label: "黑板板书",
+    detail: "适合概念讲解，像课堂板书一样按层级展开。",
+    source: "参考 Microsoft 教育模板",
+    layout: "chalkboard",
+    swatches: ["#102A2A", "#DFF7EF", "#F8D47A"],
+  },
+  {
+    id: "techGrid",
+    label: "科技网格",
+    detail: "适合软件工程、系统设计和流程架构展示。",
+    source: "参考 Slidesgo 科技课件",
+    layout: "techGrid",
+    swatches: ["#08111F", "#20D3EE", "#7C3AED"],
+  },
+  {
+    id: "minimalReport",
+    label: "极简报告",
+    detail: "适合正式汇报，图文比例稳定、信息密度高。",
+    source: "参考 Canva 商务报告",
+    layout: "minimal",
+    swatches: ["#F8FAFC", "#111827", "#94A3B8"],
+  },
+];
+
+function applyPptTemplate(slides: DeckSlide[], templateId: PptTemplateId): DeckSlide[] {
+  return slides.map((slide) => ({
+    ...slide,
+    accent: templateId,
+  }));
+}
+
+function getPptTemplateOption(templateId?: string | null) {
+  return PPT_TEMPLATE_OPTIONS.find((item) => item.id === templateId) || PPT_TEMPLATE_OPTIONS[0];
+}
+
+function getSlideTemplateId(slide?: Pick<DeckSlide, "accent"> | null): PptTemplateId {
+  const accent = String(slide?.accent || "");
+  return PPT_TEMPLATE_OPTIONS.some((item) => item.id === accent) ? (accent as PptTemplateId) : "academic";
+}
+
+function PptTemplateMiniPreview({ template }: { template: (typeof PPT_TEMPLATE_OPTIONS)[number] }) {
+  const [background, ink, accent] = template.swatches;
+  return (
+    <div className="relative h-14 w-[86px] shrink-0 overflow-hidden rounded-md border border-[#D4DCE6] bg-white">
+      <div className="absolute inset-0" style={{ background }} />
+      {template.layout === "report" ? (
+        <>
+          <div className="absolute left-0 top-0 h-full w-4" style={{ backgroundColor: ink }} />
+          <div className="absolute left-6 top-3 h-1.5 w-10 rounded-full" style={{ backgroundColor: accent }} />
+          <div className="absolute left-6 top-6 h-2 w-14 rounded-sm bg-white/90" />
+          <div className="absolute left-6 top-10 h-1 w-9 rounded-full bg-white/70" />
+        </>
+      ) : template.layout === "chalkboard" ? (
+        <>
+          <div className="absolute inset-1 rounded border border-white/20" />
+          <div className="absolute left-3 top-3 h-1 w-12 rounded-full" style={{ backgroundColor: ink }} />
+          <div className="absolute left-3 top-7 h-1 w-9 rounded-full bg-white/70" />
+          <div className="absolute bottom-2 left-3 h-1 w-16 rounded-full" style={{ backgroundColor: accent }} />
+        </>
+      ) : template.layout === "techGrid" ? (
+        <>
+          <div className="absolute inset-0 opacity-35" style={{ backgroundImage: `linear-gradient(${accent} 1px, transparent 1px), linear-gradient(90deg, ${accent} 1px, transparent 1px)`, backgroundSize: "14px 14px" }} />
+          <div className="absolute left-3 top-3 h-1.5 w-14 rounded-full" style={{ backgroundColor: accent }} />
+          <div className="absolute bottom-3 right-3 h-5 w-8 rounded border border-white/30 bg-white/10" />
+        </>
+      ) : template.layout === "minimal" ? (
+        <>
+          <div className="absolute left-3 top-3 h-1.5 w-16 rounded-full" style={{ backgroundColor: ink }} />
+          <div className="absolute left-3 top-7 h-1 w-11 rounded-full" style={{ backgroundColor: accent }} />
+          <div className="absolute bottom-3 left-3 right-3 grid grid-cols-3 gap-1">
+            <span className="h-4 rounded bg-white" />
+            <span className="h-4 rounded bg-white" />
+            <span className="h-4 rounded bg-white" />
+          </div>
+        </>
+      ) : template.layout === "warmClass" ? (
+        <>
+          <div className="absolute left-2 top-2 h-9 w-10 rounded-lg bg-white/85" />
+          <div className="absolute right-2 top-3 h-1.5 w-8 rounded-full" style={{ backgroundColor: ink }} />
+          <div className="absolute right-2 top-7 h-1 w-12 rounded-full" style={{ backgroundColor: accent }} />
+          <div className="absolute bottom-2 right-2 h-2 w-10 rounded-full" style={{ backgroundColor: ink }} />
+        </>
+      ) : (
+        <>
+          <div className="absolute left-0 top-0 h-full w-2" style={{ backgroundColor: accent }} />
+          <div className="absolute left-4 top-3 h-2 w-14 rounded-full" style={{ backgroundColor: ink }} />
+          <div className="absolute left-4 top-7 h-1 w-10 rounded-full bg-[#CBD5E1]" />
+          <div className="absolute bottom-3 left-4 h-4 w-14 rounded bg-white/90" />
+        </>
+      )}
+    </div>
+  );
+}
+
+function PptTemplateDeckPreview({
+  template,
+  compact = false,
+}: {
+  template: (typeof PPT_TEMPLATE_OPTIONS)[number];
+  compact?: boolean;
+}) {
+  const [surface, ink, accent] = template.swatches;
+  const dark = template.layout === "chalkboard" || template.layout === "techGrid" || template.layout === "report";
+  const slideBase = `relative overflow-hidden rounded-md border ${dark ? "border-white/15" : "border-[#D4DCE6]"} shadow-sm`;
+  const titleColor = dark ? "bg-white/85" : "bg-[#111827]";
+  const mutedColor = dark ? "bg-white/45" : "bg-[#CBD5E1]";
+  const canvasStyle =
+    template.layout === "techGrid"
+      ? {
+          background: surface,
+          backgroundImage: `linear-gradient(${accent}55 1px, transparent 1px), linear-gradient(90deg, ${accent}55 1px, transparent 1px)`,
+          backgroundSize: compact ? "13px 13px" : "18px 18px",
+        }
+      : { background: surface };
+
+  return (
+    <div className={compact ? "grid grid-cols-[1.25fr_0.78fr_0.78fr] gap-1.5" : "grid grid-cols-[1.25fr_0.78fr_0.78fr] gap-2"}>
+      <div className={`${slideBase} ${compact ? "h-[58px]" : "h-[118px]"} p-2`} style={canvasStyle}>
+        {template.layout === "report" ? <div className="absolute left-0 top-0 h-full w-[18%]" style={{ backgroundColor: ink }} /> : null}
+        {template.layout === "whiteboard" ? <div className="absolute left-0 top-0 h-full w-2" style={{ backgroundColor: accent }} /> : null}
+        {template.layout === "chalkboard" ? <div className="absolute inset-2 rounded border border-white/20" /> : null}
+        {template.layout === "minimal" ? <div className="absolute left-0 top-0 h-1.5 w-full" style={{ backgroundColor: ink }} /> : null}
+        {template.layout === "warmClass" ? <div className="absolute -left-5 -top-5 h-16 w-20 rounded-full bg-white/80" /> : null}
+        <div className={`relative z-10 flex h-full flex-col justify-between ${template.layout === "report" ? "ml-[18%]" : ""}`}>
+          <div>
+            <div className="h-1.5 w-12 rounded-full" style={{ backgroundColor: accent }} />
+            <div className={`mt-2 h-2 ${compact ? "w-16" : "w-24"} rounded-full ${titleColor}`} />
+            <div className={`mt-1.5 h-1 ${compact ? "w-12" : "w-20"} rounded-full ${mutedColor}`} />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <span className="h-3 rounded bg-white/60" />
+            <span className="h-3 rounded bg-white/40" />
+            <span className="h-3 rounded bg-white/60" />
+          </div>
+        </div>
+      </div>
+
+      <div className={`${slideBase} ${compact ? "h-[58px]" : "h-[118px]"} p-2`} style={canvasStyle}>
+        <div className="relative z-10 flex h-full flex-col justify-between">
+          <div>
+            <div className={`h-1.5 ${compact ? "w-10" : "w-14"} rounded-full ${titleColor}`} />
+            <div className={`mt-1.5 h-1 ${compact ? "w-8" : "w-11"} rounded-full ${mutedColor}`} />
+          </div>
+          <div className="space-y-1.5">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: accent }} />
+                <span className={`h-1 flex-1 rounded-full ${mutedColor}`} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className={`${slideBase} ${compact ? "h-[58px]" : "h-[118px]"} p-2`} style={canvasStyle}>
+        <div className="relative z-10 flex h-full flex-col justify-between">
+          <div className={`h-1.5 ${compact ? "w-9" : "w-14"} rounded-full ${titleColor}`} />
+          <div className="grid grid-cols-2 gap-1.5">
+            <span className="h-4 rounded bg-white/70" />
+            <span className="h-4 rounded bg-white/45" />
+            <span className="h-4 rounded bg-white/45" />
+            <span className="h-4 rounded bg-white/70" />
+          </div>
+          <div className="h-1.5 w-full rounded-full" style={{ backgroundColor: accent }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PptSlideThumbnail({
+  slide,
+  active = false,
+  small = false,
+}: {
+  slide: ReturnType<typeof buildPptPreviewCards>[number];
+  active?: boolean;
+  small?: boolean;
+}) {
+  const template = getPptTemplateOption(getSlideTemplateId({ accent: slide.accent }));
+  const [surface, ink, accent] = template.swatches;
+  const isDark = template.layout === "chalkboard" || template.layout === "techGrid" || template.layout === "report";
+  const titleColor = isDark ? "text-white" : "text-[#111827]";
+  const mutedColor = isDark ? "text-white/72" : "text-[#64748B]";
+  const bulletDot = template.layout === "techGrid" ? "rounded-sm" : "rounded-full";
+  return (
+    <div
+      className={`relative aspect-video overflow-hidden rounded-md border ${
+        active ? "border-[#002FA7]" : "border-[#DCE7F7]"
+      } ${small ? "p-2" : "p-3"}`}
+      style={{ background: surface }}
+    >
+      {template.layout === "techGrid" ? (
+        <div className="absolute inset-0 opacity-35" style={{ backgroundImage: `linear-gradient(${accent} 1px, transparent 1px), linear-gradient(90deg, ${accent} 1px, transparent 1px)`, backgroundSize: "22px 22px" }} />
+      ) : null}
+      {template.layout === "report" ? <div className="absolute left-0 top-0 h-full w-4" style={{ backgroundColor: ink }} /> : null}
+      {template.layout === "whiteboard" ? <div className="absolute left-0 top-0 h-full w-2" style={{ backgroundColor: accent }} /> : null}
+      {template.layout === "warmClass" ? <div className="absolute -left-6 -top-6 h-20 w-24 rounded-full bg-white/80" /> : null}
+      {template.layout === "chalkboard" ? <div className="absolute inset-2 rounded border border-white/15" /> : null}
+      {template.layout === "minimal" ? <div className="absolute left-0 top-0 h-1.5 w-full" style={{ backgroundColor: ink }} /> : null}
+      <div
+        className={`relative z-10 flex h-full flex-col justify-between ${
+          template.layout === "report" ? "ml-4" : ""
+        } ${template.layout === "whiteboard" ? "ml-2 rounded-lg bg-white/84 p-2 ring-1 ring-white/80" : ""}`}
+      >
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-black ${
+                isDark ? "bg-white/14 text-white" : "bg-white/80 text-[#002FA7]"
+              }`}
+            >
+              {String(slide.index).padStart(2, "0")}
+            </span>
+            <span className={`text-[9px] font-black ${mutedColor}`}>{slide.typeLabel}</span>
+          </div>
+          <h4 className={`mt-2 line-clamp-2 ${small ? "text-[10px]" : "text-[13px]"} font-black leading-5 ${titleColor}`}>
+            {slide.title}
+          </h4>
+          {!small && slide.subtitle ? <p className={`mt-1 line-clamp-1 text-[10px] font-semibold ${mutedColor}`}>{slide.subtitle}</p> : null}
+        </div>
+        <div className={small ? "space-y-1" : "space-y-1.5"}>
+          {slide.bullets.slice(0, small ? 2 : 3).map((bullet, bulletIndex) => (
+            <div key={`${slide.index}-${bulletIndex}`} className="flex items-center gap-1.5">
+              <span className={`h-1.5 w-1.5 shrink-0 ${bulletDot}`} style={{ backgroundColor: accent }} />
+              <span className={`line-clamp-1 ${small ? "text-[8.5px]" : "text-[9.5px]"} font-semibold ${mutedColor}`}>{bullet}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PptSlideStage({ slide, slideIndex }: { slide: DeckSlide; slideIndex: number }) {
+  const template = getPptTemplateOption(getSlideTemplateId(slide));
+  const [surface, ink, accent] = template.swatches;
+  const isDark = template.layout === "chalkboard" || template.layout === "techGrid" || template.layout === "report";
+  return (
+    <div className="overflow-hidden ui-radius-28 border border-[#DCE7F7] bg-white shadow-[0_24px_48px_rgba(37,99,235,0.08)]">
+      <div className="relative aspect-[16/9] p-6" style={{ background: surface }}>
+        {template.layout === "techGrid" ? (
+          <div className="absolute inset-0 opacity-35" style={{ backgroundImage: `linear-gradient(${accent} 1px, transparent 1px), linear-gradient(90deg, ${accent} 1px, transparent 1px)`, backgroundSize: "32px 32px" }} />
+        ) : null}
+        {template.layout === "report" ? <div className="absolute left-0 top-0 h-full w-16" style={{ backgroundColor: ink }} /> : null}
+        {template.layout === "whiteboard" ? <div className="absolute left-0 top-0 h-full w-3" style={{ backgroundColor: accent }} /> : null}
+        {template.layout === "warmClass" ? <div className="absolute -left-12 -top-12 h-40 w-48 rounded-full bg-white/80" /> : null}
+        {template.layout === "chalkboard" ? <div className="absolute inset-5 rounded-xl border border-white/15" /> : null}
+        {template.layout === "minimal" ? <div className="absolute left-0 top-0 h-3 w-full" style={{ backgroundColor: ink }} /> : null}
+        <div
+          className={`relative z-10 grid h-full gap-4 ${
+            template.layout === "report" ? "ml-14" : template.layout === "whiteboard" ? "ml-4" : ""
+          } ${template.layout === "techGrid" || template.layout === "report" ? "lg:grid-cols-[minmax(0,1fr)_250px]" : "lg:grid-cols-[minmax(0,1fr)_250px]"} ${
+            template.layout === "whiteboard" ? "ui-radius-22 bg-white/90 p-6 ring-1 ring-white/80" : "p-3"
+          }`}
+        >
+          <div className="flex min-w-0 flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className={`rounded-full px-3 py-1 text-[10px] font-black ${
+                    isDark ? "bg-white/14 text-white" : "bg-[#FFF1F5] ui-text-brand"
+                  }`}
+                >
+                  {slide.kind === "cover" ? "封面" : slide.kind === "agenda" ? "目录" : slide.kind === "ending" ? "结束页" : "内容页"}
+                </span>
+                <span className={`text-[10px] font-black ${isDark ? "text-white/55" : "ui-text-subtle"}`}>
+                  {getPptTemplateOption(getSlideTemplateId(slide)).label} · 第 {slideIndex + 1} 页
+                </span>
+              </div>
+              <h2 className={`mt-4 text-2xl font-black leading-tight ${isDark ? "text-white" : "ui-text-ink"}`}>{slide.title}</h2>
+              {slide.subtitle ? <p className={`mt-3 text-sm font-semibold leading-6 ${isDark ? "text-white/72" : "ui-text-secondary"}`}>{slide.subtitle}</p> : null}
+            </div>
+            <div className="space-y-3">
+              {slide.bullets.slice(0, 4).map((bullet, index) => (
+                <div key={`${slideIndex}-${index}`} className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white" style={{ backgroundColor: accent }}>
+                    {index + 1}
+                  </span>
+                  <p className={`text-[13px] leading-6 ${isDark ? "text-white/86" : "ui-text-ink"}`}>{bullet}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={`hidden min-h-0 rounded-2xl border p-4 lg:block ${isDark ? "border-white/14 bg-white/8" : "border-[#DCE7F7] bg-white/72"}`}>
+            <div>
+              <PptIllustrationScene illustration={slide.illustration} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildSlideIllustration(slide: DeckSlide, index: number, courseTitle: string, sectionTitle: string): NonNullable<DeckSlide["illustration"]> {
+  if (slide.kind === "cover") {
+    return {
+      type: "scenario",
+      title: "课程场景图",
+      caption: `用课堂、资料和练习三个元素表现《${courseTitle}》的学习入口。`,
+    };
+  }
+  if (slide.kind === "agenda") {
+    return {
+      type: "flow",
+      title: "章节路线图",
+      caption: `把《${sectionTitle}》拆成从目标、概念到练习的学习路径。`,
+    };
+  }
+  if (slide.kind === "ending") {
+    return {
+      type: "summary",
+      title: "学习闭环图",
+      caption: "用讲义、导图、练习和答疑构成课后复习闭环。",
+    };
+  }
+  const cleanTitle = slide.title.replace(/^\d+\s*/, "").replace(/^[：:、.\-\s]+/, "");
+  return {
+    type: index % 3 === 0 ? "flow" : index % 3 === 1 ? "concept" : "scenario",
+    title: `${cleanTitle.slice(0, 12) || "本页"}图解`,
+    caption: `围绕“${cleanTitle || slide.title}”生成结构图，帮助学生先看懂关系，再进入要点。`,
+  };
+}
+
+function attachPptIllustrations(slides: DeckSlide[], courseTitle: string, sectionTitle: string): DeckSlide[] {
+  return slides.map((slide, index) => ({
+    ...slide,
+    illustration: slide.illustration || buildSlideIllustration(slide, index, courseTitle, sectionTitle),
+  }));
+}
+
+const PPT_ILLUSTRATION_IMAGE = "/generated-resource-illustrations/ppt/software-engineering-classroom.svg";
+
+function PptIllustrationScene({
+  illustration,
+  compact = false,
+}: {
+  illustration?: DeckSlide["illustration"];
+  compact?: boolean;
+}) {
+  const [imageReady, setImageReady] = useState(true);
+  const title = (illustration?.title || "概念结构图").replace(/插画/g, "图解");
+  const caption = (illustration?.caption || "用图像把本页内容转成更容易讲解的视觉线索。").replace(/插画/g, "图像");
+  const imageClass = compact ? "h-[86px] w-full rounded-md object-contain" : "h-[190px] w-full rounded-xl object-contain";
+
+  return (
+    <div className={compact ? "overflow-hidden rounded-lg border border-[#DCE7F7] bg-[#F8FBFF] p-1" : ""}>
+      <div className="overflow-hidden rounded-xl border border-[#DCE7F7] bg-[#F8FBFF]">
+        {imageReady ? (
+          <img
+            src={PPT_ILLUSTRATION_IMAGE}
+            alt={title}
+            className={imageClass}
+            decoding="async"
+            onError={() => setImageReady(false)}
+          />
+        ) : (
+          <svg viewBox="0 0 260 168" role="img" aria-label={title} className={imageClass}>
+            <rect width="260" height="168" rx="18" fill="#F8FBFF" />
+            <rect x="24" y="24" width="122" height="62" rx="12" fill="#FFFFFF" stroke="#CFE0FF" strokeWidth="2" />
+            <rect x="42" y="42" width="68" height="6" rx="3" fill="#2563EB" />
+            <rect x="42" y="58" width="88" height="4" rx="2" fill="#CBD5E1" />
+            <circle cx="58" cy="112" r="17" fill="#FFD7C2" />
+            <path d="M42 108c6-22 31-22 37 0-13-9-25-9-37 0Z" fill="#7C3AED" />
+            <path d="M45 131c6-22 30-24 39 0l12 30H34Z" fill="#FB7299" />
+            <rect x="104" y="102" width="54" height="35" rx="10" fill="#FFFFFF" stroke="#F9A8D4" strokeWidth="2" />
+            <rect x="180" y="60" width="52" height="42" rx="12" fill="#FFFFFF" stroke="#CFE0FF" strokeWidth="2" />
+            <path d="M154 119c18-18 32-22 49-15" fill="none" stroke="#2563EB" strokeWidth="5" strokeLinecap="round" />
+            <path d="m200 96 14 10-15 9" fill="none" stroke="#2563EB" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+            <rect x="28" y="145" width="202" height="9" rx="4.5" fill="#FED7AA" />
+          </svg>
+        )}
+      </div>
+      {!compact ? (
+        <>
+          <div className="mt-2 text-sm font-black ui-text-ink">{title}</div>
+          <p className="mt-1 line-clamp-3 text-[11px] font-semibold leading-5 ui-text-secondary">{caption}</p>
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -880,6 +1426,7 @@ function buildPptPreviewCards(slides: DeckSlide[]) {
       subtitle: slide.subtitle || "",
       bullets: slide.bullets.slice(0, 3),
       accent: slide.accent || "",
+      illustration: slide.illustration,
     };
   });
 }
@@ -888,6 +1435,47 @@ function isAdvancedDeck(slides?: DeckSlide[]) {
   return Boolean(
     slides?.some((slide) => slide.title.includes("章节定位") || slide.title.includes("关系梳理")),
   );
+}
+
+function buildPptExplanationVideoArtifact(
+  artifact: RecentPptArtifact,
+  courseTitle: string,
+  sectionTitle: string,
+): PptExplanationVideoArtifact {
+  const title = artifact.customTitle || artifact.fileName.replace(/\.pptx$/i, "");
+  const slides = artifact.slides?.length ? artifact.slides : buildCourseDeckSlides([], courseTitle, sectionTitle);
+  const storyboard = slides.slice(0, 8).map((slide, index) => {
+    const bullets = slide.bullets?.slice(0, 3) || [];
+    const speakerNote = (slide as { speakerNote?: string }).speakerNote || "";
+    const narration =
+      speakerNote ||
+      `这一页围绕“${slide.title}”展开，先抓住${bullets[0] || "本页主线"}，再结合${bullets[1] || "关键概念"}和${bullets[2] || "课堂示例"}完成理解。`;
+    return {
+      slideIndex: index + 1,
+      title: slide.title,
+      narration,
+      visualHint:
+        slide.kind === "cover"
+          ? "封面停留，标题轻微推进，建立课程主题。"
+          : slide.kind === "ending"
+            ? "结尾页收束，突出复习任务和下一步行动。"
+            : "镜头跟随本页要点逐条高亮，右下角保留页码和章节名。",
+      durationSeconds: slide.kind === "cover" || slide.kind === "ending" ? 18 : 28,
+    };
+  });
+  const totalSeconds = storyboard.reduce((sum, scene) => sum + scene.durationSeconds, 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return {
+    title: `${title} · 讲解视频`,
+    summary: `已根据 ${slides.length} 页 PPT 生成讲解分镜、旁白稿和视频预览，用于课堂回看或答辩演示。`,
+    generatedAt: formatGenerationTime(),
+    durationLabel: `${minutes}:${String(seconds).padStart(2, "0")}`,
+    voiceRole: "AI 教师旁白",
+    storyboard,
+    transcript: storyboard.map((scene) => `第 ${scene.slideIndex} 页《${scene.title}》：${scene.narration}`).join("\n\n"),
+    videoUrl: "",
+  };
 }
 
 function upgradeRecentPptArtifact(
@@ -923,6 +1511,9 @@ function toResourceCardFromManagedDetail(detail: ManagedResourceDetail): Resourc
     study_suggestion: detail.study_suggestion,
     source_file_count: detail.source_file_count,
     source_files: detail.source_files,
+    generated_at: detail.generated_at,
+    updated_at: detail.updated_at,
+    generation_context: detail.generation_context,
   };
 }
 
@@ -1006,57 +1597,104 @@ function buildPracticeDownloadText(title: string, questions: PracticeQuestion[])
   ].join("\n\n");
 }
 
-function buildFallbackPracticeQuestions(courseTitle: string, sectionTitle: string): PracticeQuestion[] {
-  if (courseTitle.includes("软件工程")) {
-    return buildSoftwareEngineeringChapterProfile(courseTitle, sectionTitle).practiceQuestions;
-  }
+function buildComputerSciencePracticeQuestions(sectionTitle: string): PracticeQuestion[] {
+  const section = sectionTitle.trim() || "当前章节";
   return [
     {
-      id: "practice-1",
-      question: `学习《${sectionTitle}》时，最应该优先建立的是什么？`,
-      options: ["章节主线与要解决的问题", "只背术语定义", "只记页面样式", "先跳过结构关系"],
+      id: "cs-practice-1",
+      question: "使用数组实现栈时，`top` 表示栈顶元素下标，容量为 `capacity`。执行 `push(x)` 前应优先判断哪一项？",
+      options: ["`top == capacity - 1`", "`top == -1`", "`x == 0`", "数组是否已经升序"],
       answer: ["A"],
-      explanation: "先抓住章节主线和问题背景，再去理解细节和实现，复习效率更高。",
+      explanation: "数组栈容量固定，入栈前必须先判断栈满，否则 `top + 1` 后写入会造成数组越界。",
       questionType: "single",
-      knowledgeTag: courseTitle,
+      knowledgeTag: "数据结构：栈",
     },
     {
-      id: "practice-2",
-      question: `如果要真正掌握《${sectionTitle}》里的复杂知识点，更合适的学习顺序是什么？`,
-      options: ["直接做题碰运气", "先看结构再拆细节", "只看总结不看过程", "遇到难点就跳过"],
+      id: "cs-practice-2",
+      question: "括号匹配、浏览器后退、函数调用栈这些场景共同依赖哪种访问规则？",
+      options: ["FIFO", "LIFO", "随机访问", "按 key 哈希访问"],
       answer: ["B"],
-      explanation: "先建立整体结构，再逐步深入，是更稳定也更容易迁移的学习路径。",
+      explanation: "这些场景都要求后进入的数据先被处理，符合栈的 LIFO（Last In First Out）规则。",
       questionType: "single",
-      knowledgeTag: sectionTitle,
+      knowledgeTag: "数据结构：栈",
     },
     {
-      id: "practice-3",
-      question: `以下哪些动作更适合在学完《${sectionTitle}》后做复盘巩固？`,
-      options: ["整理讲义重点", "画出知识关系图", "只看标题不展开", "做针对性练习"],
-      answer: ["A", "B", "D"],
-      explanation: "讲义、导图和练习是完整的复盘闭环。",
+      id: "cs-practice-3",
+      question: "下面哪些结构或场景符合队列的 FIFO 特性？",
+      options: ["打印任务排队", "消息队列消费", "广度优先搜索 BFS", "递归函数调用返回"],
+      answer: ["A", "B", "C"],
+      explanation: "队列强调先入先出，打印任务、消息消费和 BFS 都典型使用队列；递归调用返回更接近栈。",
       questionType: "multiple",
-      knowledgeTag: sectionTitle,
+      knowledgeTag: "数据结构：队列",
     },
     {
-      id: "practice-4",
-      question: `请用 2 到 3 句话说明《${sectionTitle}》里最容易混淆的点，并给出你的区分方法。`,
+      id: "cs-practice-4",
+      question: "对长度为 n 的无序数组进行线性查找，最坏情况下时间复杂度是多少？",
+      options: ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
+      answer: ["C"],
+      explanation: "最坏情况下目标元素不存在或位于最后一个位置，需要检查 n 个元素，因此是 O(n)。",
+      questionType: "single",
+      knowledgeTag: "算法复杂度",
+    },
+    {
+      id: "cs-practice-5",
+      question: "判断题：二分查找可以直接用于任意无序数组。",
+      options: ["正确", "错误"],
+      answer: ["B"],
+      explanation: "二分查找依赖有序性，只有在数据有序或能按单调关系排除一半搜索空间时才适用。",
+      questionType: "single",
+      knowledgeTag: "算法：二分查找",
+    },
+    {
+      id: "cs-practice-6",
+      question: "阅读 Java 代码：`int[] a = {2, 4, 6}; System.out.println(a[2]);` 输出结果是什么？",
+      options: ["2", "4", "6", "数组越界"],
+      answer: ["C"],
+      explanation: "Java 数组下标从 0 开始，`a[2]` 访问第三个元素，输出 6。",
+      questionType: "single",
+      knowledgeTag: "Java 数组",
+    },
+    {
+      id: "cs-practice-7",
+      question: "在 Java 中使用 `HashMap<String, Integer>` 统计单词出现次数时，最核心的操作是哪组？",
+      options: ["按 key 查询旧次数", "将新次数写回 key", "每次都排序整个数组", "用下标直接访问字符串地址"],
+      answer: ["A", "B"],
+      explanation: "词频统计的关键是根据单词 key 读取旧值，再把 `old + 1` 写回；不需要每次整体排序。",
+      questionType: "multiple",
+      knowledgeTag: "Java 集合",
+    },
+    {
+      id: "cs-practice-8",
+      question: "数据库用户表中 `email` 字段要求不能重复，并且经常按邮箱登录查询，应该优先考虑什么设计？",
+      options: ["给 `email` 建唯一索引", "把邮箱字段改成更长的名字", "每次登录全表扫描", "删除主键"],
+      answer: ["A"],
+      explanation: "唯一索引既能约束邮箱不重复，也能提升按邮箱查询的效率。",
+      questionType: "single",
+      knowledgeTag: "数据库索引",
+    },
+    {
+      id: "cs-practice-9",
+      question: "操作系统中，多个线程同时修改共享计数器，如果没有锁或原子操作，最可能出现什么问题？",
+      options: ["竞态条件", "DNS 解析失败", "SQL 语法错误", "数组自动扩容"],
+      answer: ["A"],
+      explanation: "共享变量并发读写缺少同步时，执行顺序不确定，可能导致结果丢失或不一致。",
+      questionType: "single",
+      knowledgeTag: "操作系统：线程同步",
+    },
+    {
+      id: "cs-practice-10",
+      question: `结合《${section}》，请设计一个“小型在线题库”的核心数据结构或表结构，并说明至少 2 个关键字段为什么这样设计。`,
       options: [],
       answer: [],
-      explanation: "先写出你的理解，再交给 AI 导师做针对性讲解和纠偏。",
+      explanation: "参考思路：可从题目表、选项表、提交记录表展开，说明题目 id、知识点、题型、正确答案、用户答案、提交时间等字段的作用。",
       questionType: "short",
-      knowledgeTag: "易错点",
-    },
-    {
-      id: "practice-5",
-      question: `如果把《${sectionTitle}》放到一个真实项目或页面中，你会优先检查哪类设计是否合理？`,
-      options: ["概念边界和结构主线", "配色是否足够花哨", "按钮数量是否更多", "标题是否更长"],
-      answer: ["A"],
-      explanation: "真实落地时最先影响质量的通常是概念边界、结构关系和场景适配，而不是表面装饰。",
-      questionType: "single",
-      knowledgeTag: "场景迁移",
+      knowledgeTag: "综合应用",
     },
   ];
+}
+
+function buildFallbackPracticeQuestions(_courseTitle: string, sectionTitle: string): PracticeQuestion[] {
+  return buildComputerSciencePracticeQuestions(sectionTitle);
 }
 
 function buildMindmapTreeFromLines(title: string, lines: string[]): MindmapNode[] {
@@ -1129,7 +1767,17 @@ function extractMindmapNodes(resource: ResourceCard | null | undefined, title: s
 }
 
 function MindmapTreeView({ nodes }: { nodes: MindmapNode[] }) {
-  return <HorizontalMindmap nodes={nodes} variant="compact" />;
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-2xl border border-[#D6F5E8] bg-[#F5FFFB] px-4 py-5 text-center text-xs font-bold text-[#10B981]">
+          正在加载导图预览...
+        </div>
+      }
+    >
+      <HorizontalMindmap nodes={nodes} variant="compact" />
+    </Suspense>
+  );
 }
 
 function InlinePreviewContent({
@@ -1294,34 +1942,49 @@ function buildLocalGeneratedResource(
   resourceType: ResourceCard["resource_type"],
   courseTitle: string,
   sectionTitle: string,
+  outlineLines: string[] = [],
 ): ResourceCard {
   const titleSuffix =
     resourceType === "mindmap" ? "导图" : resourceType === "practice_set" ? "练习" : "讲义";
+  const cleanOutline = outlineLines.map((item) => item.trim()).filter(Boolean).slice(0, 8);
+  const outlineMarkdown = cleanOutline.length ? buildOutlineMarkdown(cleanOutline) : "";
   const fallbackBullets =
     resourceType === "mindmap"
       ? [
           `## ${courseTitle} · ${sectionTitle} 导图`,
-          "- 核心概念：先明确本节主线概念与定义边界",
-          "- 结构关系：再梳理模块之间的依赖与调用关系",
-          "- 复习顺序：建议先总览结构，再逐点展开细节",
+          ...(cleanOutline.length
+            ? cleanOutline.map((item) => `- ${item}`)
+            : [
+                "- 核心概念：先明确本节主线概念与定义边界",
+                "- 结构关系：再梳理模块之间的依赖与调用关系",
+                "- 复习顺序：建议先总览结构，再逐点展开细节",
+              ]),
         ]
       : resourceType === "practice_set"
         ? [
             `## ${courseTitle} · ${sectionTitle} 练习`,
-            "1. 先用一句话说明本节核心概念是什么",
-            "2. 结合一个实际场景说明它为什么这样设计",
-            "3. 说出最容易出错的点，以及你会怎么规避",
+            ...(cleanOutline.length
+              ? cleanOutline.slice(0, 5).map((item, index) => `${index + 1}. 围绕“${item}”设计一道理解或应用题，并写出答题依据。`)
+              : [
+                  "1. 先用一句话说明本节核心概念是什么",
+                  "2. 结合一个实际场景说明它为什么这样设计",
+                  "3. 说出最容易出错的点，以及你会怎么规避",
+                ]),
           ]
         : [
             `## ${courseTitle} · ${sectionTitle} 讲义`,
             "### 本节主线",
-            "这一节要先弄清当前章节到底在解决什么问题，再去看模块、流程和关系，而不是只记几个孤立名词。",
+            cleanOutline[0] || "这一节要先弄清当前章节到底在解决什么问题，再去看模块、流程和关系，而不是只记几个孤立名词。",
             "### 学习目标",
-            "- 理解本节最核心的设计目的",
-            "- 掌握本节提到的主要模块与关系",
-            "- 能把知识点放回实际场景中解释清楚",
+            ...(cleanOutline.length
+              ? cleanOutline.slice(0, 4).map((item) => `- ${item}`)
+              : [
+                  "- 理解本节最核心的设计目的",
+                  "- 掌握本节提到的主要模块与关系",
+                  "- 能把知识点放回实际场景中解释清楚",
+                ]),
             "### 关键结构",
-            "学习时建议按“问题背景 -> 核心概念 -> 结构关系 -> 场景落地”的顺序往下理解，这样更容易形成完整主线。",
+            outlineMarkdown || "学习时建议按“问题背景 -> 核心概念 -> 结构关系 -> 场景落地”的顺序往下理解，这样更容易形成完整主线。",
             "### 复习重点",
             "- 先抓主线，再补细节",
             "- 注意相邻概念之间的区别",
@@ -1403,7 +2066,7 @@ function buildGenerationTutorPrompt(
     return `你现在不要推荐视频、课程或外部资料。请直接围绕《${targetTitle}》输出这一节的知识导图结果：先给出 1 份树状结构导图，再补充节点之间的关系，最后给出复习顺序。`;
   }
   if (kind === "practice") {
-    return `你现在不要推荐视频、课程或外部资料。请直接围绕《${targetTitle}》输出这一节的随堂练习：先给我 5 道题，再给参考答案和解题思路，最后指出这一节最容易错的题型。`;
+    return `你现在不要推荐视频、课程或外部资料。请直接围绕《${targetTitle}》输出这一节的计算机课程随堂练习：至少给我 10 道题，覆盖数据结构、编程语言、算法复杂度、数据库或操作系统等具体考点；题型包含单选、多选、判断、代码阅读、简答和应用题；每题都给参考答案和解题思路，避免泛泛的软件工程流程题。`;
   }
   if (kind === "ppt") {
     return `你现在不要推荐视频、课程或外部资料。请直接围绕《${targetTitle}》输出这一节的 PPT 草案：按“封面 / 本节目标 / 核心概念 / 关键结构 / 示例 / 总结”给出逐页内容。`;
@@ -1413,7 +2076,7 @@ function buildGenerationTutorPrompt(
 
 function buildGenerationTutorQuickPrompts(kind: "handout" | "mindmap" | "practice" | "ppt") {
   if (kind === "mindmap") return ["直接输出导图", "解释节点关系", "给我复习顺序"];
-  if (kind === "practice") return ["直接出 5 道题", "给答案和思路", "指出易错题型"];
+  if (kind === "practice") return ["直接出 10 道题", "加入代码阅读题", "按知识点分层"];
   if (kind === "ppt") return ["直接整理 PPT", "按页展开内容", "压缩成汇报版"];
   return ["直接生成讲义", "提炼复习重点", "补充易混淆点"];
 }
@@ -1461,9 +2124,112 @@ function filterWorkspacePptByCourseTitle(
   return !text.trim() || text.includes(normalizedTitle) ? artifact : null;
 }
 
+function formatResourceGeneratedAt(resource: ResourceCard) {
+  const value = resource.generated_at || resource.updated_at;
+  if (!value) return "历史生成";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "历史生成";
+  return parsed.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function resolveGeneratedSectionTitle(resource: ResourceCard, fallbackSectionTitle: string) {
+  const contextPoints = Array.isArray(resource.generation_context?.knowledge_points)
+    ? resource.generation_context?.knowledge_points
+    : [];
+  const candidates = [...contextPoints, ...(resource.source_titles || [])]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item) => sanitizeWorkspaceText(item, "") !== "");
+  return (
+    sanitizeWorkspaceText(
+      candidates.find((item) => item.includes("章：") || item.includes("章:") || item.includes("节")) ||
+      candidates[1] ||
+      fallbackSectionTitle,
+      fallbackSectionTitle,
+    )
+  );
+}
+
+function mapBackendResourceToArtifact(
+  resource: ResourceCard,
+  courseTitle: string,
+  fallbackSectionTitle: string,
+  courseId: string,
+): RecentResourceArtifact | null {
+  const sectionTitle = resolveGeneratedSectionTitle(resource, fallbackSectionTitle);
+  const common = {
+    resourceId: resource.resource_id ? Number(resource.resource_id) : null,
+    summary: buildResourceSummary(resource, "已从历史生成记录恢复。"),
+    generatedAt: formatResourceGeneratedAt(resource),
+    sectionTitle,
+    rawContent: resource.content_markdown || "",
+  };
+  if (resource.resource_type === "lecture_note" || resource.resource_type === "lecture_notes") {
+    return {
+      ...common,
+      kind: "handout",
+      preferredFormat: "docx",
+      title: resource.title || `${courseTitle} · ${sectionTitle} 讲义`,
+      downloadUrl: buildWorkspaceResourceLink(courseId, sectionTitle, "handout", resource.title || `${courseTitle} · ${sectionTitle} 讲义`),
+      previewContent: buildExpandedHandoutPreviewContent(resource, courseTitle, sectionTitle),
+    };
+  }
+  if (resource.resource_type === "mindmap" || resource.resource_type === "mind_map") {
+    return {
+      ...common,
+      kind: "mindmap",
+      preferredFormat: "xmind",
+      title: resource.title || `${courseTitle} · ${sectionTitle} 导图`,
+      downloadUrl: buildWorkspaceResourceLink(courseId, sectionTitle, "mindmap", resource.title || `${courseTitle} · ${sectionTitle} 导图`),
+      previewContent: buildResourcePreviewContent(resource, ["已从历史导图记录恢复。"]),
+      mindmapNodes: extractMindmapNodes(resource, courseTitle, sectionTitle),
+    };
+  }
+  if (resource.resource_type === "practice_set" || resource.resource_type === "quiz_set") {
+    return {
+      ...common,
+      kind: "practice",
+      preferredFormat: "docx",
+      title: resource.title || `${courseTitle} · ${sectionTitle} 练习`,
+      downloadUrl: buildWorkspaceResourceLink(courseId, sectionTitle, "practice", resource.title || `${courseTitle} · ${sectionTitle} 练习`),
+      previewContent: buildResourcePreviewContent(resource, ["已从历史练习记录恢复。"]),
+      practiceQuestions: extractPracticeQuestions(resource, courseTitle, sectionTitle),
+    };
+  }
+  return null;
+}
+
+function mapBackendResourceToPpt(
+  resource: ResourceCard,
+  courseTitle: string,
+  fallbackSectionTitle: string,
+): RecentPptArtifact | null {
+  if (resource.resource_type !== "ppt") return null;
+  const sectionTitle = resolveGeneratedSectionTitle(resource, fallbackSectionTitle);
+  const slides = buildCourseDeckSlides([resource], courseTitle, sectionTitle);
+  return {
+    resourceId: resource.resource_id ? Number(resource.resource_id) : null,
+    fileName: `${(resource.title || `${courseTitle}-${sectionTitle}`).replace(/[\\/:*?"<>|]+/g, "-")}.pptx`,
+    slideCount: slides.length,
+    generatedAt: formatResourceGeneratedAt(resource),
+    slides,
+    summary: buildResourceSummary(resource, "已从历史 PPT 记录恢复。"),
+    sectionTitle,
+    downloadUrl: "",
+    preferredFormat: "pptx" as const,
+    rawContent: resource.content_markdown || "",
+  } satisfies RecentPptArtifact;
+}
+
 function mapLibraryResourceTag(resourceType: string) {
   if (resourceType === "mindmap") return "导图";
   if (resourceType === "practice_set") return "练习";
+  if (resourceType === "ppt") return "PPT";
   if (resourceType === "course_overview") return "总览";
   if (resourceType === "teaching_plan") return "教案";
   return "讲义";
@@ -1520,10 +2286,11 @@ export default function CourseLearning() {
   const [userComment, setUserComment] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [videoPlaying, setVideoPlaying] = useState(false);
-  const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [currentPlaybackTime, setCurrentPlaybackTime] = useState(() => Number(pendingResumeTimeRef.current || 0));
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoFrameReady, setVideoFrameReady] = useState(false);
-  const [showVideoLoadingOverlay, setShowVideoLoadingOverlay] = useState(false);
+  const [showVideoLoadingOverlay, setShowVideoLoadingOverlay] = useState(shouldAutoplayOnEnter);
+  const [videoSourceMounted, setVideoSourceMounted] = useState(() => shouldAutoplayOnEnter);
   const [danmakuEnabled, setDanmakuEnabled] = useState(true);
   const [newDanmakuText, setNewDanmakuText] = useState("");
   const [danmakuColor, setDanmakuColor] = useState("#fb7299");
@@ -1534,39 +2301,41 @@ export default function CourseLearning() {
   const [learningQuestions, setLearningQuestions] = useState<LearningQuestionSummary[]>([]);
   const [learningNotes, setLearningNotes] = useState<LearningNoteSummary[]>([]);
   const [learningFeedLoading, setLearningFeedLoading] = useState(true);
+  const [pageShellReady, setPageShellReady] = useState(false);
   const [commentSort, setCommentSort] = useState<CommentSortMode>("latest");
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [generatingHandout, setGeneratingHandout] = useState(false);
   const [generatingPpt, setGeneratingPpt] = useState(false);
+  const [generatingPptVideo, setGeneratingPptVideo] = useState(false);
   const [generatingMindmap, setGeneratingMindmap] = useState(false);
   const [generatingPractice, setGeneratingPractice] = useState(false);
   const [generatingOpenClassroom, setGeneratingOpenClassroom] = useState(false);
   const [openClassroomPreview, setOpenClassroomPreview] = useState<ClassroomPreviewState | null>(null);
   const activeEpisode = episodes[activeEpisodeIdx] || episodes[0];
   const currentSectionTitle = activeEpisode?.title || "当前章节";
-  const persistedResourceWorkspace = useMemo(() => readPersistedCourseResourceWorkspace(courseId), [courseId]);
-  const [recentArtifacts, setRecentArtifacts] = useState<RecentResourceArtifact[]>(() =>
-    filterWorkspaceArtifactsByCourseTitle(persistedResourceWorkspace?.recentArtifacts, course.title),
+  const [selectedResourceDraftType, setSelectedResourceDraftType] = useState<"handout" | "mindmap" | "ppt" | "pptVideo" | "practice">("ppt");
+  const [selectedPptTemplate, setSelectedPptTemplate] = useState<PptTemplateId>("academic");
+  const [resourceOutlineDraft, setResourceOutlineDraft] = useState(() =>
+    buildDefaultResourceOutline(course.title, currentSectionTitle).join("\n"),
   );
-  const [recentPpt, setRecentPpt] = useState<RecentPptArtifact | null>(() =>
-    upgradeRecentPptArtifact(
-      filterWorkspacePptByCourseTitle(persistedResourceWorkspace?.recentPpt, course.title),
-      course.title,
-      currentSectionTitle,
-    ),
+  const outlineLines = useMemo(
+    () => parseEditableOutline(resourceOutlineDraft, course.title, currentSectionTitle),
+    [course.title, currentSectionTitle, resourceOutlineDraft],
   );
+  const [recentArtifacts, setRecentArtifacts] = useState<RecentResourceArtifact[]>([]);
+  const [recentPpt, setRecentPpt] = useState<RecentPptArtifact | null>(null);
+  const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const [collapsedRecentKeys, setCollapsedRecentKeys] = useState<string[]>([]);
-  const [showOnlyCurrentSectionResults, setShowOnlyCurrentSectionResults] = useState(
-    () => persistedResourceWorkspace?.showOnlyCurrentSectionResults ?? true,
-  );
+  const [showOnlyCurrentSectionResults, setShowOnlyCurrentSectionResults] = useState(true);
   const [previewState, setPreviewState] = useState<ResourcePreviewState | null>(null);
   const [pptViewer, setPptViewer] = useState<PptViewerState | null>(null);
+  const [pptPlaying, setPptPlaying] = useState(false);
   const [practiceAnswers, setPracticeAnswers] = useState<Record<string, string[]>>({});
   const [practiceShortAnswers, setPracticeShortAnswers] = useState<Record<string, string>>({});
   const [practiceSubmitted, setPracticeSubmitted] = useState(false);
   const [courseLibraryResources, setCourseLibraryResources] = useState<ResourceCard[]>([]);
-  const [courseLibraryLoading, setCourseLibraryLoading] = useState(true);
+  const [courseLibraryLoading, setCourseLibraryLoading] = useState(false);
   const [learningCourseDetail, setLearningCourseDetail] = useState<LearningCourseDetail | null>(null);
   const nextDanmakuIndexRef = useRef(0);
   const laneAvailableAtRef = useRef<number[]>(new Array(DANMAKU_SCROLL_LANES.length).fill(0));
@@ -1574,21 +2343,77 @@ export default function CourseLearning() {
   const lastVideoTimeRef = useRef(0);
 
   useEffect(() => {
+    if (!pageShellReady) return;
+    let cancelled = false;
+    const markReady = () => {
+      if (!cancelled) {
+        setPageShellReady(true);
+      }
+    };
+    const first = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(markReady);
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(first);
+    };
+  }, []);
+
+  useEffect(() => {
+    setResourceOutlineDraft(buildDefaultResourceOutline(course.title, currentSectionTitle).join("\n"));
+  }, [course.title, currentSectionTitle]);
+
+  useEffect(() => {
+    if (!pptPlaying || !pptViewer?.slides.length) return;
+    const timer = window.setInterval(() => {
+      setPptViewer((current) => {
+        if (!current) return current;
+        if (current.slideIndex >= current.slides.length - 1) {
+          setPptPlaying(false);
+          return current;
+        }
+        return { ...current, slideIndex: current.slideIndex + 1 };
+      });
+    }, 2600);
+    return () => window.clearInterval(timer);
+  }, [pptPlaying, pptViewer?.slides.length]);
+
+  useEffect(() => {
     if (!learnWorkspaceRef.current) return;
     const revealNodes = learnWorkspaceRef.current.querySelectorAll<HTMLElement>("[data-learn-reveal]");
     if (!revealNodes.length) return;
-    gsap.fromTo(
-      revealNodes,
-      { opacity: 0, y: 24, scale: 0.985 },
-      {
-        opacity: 1,
-        y: 0,
-        scale: 1,
-        duration: 0.72,
-        ease: "power3.out",
-        stagger: 0.05,
-      },
-    );
+    let cancelled = false;
+    const runReveal = async () => {
+      const { default: gsap } = await import("gsap");
+      if (cancelled) return;
+      gsap.fromTo(
+        revealNodes,
+        { opacity: 0, y: 24, scale: 0.985 },
+        {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 0.72,
+          ease: "power3.out",
+          stagger: 0.05,
+        },
+      );
+    };
+    const idleId =
+      "requestIdleCallback" in window
+        ? (window as Window & { requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number }).requestIdleCallback(
+            () => void runReveal(),
+            { timeout: 1200 },
+          )
+        : globalThis.setTimeout(() => void runReveal(), 80);
+    return () => {
+      cancelled = true;
+      if ("cancelIdleCallback" in window) {
+        (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(Number(idleId));
+      } else {
+        globalThis.clearTimeout(Number(idleId));
+      }
+    };
   }, [courseId, activeEpisodeIdx]);
 
   const activeVideoSrc = useMemo(() => {
@@ -1636,6 +2461,23 @@ export default function CourseLearning() {
   };
 
   const activePptSlide = pptViewer?.slides[pptViewer.slideIndex] || null;
+  const updateActivePptSlide = (patch: Partial<DeckSlide>) => {
+    setPptViewer((current) => {
+      if (!current) return current;
+      const slides = current.slides.map((slide, index) =>
+        index === current.slideIndex ? { ...slide, ...patch } : slide,
+      );
+      setRecentPpt((ppt) => (ppt ? { ...ppt, slides } : ppt));
+      return { ...current, slides };
+    });
+  };
+
+  const updateActivePptBullet = (bulletIndex: number, value: string) => {
+    if (!activePptSlide) return;
+    const bullets = [...activePptSlide.bullets];
+    bullets[bulletIndex] = value;
+    updateActivePptSlide({ bullets });
+  };
   const courseLibraryTypeSummary = useMemo(() => {
     const stats = new Map<string, number>();
     for (const item of courseLibraryResources) {
@@ -1651,6 +2493,35 @@ export default function CourseLearning() {
     }
     return Array.from(stats.entries()).slice(0, 4);
   }, [courseLibraryResources]);
+  const mergeResourcesIntoCourseLibrary = (resources: ResourceCard[]) => {
+    const libraryReadyResources = resources.filter((item) => Number(item.resource_id) > 0);
+    if (!libraryReadyResources.length) return;
+    setCourseLibraryResources((current) => {
+      const merged = [...current];
+      for (const resource of libraryReadyResources) {
+        const resourceId = Number(resource.resource_id);
+        const existingIndex = merged.findIndex((item) => Number(item.resource_id) === resourceId);
+        if (existingIndex >= 0) {
+          merged[existingIndex] = { ...merged[existingIndex], ...resource };
+        } else {
+          merged.unshift(resource);
+        }
+      }
+      return merged;
+    });
+  };
+  const refreshCourseLibraryFromDatabase = async () => {
+    try {
+      const result = await studentApi.listResourcesByCourseCode(activeUserId, backendCourseCode);
+      setCourseLibraryResources(
+        (result.items || []).filter((item) =>
+          ["lecture_note", "mindmap", "practice_set", "course_overview", "teaching_plan", "ppt"].includes(item.resource_type),
+        ),
+      );
+    } catch {
+      // The generated card is already merged locally; keep it visible if the library refresh is still warming up.
+    }
+  };
   const previewRecommendation = useMemo<PreviewRecommendation | null>(() => {
     if (!previewState) return null;
     if (previewState.kind === "ppt") {
@@ -1699,22 +2570,28 @@ export default function CourseLearning() {
   }, [previewState]);
 
   useEffect(() => {
-    const persisted = readPersistedCourseResourceWorkspace(courseId);
-    setRecentArtifacts(filterWorkspaceArtifactsByCourseTitle(persisted?.recentArtifacts, course.title));
-    setRecentPpt(
-      upgradeRecentPptArtifact(
-        filterWorkspacePptByCourseTitle(persisted?.recentPpt, course.title),
-        course.title,
-        currentSectionTitle,
-      ),
-    );
-    setShowOnlyCurrentSectionResults(persisted?.showOnlyCurrentSectionResults ?? true);
-    setCollapsedRecentKeys([]);
-    setPreviewState(null);
-    setPracticeAnswers({});
-    setPracticeShortAnswers({});
-    setPracticeSubmitted(false);
-  }, [courseId]);
+    setWorkspaceHydrated(false);
+    const hydratePersistedWorkspace = () => {
+      const persisted = readPersistedCourseResourceWorkspace(courseId);
+      setRecentArtifacts(filterWorkspaceArtifactsByCourseTitle(persisted?.recentArtifacts, course.title));
+      setRecentPpt(
+        upgradeRecentPptArtifact(
+          filterWorkspacePptByCourseTitle(persisted?.recentPpt, course.title),
+          course.title,
+          currentSectionTitle,
+        ),
+      );
+      setShowOnlyCurrentSectionResults(persisted?.showOnlyCurrentSectionResults ?? true);
+      setCollapsedRecentKeys([]);
+      setPreviewState(null);
+      setPracticeAnswers({});
+      setPracticeShortAnswers({});
+      setPracticeSubmitted(false);
+      setWorkspaceHydrated(true);
+    };
+    const timeoutId = window.setTimeout(hydratePersistedWorkspace, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [course.title, courseId, currentSectionTitle]);
 
   useEffect(() => {
     if (previewState?.kind === "resource" && previewState.resourceKind === "practice") {
@@ -1738,9 +2615,37 @@ export default function CourseLearning() {
         if (cancelled) return;
         setCourseLibraryResources(
           (result.items || []).filter((item) =>
-            ["lecture_note", "mindmap", "practice_set", "course_overview", "teaching_plan"].includes(item.resource_type),
+            ["lecture_note", "mindmap", "practice_set", "course_overview", "teaching_plan", "ppt"].includes(item.resource_type),
           ),
         );
+        const backendArtifacts = (result.items || [])
+          .map((item) => mapBackendResourceToArtifact(item, course.title, currentSectionTitle, courseId))
+          .filter((item): item is RecentResourceArtifact => Boolean(item));
+        const backendPpt =
+          (result.items || [])
+            .map((item) => mapBackendResourceToPpt(item, course.title, currentSectionTitle))
+            .filter((item): item is RecentPptArtifact => Boolean(item))
+            .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0] || null;
+        if (backendArtifacts.length) {
+          setRecentArtifacts((current) => {
+            const merged = [...current];
+            for (const artifact of backendArtifacts) {
+              const exists = merged.some(
+                (item) =>
+                  item.resourceId &&
+                  artifact.resourceId &&
+                  item.resourceId === artifact.resourceId,
+              );
+              if (!exists) {
+                merged.push(artifact);
+              }
+            }
+            return merged;
+          });
+        }
+        if (backendPpt) {
+          setRecentPpt((current) => current || backendPpt);
+        }
       } catch {
         // Keep current course library resources to avoid blanking the panel while syncing fails.
       } finally {
@@ -1750,13 +2655,15 @@ export default function CourseLearning() {
       }
     }
 
-    void hydrateCourseLibrary();
+    const timeoutId = window.setTimeout(() => void hydrateCourseLibrary(), 650);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [activeUserId, backendCourseCode]);
+  }, [activeUserId, backendCourseCode, course.title, courseId, currentSectionTitle, pageShellReady]);
 
   useEffect(() => {
+    if (!pageShellReady) return;
     let cancelled = false;
 
     async function hydrateLearningCourseDetail() {
@@ -1772,19 +2679,21 @@ export default function CourseLearning() {
       }
     }
 
-    void hydrateLearningCourseDetail();
+    const timeoutId = window.setTimeout(() => void hydrateLearningCourseDetail(), 900);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [backendCourseId]);
+  }, [backendCourseId, pageShellReady]);
 
   useEffect(() => {
+    if (!workspaceHydrated) return;
     persistCourseResourceWorkspace(courseId, {
       recentArtifacts,
       recentPpt,
       showOnlyCurrentSectionResults,
     });
-  }, [courseId, recentArtifacts, recentPpt, showOnlyCurrentSectionResults]);
+  }, [courseId, recentArtifacts, recentPpt, showOnlyCurrentSectionResults, workspaceHydrated]);
 
   const chapterPlaylistSection = (
     <section className="overflow-hidden ui-radius-28 border border-[#dfe7ef] bg-[linear-gradient(135deg,#ffffff_0%,#f7fbff_62%,#fff7fa_100%)] p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
@@ -1884,20 +2793,23 @@ export default function CourseLearning() {
     "作者刚才提到的公式是什么",
     "这个术语什么意思",
   ];
+  const buildVideoTutorQuery = (startAt: number) =>
+    `我正在看《${course.title}》的“${activeEpisode.title}”，当前视频停在 ${formatPlaybackClock(startAt)}。\n\n请先结合这个时间点解释当前片段在讲什么，并帮我指出这里最容易问的问题。`;
 
   useEffect(() => {
+    const startAt = Number(videoRef.current?.currentTime || currentPlaybackTime || 0);
     saveActiveTutorContext({
       courseId,
       sectionId: activeEpisodeIdx,
       mode: "learning",
       title: course.title,
-      subtitle: `${activeEpisode.title} · ${String(Math.floor(currentPlaybackTime / 60)).padStart(2, "0")}:${String(Math.floor(currentPlaybackTime % 60)).padStart(2, "0")}`,
+      subtitle: `${activeEpisode.title} · ${formatPlaybackClock(startAt)}`,
       videoSrc: activeVideoSrc,
       videoResourceId: activeVideoInsightMeta?.resourceId,
       videoFileId: activeVideoInsightMeta?.fileId,
       videoFileName: activeVideoInsightMeta?.fileName,
       quickPrompts: learningAssistantPrompts,
-      startAt: Number(videoRef.current?.currentTime || currentPlaybackTime || 0),
+      startAt,
       autoplay: true,
       muted: true,
     });
@@ -1910,7 +2822,7 @@ export default function CourseLearning() {
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/88 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#46607a] ring-1 ring-[#e5ebf2]">
               <Bot className="h-3.5 w-3.5 ui-text-brand" />
-              Learning Runtime
+              学习现场
             </div>
             <div className="mt-3 text-[15px] font-black tracking-[-0.02em] ui-text-ink">
               右侧 AI 导师已经接入当前视频、章节和播放进度
@@ -1924,21 +2836,29 @@ export default function CourseLearning() {
             type="button"
             onClick={() => {
               const startAt = rememberCurrentPlayback();
+              const playbackLabel = formatPlaybackClock(startAt);
               openTutorPanel({
                 courseId,
                 sectionId: activeEpisodeIdx,
                 mode: "learning",
                 title: course.title,
-                subtitle: `${activeEpisode.title} · ${String(Math.floor(currentPlaybackTime / 60)).padStart(2, "0")}:${String(Math.floor(currentPlaybackTime % 60)).padStart(2, "0")}`,
+                subtitle: `${activeEpisode.title} · ${playbackLabel}`,
+                query: buildVideoTutorQuery(startAt),
                 videoSrc: activeVideoSrc,
                 videoResourceId: activeVideoInsightMeta?.resourceId,
                 videoFileId: activeVideoInsightMeta?.fileId,
                 videoFileName: activeVideoInsightMeta?.fileName,
-                quickPrompts: learningAssistantPrompts,
+                quickPrompts: [
+                  `解释 ${playbackLabel} 这一段`,
+                  "这里的重点是什么",
+                  "给我举个例子",
+                  ...learningAssistantPrompts,
+                ],
                 startAt,
                 autoplay: true,
                 muted: true,
               });
+              showToast(`AI 导师已读取当前视频 ${playbackLabel} 的上下文`);
             }}
             className="shrink-0 rounded-full bg-[#111827] px-5 py-2.5 text-sm font-black text-white shadow-[0_12px_32px_rgba(17,24,39,0.2)] transition-all hover:-translate-y-0.5 hover:bg-[#0b1220]"
           >
@@ -1948,19 +2868,19 @@ export default function CourseLearning() {
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="course-glass-info-card">
-            <div className="text-[10px] font-black uppercase ui-tracking-brand ui-text-subtle">Current Context</div>
+            <div className="text-[10px] font-black uppercase ui-tracking-brand ui-text-subtle">当前上下文</div>
             <div className="mt-2 text-[13px] font-extrabold ui-text-ink">{activeEpisode.title}</div>
             <div className="mt-1 text-[11px] leading-5 ui-text-body">问题会优先锚定到当前章节和正在播放的内容，不会泛泛而谈。</div>
           </div>
           <div className="course-glass-info-card">
-            <div className="text-[10px] font-black uppercase ui-tracking-brand ui-text-subtle">Live Progress</div>
+            <div className="text-[10px] font-black uppercase ui-tracking-brand ui-text-subtle">播放进度</div>
             <div className="mt-2 text-[13px] font-extrabold ui-text-ink">
               {String(Math.floor(currentPlaybackTime / 60)).padStart(2, "0")}:{String(Math.floor(currentPlaybackTime % 60)).padStart(2, "0")}
             </div>
             <div className="mt-1 text-[11px] leading-5 ui-text-body">播放节点、课堂生成资料和你的提问会一起进入导师上下文。</div>
           </div>
           <div className="course-glass-info-card">
-            <div className="text-[10px] font-black uppercase ui-tracking-brand ui-text-subtle">Next Move</div>
+            <div className="text-[10px] font-black uppercase ui-tracking-brand ui-text-subtle">下一步</div>
             <div className="mt-2 text-[13px] font-extrabold ui-text-ink">先看视频，再追问卡点</div>
             <div className="mt-1 text-[11px] leading-5 ui-text-body">适合解释公式、拆术语、补代码思路，或把刚生成的讲义继续讲透。</div>
           </div>
@@ -1969,141 +2889,212 @@ export default function CourseLearning() {
     </section>
   );
 
+  const resourceDraftOptions = [
+    {
+      id: "handout" as const,
+      label: "讲义",
+      title: "复习讲义",
+      detail: "按大纲生成可阅读的课堂讲义",
+      Icon: FileText,
+      loading: generatingHandout,
+      onGenerate: () => void handleGenerateHandout(),
+    },
+    {
+      id: "mindmap" as const,
+      label: "导图",
+      title: "结构导图",
+      detail: "按大纲整理知识结构和概念关系",
+      Icon: Network,
+      loading: generatingMindmap,
+      onGenerate: () => void handleGenerateMindmap(),
+    },
+    {
+      id: "ppt" as const,
+      label: "PPT",
+      title: "课件草案",
+      detail: "生成可查看、播放、编辑的课件页",
+      Icon: Presentation,
+      loading: generatingPpt,
+      onGenerate: () => void handleGeneratePpt(),
+    },
+    {
+      id: "pptVideo" as const,
+      label: "视频",
+      title: "PPT讲解视频",
+      detail: "把课件页转成分镜和旁白讲解",
+      Icon: Video,
+      loading: generatingPptVideo,
+      onGenerate: () => void handleGeneratePptExplanationVideo(),
+    },
+    {
+      id: "practice" as const,
+      label: "练习",
+      title: "随堂练习",
+      detail: "按大纲生成题目、选项和解析",
+      Icon: Sparkles,
+      loading: generatingPractice,
+      onGenerate: () => void handleGeneratePractice(),
+    },
+  ];
+  const activeResourceDraftOption =
+    resourceDraftOptions.find((option) => option.id === selectedResourceDraftType) || resourceDraftOptions[0];
+  const resourceGenerationBusy = generatingHandout || generatingMindmap || generatingPractice || generatingPpt;
+  const resourceActionBusy = resourceGenerationBusy || generatingPptVideo;
+
   const classroomResourceWorkspaceButtonsSection = (
     <section
       data-learn-reveal
-      className="overflow-hidden ui-radius-28 border border-[#dfe7ef] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_58%,#fff7fa_100%)] p-5 shadow-[0_16px_38px_rgba(15,23,42,0.06)] space-y-4"
+      className="overflow-hidden rounded-2xl border border-[#D4DCE6] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]"
     >
-      <div className="border-b border-white/75 pb-3">
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/88 px-3 py-1 text-[10px] font-black uppercase ui-tracking-brand text-[#5e6c7b] ring-1 ring-[#e5ebf2]">
+      <div className="border-b border-[#E5EAF1] pb-3">
+        <div className="inline-flex items-center gap-2 rounded-md bg-[#EEF3FF] px-2.5 py-1 text-[10px] font-black text-[#002FA7]">
           <Sparkles className="h-3.5 w-3.5 ui-text-brand" />
-          Agent Runtime
+          AI 资料生成
         </div>
-        <h3 className="mt-3 font-sans text-xs font-extrabold tracking-wider uppercase ui-text-ink">
-          课堂资源工作台
+        <h3 className="mt-2 text-sm font-black text-[#111827]">
+          先生成可编辑大纲，再生成对应资料
         </h3>
-        <p className="mt-1 text-[11px] ui-text-secondary">
-          围绕当前章节生成讲义、课件、导图和练习；结果显示在视频下方。
+        <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
+          大纲会作为生成依据传入讲义、导图、PPT 和练习，先改结构再生成，减少跑题。
         </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <div className="course-mini-stat">
-            <div className="text-[10px] font-black uppercase ui-tracking-tight ui-text-subtle">Current Step</div>
-            <div className="mt-1 text-[12px] font-extrabold ui-text-ink">
-              {generatingHandout || generatingMindmap || generatingPractice || generatingPpt ? "智能体正在生成中" : "等待你的触发"}
-            </div>
-          </div>
-          <div className="course-mini-stat">
-            <div className="text-[10px] font-black uppercase ui-tracking-tight ui-text-subtle">Current Context</div>
-            <div className="mt-1 text-[12px] font-extrabold ui-text-ink">{activeEpisode.title}</div>
-          </div>
-          <div className="course-mini-stat">
-            <div className="text-[10px] font-black uppercase ui-tracking-tight ui-text-subtle">Next Move</div>
-            <div className="mt-1 text-[12px] font-extrabold ui-text-ink">下方结果区实时回填</div>
-          </div>
-        </div>
       </div>
 
-      {(generatingHandout || generatingMindmap || generatingPractice || generatingPpt) ? (
+      {resourceGenerationBusy ? (
         <div className="course-generated-loading">
-          <AILoadingLottie
+          <LazyAiLoading
             caption="课堂资源正在生成"
-            subcaption="系统会一边生成一边在下方结果区回填，不需要离开当前课堂。"
+            subcaption="生成会围绕当前大纲展开，完成后自动打开结果预览。"
           />
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3">
-        <button
-          type="button"
-          onClick={() => void handleGenerateHandout()}
-          disabled={generatingHandout || generatingPpt || generatingMindmap || generatingPractice}
-          className="course-resource-action course-resource-action--handout"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-xs">
-              <div className="course-resource-icon course-resource-icon--handout">
-                <FileText className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="font-bold ui-text-ink">{generatingHandout ? "正在生成讲义..." : "生成讲义"}</p>
-                <p className="text-[10px] ui-text-muted-rose/70">基于当前章节即时整理课堂讲义并直接下载</p>
-                <div className="course-resource-progress-track course-resource-progress-track--handout">
-                  <div className={`course-resource-progress-bar course-resource-progress-bar--handout ${generatingHandout ? "w-2/3 animate-pulse" : "w-8"}`} />
+      <div className="mt-3 grid gap-3">
+        <div className="grid grid-cols-2 gap-2">
+          {resourceDraftOptions.map((option) => {
+            const Icon = option.Icon;
+            const active = selectedResourceDraftType === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setSelectedResourceDraftType(option.id)}
+                disabled={resourceActionBusy}
+                className={`rounded-lg border px-3 py-2 text-left transition disabled:opacity-60 ${
+                  active
+                    ? "border-[#002FA7] bg-[#F7F9FF] text-[#002FA7]"
+                    : "border-[#E5EAF1] bg-white text-[#334155] hover:border-[#BFD0FF] hover:bg-[#FAFBFF]"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs font-black">{option.label}</span>
                 </div>
-              </div>
-            </div>
-            <ArrowRight className="h-4 w-4 shrink-0 ui-text-muted-rose/50" />
-          </div>
-        </button>
+                <div className="mt-1 text-[10px] leading-4 text-[#64748B]">{option.detail}</div>
+              </button>
+            );
+          })}
+        </div>
 
-        <button
-          type="button"
-          onClick={() => void handleGenerateMindmap()}
-          disabled={generatingHandout || generatingPpt || generatingMindmap || generatingPractice}
-          className="course-resource-action course-resource-action--mindmap"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-xs">
-              <div className="course-resource-icon course-resource-icon--mindmap">
-                <Network className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="font-bold ui-text-ink">{generatingMindmap ? "正在生成导图..." : "生成导图"}</p>
-                <p className="text-[10px] ui-text-muted-rose/70">快速整理本节知识结构和概念关系</p>
-                <div className="course-resource-progress-track course-resource-progress-track--mindmap">
-                  <div className={`course-resource-progress-bar course-resource-progress-bar--mindmap ${generatingMindmap ? "w-2/3 animate-pulse" : "w-8"}`} />
-                </div>
-              </div>
+        <div className="rounded-lg border border-[#D4DCE6] bg-[#FAFBFC]">
+          <div className="flex items-center justify-between gap-2 border-b border-[#E5EAF1] px-3 py-2">
+            <div>
+              <div className="text-xs font-black text-[#111827]">可编辑大纲</div>
+              <div className="mt-0.5 text-[10px] text-[#64748B]">每行一个小节，生成时会按这些小节展开。</div>
             </div>
-            <ArrowRight className="h-4 w-4 shrink-0 ui-text-muted-rose/50" />
+            <button
+              type="button"
+              onClick={() => setResourceOutlineDraft(buildDefaultResourceOutline(course.title, currentSectionTitle).join("\n"))}
+              className="rounded-md border border-[#D4DCE6] bg-white px-2 py-1 text-[10px] font-bold text-[#475569] hover:bg-[#F7F7F8]"
+            >
+              重置
+            </button>
           </div>
-        </button>
+          <textarea
+            value={resourceOutlineDraft}
+            onChange={(event) => setResourceOutlineDraft(event.target.value)}
+            disabled={resourceGenerationBusy}
+            rows={6}
+            className="min-h-[136px] w-full resize-y bg-white px-3 py-2 text-xs leading-6 text-[#111827] outline-none placeholder:text-[#94A3B8] disabled:opacity-60"
+            placeholder="输入生成大纲，每行一个要点"
+          />
+        </div>
 
-        <button
-          type="button"
-          onClick={() => void handleGeneratePpt()}
-          disabled={generatingPpt || generatingHandout || generatingMindmap || generatingPractice}
-          className="course-resource-action course-resource-action--ppt"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-xs">
-              <div className="course-resource-icon course-resource-icon--ppt">
-                <Presentation className="h-4 w-4" />
-              </div>
+        {(selectedResourceDraftType === "ppt" || selectedResourceDraftType === "pptVideo") ? (
+          <div className="rounded-lg border border-[#D4DCE6] bg-white px-3 py-3">
+            <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="font-bold ui-text-ink">{generatingPpt ? "正在生成 PPT..." : "生成 PPT"}</p>
-                <p className="text-[10px] ui-text-muted-rose/70">按当前课程和播放章节直接导出课件草案</p>
-                <div className="course-resource-progress-track course-resource-progress-track--ppt">
-                  <div className={`course-resource-progress-bar course-resource-progress-bar--ppt ${generatingPpt ? "w-2/3 animate-pulse" : "w-8"}`} />
+                <div className="text-xs font-black text-[#111827]">PPT 模板</div>
+                <div className="mt-0.5 text-[10px] text-[#64748B]">模板会影响封面、目录、内容页版式和导出 PPT。</div>
+              </div>
+              <span className="rounded-sm bg-[#EEF3FF] px-2 py-1 text-[10px] font-black text-[#002FA7]">
+                {getPptTemplateOption(selectedPptTemplate).label}
+              </span>
+            </div>
+            <div className="mt-3 rounded-xl border border-[#DDE7F2] bg-[#F8FAFC] p-2">
+              <PptTemplateDeckPreview template={getPptTemplateOption(selectedPptTemplate)} />
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-[#111827]">{getPptTemplateOption(selectedPptTemplate).label}</div>
+                  <div className="mt-0.5 text-[10px] leading-4 text-[#64748B]">{getPptTemplateOption(selectedPptTemplate).detail}</div>
                 </div>
+                <span className="rounded bg-white px-2 py-1 text-[9px] font-bold text-[#64748B] ring-1 ring-[#E2E8F0]">
+                  {getPptTemplateOption(selectedPptTemplate).source}
+                </span>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 shrink-0 ui-text-muted-rose/50" />
+            <div className="mt-3 grid max-h-[340px] gap-2 overflow-auto pr-1">
+              {PPT_TEMPLATE_OPTIONS.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => setSelectedPptTemplate(template.id)}
+                  disabled={resourceActionBusy}
+                  className={`rounded-xl border p-2 text-left transition disabled:opacity-60 ${
+                    selectedPptTemplate === template.id
+                      ? "border-[#002FA7] bg-[#F7F9FF]"
+                      : "border-[#E5EAF1] bg-white hover:border-[#BFD0FF]"
+                  }`}
+                >
+                  <PptTemplateDeckPreview template={template} compact />
+                  <div className="mt-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="text-xs font-black text-[#111827]">{template.label}</div>
+                        <span className="rounded bg-[#F1F5F9] px-1.5 py-0.5 text-[9px] font-bold text-[#64748B]">
+                          {template.source}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] leading-4 text-[#64748B]">{template.detail}</div>
+                    </div>
+                    {selectedPptTemplate === template.id ? (
+                      <span className="shrink-0 rounded-full bg-[#002FA7] px-2 py-0.5 text-[9px] font-black text-white">已选</span>
+                    ) : null}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </button>
+        ) : null}
 
-        <button
-          type="button"
-          onClick={() => void handleGeneratePractice()}
-          disabled={generatingPpt || generatingHandout || generatingMindmap || generatingPractice}
-          className="course-resource-action course-resource-action--practice"
-        >
+        <div className="rounded-lg border border-[#E5EAF1] bg-white px-3 py-2">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-xs">
-              <div className="course-resource-icon course-resource-icon--practice">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="font-bold ui-text-ink">{generatingPractice ? "正在生成练习..." : "生成练习"}</p>
-                <p className="text-[10px] ui-text-muted-rose/70">学完即测，快速检查本节掌握情况</p>
-                <div className="course-resource-progress-track course-resource-progress-track--practice">
-                  <div className={`course-resource-progress-bar course-resource-progress-bar--practice ${generatingPractice ? "w-2/3 animate-pulse" : "w-8"}`} />
-                </div>
+            <div className="min-w-0">
+              <div className="text-xs font-black text-[#111827]">{activeResourceDraftOption.title}</div>
+              <div className="mt-1 truncate text-[10px] text-[#64748B]">
+                当前章节：{currentSectionTitle} · {outlineLines.length} 个大纲点
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 shrink-0 ui-text-muted-rose/50" />
+            <button
+              type="button"
+              onClick={activeResourceDraftOption.onGenerate}
+              disabled={resourceActionBusy}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[#002FA7] px-3 py-2 text-xs font-black text-white transition hover:bg-[#00247D] disabled:opacity-60"
+            >
+              {activeResourceDraftOption.loading ? "生成中" : `生成${activeResourceDraftOption.title}`}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
-        </button>
+        </div>
       </div>
     </section>
   );
@@ -2158,7 +3149,7 @@ export default function CourseLearning() {
 
             {(generatingHandout || generatingMindmap || generatingPractice || generatingPpt) ? (
               <div className="mt-3 ui-radius-20 border border-[#e8edf2] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_56%,#fff5f8_100%)] px-4 py-3.5">
-                <AILoadingLottie
+                <LazyAiLoading
                   caption="生成结果正在回填"
                   subcaption="下方卡片会逐步切换成可下载、可预览、可继续交给 AI 导师的正式结果。"
                 />
@@ -2227,7 +3218,7 @@ export default function CourseLearning() {
                   >
                     <div className="mb-3 flex items-center gap-2">
                       <span className="rounded-full bg-white/82 px-2.5 py-1 text-[10px] font-black uppercase ui-tracking-tight text-[#516072] ring-1 ring-black/5">
-                        Agent Runtime
+                        生成结果
                       </span>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${resultMeta.pillClass}`}>
                         {artifact.loading ? "生成中" : "已完成"}
@@ -2364,12 +3355,20 @@ export default function CourseLearning() {
                                   {artifactMindmapNodes.length || 0} 个主节点
                                 </span>
                               </div>
-                              <HorizontalMindmap
-                                nodes={artifactMindmapNodes}
-                                title="Section Mindmap"
-                                subtitle="按当前章节主线、概念分支和复习顺序横向展开。"
-                                variant="compact"
-                              />
+                              <Suspense
+                                fallback={
+                                  <div className="rounded-2xl border border-[#D6F5E8] bg-[#F5FFFB] px-4 py-5 text-center text-xs font-bold text-[#10B981]">
+                                    正在加载导图预览...
+                                  </div>
+                                }
+                              >
+                                <HorizontalMindmap
+                                  nodes={artifactMindmapNodes}
+                                  title="Section Mindmap"
+                                  subtitle="按当前章节主线、概念分支和复习顺序横向展开。"
+                                  variant="compact"
+                                />
+                              </Suspense>
                             </div>
                           ) : artifact.kind === "practice" && practiceQuestions.length ? (
                             <div className="mt-4 ui-radius-28 border border-[#F8DEB1] bg-[linear-gradient(135deg,#fffaf0,#ffffff)] p-4 shadow-[0_18px_34px_rgba(245,158,11,0.08)]">
@@ -2524,6 +3523,19 @@ export default function CourseLearning() {
                           </button>
                           <button
                             type="button"
+                            disabled={visibleRecentPpt.loading || generatingPptVideo}
+                            onClick={() => void handleGeneratePptExplanationVideo(visibleRecentPpt)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-semibold transition ${
+                              visibleRecentPpt.loading || generatingPptVideo
+                                ? "border-[#E5E7EB] ui-bg-panel ui-text-subtle cursor-not-allowed"
+                                : "border-[#D6E4FF] bg-[#EFF6FF] text-[#2563eb] hover:bg-[#DBEAFE]"
+                            }`}
+                          >
+                            <Video className="h-3.5 w-3.5" />
+                            {generatingPptVideo ? "生成视频中" : visibleRecentPpt.explanationVideo ? "重新生成讲解视频" : "生成讲解视频"}
+                          </button>
+                          <button
+                            type="button"
                             disabled={visibleRecentPpt.loading}
                             onClick={async () => {
                               try {
@@ -2538,7 +3550,7 @@ export default function CourseLearning() {
                               } catch {
                                 // Fall back to client-side export when backend delivery is unavailable.
                               }
-                              exportDeckAsPptx(visibleRecentPpt.fileName, visibleRecentPpt.slides);
+                              await exportPptxOnDemand(visibleRecentPpt.fileName, visibleRecentPpt.slides);
                             }}
                             className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold transition ${
                               visibleRecentPpt.loading
@@ -2549,6 +3561,55 @@ export default function CourseLearning() {
                             导出 PPT
                           </button>
                         </div>
+
+                        {visibleRecentPpt.explanationVideo ? (
+                          <div className="mt-4 overflow-hidden rounded-3xl border border-[#D6E4FF] bg-[linear-gradient(135deg,#0F172A_0%,#172554_56%,#111827_100%)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]">
+                            <div className="grid gap-0 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
+                              <div className="relative min-h-[220px] overflow-hidden p-5">
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(251,114,153,0.28),transparent_34%),radial-gradient(circle_at_88%_12%,rgba(96,165,250,0.26),transparent_30%)]" />
+                                <div className="relative flex h-full min-h-[190px] flex-col justify-between rounded-2xl border border-white/16 bg-white/8 p-4 backdrop-blur">
+                                  <div>
+                                    <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-[10px] font-black text-white/86">
+                                      <Video className="h-3.5 w-3.5 text-[#93C5FD]" />
+                                      PPT 讲解视频
+                                    </div>
+                                    <h4 className="mt-3 text-lg font-black leading-snug">{visibleRecentPpt.explanationVideo.title}</h4>
+                                    <p className="mt-2 max-w-xl text-xs leading-6 text-white/70">{visibleRecentPpt.explanationVideo.summary}</p>
+                                  </div>
+                                  <div className="mt-5 grid grid-cols-3 gap-2 text-center">
+                                    <div className="rounded-2xl border border-white/12 bg-white/10 px-3 py-2">
+                                      <div className="text-[10px] font-bold text-white/52">时长</div>
+                                      <div className="mt-1 text-sm font-black">{visibleRecentPpt.explanationVideo.durationLabel}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/12 bg-white/10 px-3 py-2">
+                                      <div className="text-[10px] font-bold text-white/52">分镜</div>
+                                      <div className="mt-1 text-sm font-black">{visibleRecentPpt.explanationVideo.storyboard.length} 段</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/12 bg-white/10 px-3 py-2">
+                                      <div className="text-[10px] font-bold text-white/52">旁白</div>
+                                      <div className="mt-1 truncate text-sm font-black">{visibleRecentPpt.explanationVideo.voiceRole}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="border-t border-white/12 bg-black/18 p-4 lg:border-l lg:border-t-0">
+                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#93C5FD]">Storyboard</div>
+                                <div className="mt-3 max-h-[260px] space-y-2 overflow-auto pr-1">
+                                  {visibleRecentPpt.explanationVideo.storyboard.slice(0, 5).map((scene) => (
+                                    <div key={`${visibleRecentPpt.fileName}-video-scene-${scene.slideIndex}`} className="rounded-2xl border border-white/10 bg-white/8 px-3 py-2.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="rounded-full bg-white/12 px-2 py-0.5 text-[10px] font-black text-white/80">第 {scene.slideIndex} 页</span>
+                                        <span className="text-[10px] font-bold text-white/50">{scene.durationSeconds}s</span>
+                                      </div>
+                                      <div className="mt-2 text-xs font-black text-white">{scene.title}</div>
+                                      <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-white/62">{scene.narration}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
 
                         {!visibleRecentPpt.loading ? (
                           <div className="mt-4 rounded-3xl border border-[#D6E4FF] bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)] p-4 shadow-[0_18px_36px_rgba(37,99,235,0.08)]">
@@ -2577,29 +3638,7 @@ export default function CourseLearning() {
                                   }
                                   className="overflow-hidden rounded-2xl border border-[#DCE7F7] bg-white text-left shadow-[0_12px_26px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(37,99,235,0.14)]"
                                 >
-                                  <div className="relative aspect-video bg-[radial-gradient(circle_at_18%_18%,rgba(251,114,153,0.22),transparent_28%),linear-gradient(135deg,#ffffff_0%,#F2F7FF_100%)] p-3">
-                                    <div className="absolute left-0 top-0 h-full w-2 bg-[#2563eb]" />
-                                    <div className="ml-3 flex h-full flex-col justify-between rounded-xl bg-white/82 p-3 ring-1 ring-white/80">
-                                      <div>
-                                        <div className="flex items-center justify-between gap-2">
-                                          <span className="course-chip-blue">
-                                            Slide {slide.index}
-                                          </span>
-                                          <span className="text-[9px] font-black ui-text-subtle">{slide.typeLabel}</span>
-                                        </div>
-                                        <h4 className="mt-2 line-clamp-2 text-[13px] font-black leading-5 ui-text-ink">{slide.title}</h4>
-                                        {slide.subtitle ? <p className="mt-1 line-clamp-1 text-[10px] font-semibold ui-text-secondary">{slide.subtitle}</p> : null}
-                                      </div>
-                                      <div className="space-y-1.5">
-                                        {slide.bullets.map((bullet, bulletIndex) => (
-                                          <div key={`${cardKey}-slide-${slide.index}-${bulletIndex}`} className="flex items-center gap-1.5">
-                                            <span className="h-1.5 w-1.5 shrink-0 rounded-full ui-bg-brand" />
-                                            <span className="line-clamp-1 text-[9.5px] font-semibold ui-text-body">{bullet}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </div>
+                                  <PptSlideThumbnail slide={slide} />
                                 </button>
                               ))}
                             </div>
@@ -2613,23 +3652,55 @@ export default function CourseLearning() {
 
               {pptViewer && activePptSlide ? (
                 <div className="fixed inset-0 z-[220] flex items-center justify-center bg-[#0f172a]/55 px-4 py-6 backdrop-blur-sm">
-                  <div className="w-full max-w-5xl overflow-hidden ui-radius-28 border border-white/70 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
+                  <div className="w-full max-w-[1180px] overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
                     <div className="flex items-center justify-between gap-4 border-b ui-border-soft px-5 py-4">
                       <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase ui-tracking-tight ui-text-navy">PPT Viewer</div>
+                        <div className="text-[11px] font-black text-[#002FA7]">智能 PPT 预览与编辑</div>
                         <h3 className="mt-1 truncate text-sm font-black ui-text-ink">{pptViewer.title}</h3>
                         <p className="mt-1 truncate text-[10px] ui-text-secondary">{pptViewer.fileName}</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setPptViewer(null)}
-                        className="shrink-0 rounded-full ui-bg-panel px-3 py-1.5 text-[10px] font-black ui-text-body hover:bg-[#EEF2F6]"
-                      >
-                        关闭
-                      </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPptPlaying((value) => !value)}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-[#002FA7] px-3 py-1.5 text-[10px] font-black text-white hover:bg-[#00247D]"
+                        >
+                          <Play className="h-3 w-3" />
+                          {pptPlaying ? "暂停播放" : "播放"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPptViewer(null)}
+                          className="rounded-md border border-[#D4DCE6] bg-white px-3 py-1.5 text-[10px] font-black text-[#475569] hover:bg-[#F7F7F8]"
+                        >
+                          关闭
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
+                    <div className="grid max-h-[76vh] min-h-[620px] lg:grid-cols-[170px_minmax(0,1fr)_270px]">
+                      <div className="hidden border-r border-[#D4DCE6] bg-[#F7F9FC] p-3 lg:block">
+                        <div className="mb-3 text-[11px] font-black text-[#002FA7]">幻灯片</div>
+                        <div className="max-h-[560px] space-y-2 overflow-auto pr-1">
+                          {buildPptPreviewCards(pptViewer.slides).map((slide) => (
+                            <button
+                              key={`thumb-${slide.index}`}
+                              type="button"
+                              onClick={() => {
+                                setPptPlaying(false);
+                                setPptViewer((current) => (current ? { ...current, slideIndex: slide.index - 1 } : current));
+                              }}
+                              className={`w-full rounded-lg border bg-white p-1.5 text-left transition ${
+                                pptViewer.slideIndex + 1 === slide.index
+                                  ? "border-[#002FA7] shadow-[0_8px_18px_rgba(0,47,167,0.12)]"
+                                  : "border-[#E5EAF1] hover:border-[#BFD0FF]"
+                              }`}
+                            >
+                              <PptSlideThumbnail slide={slide} active={pptViewer.slideIndex + 1 === slide.index} small />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div className="bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)] p-5">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                           <div className="inline-flex items-center gap-2 rounded-full bg-[#EFF6FF] px-3 py-1 text-[10px] font-black ui-text-navy">
@@ -2657,66 +3728,50 @@ export default function CourseLearning() {
                           </div>
                         </div>
 
-                        <div className="overflow-hidden ui-radius-28 border border-[#DCE7F7] bg-white shadow-[0_24px_48px_rgba(37,99,235,0.08)]">
-                          <div className="relative aspect-[16/9] bg-[radial-gradient(circle_at_18%_18%,rgba(251,114,153,0.18),transparent_28%),linear-gradient(135deg,#FFFFFF_0%,#F2F7FF_100%)] p-6">
-                            <div className="absolute left-0 top-0 h-full w-3 ui-bg-brand" />
-                            <div className="ml-4 flex h-full flex-col justify-between ui-radius-22 bg-white/90 p-6 ring-1 ring-white/80">
-                              <div>
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="rounded-full bg-[#FFF1F5] px-3 py-1 text-[10px] font-black ui-text-brand">
-                                    {activePptSlide.kind === "cover" ? "封面" : activePptSlide.kind === "agenda" ? "目录" : activePptSlide.kind === "ending" ? "结束页" : "内容页"}
-                                  </span>
-                                  <span className="text-[10px] font-black ui-text-subtle">播放中</span>
-                                </div>
-                                <h2 className="mt-4 text-2xl font-black leading-tight ui-text-ink">{activePptSlide.title}</h2>
-                                {activePptSlide.subtitle ? <p className="mt-3 text-sm font-semibold leading-6 ui-text-secondary">{activePptSlide.subtitle}</p> : null}
-                              </div>
-
-                              <div className="space-y-3">
-                                {activePptSlide.bullets.slice(0, 4).map((bullet, index) => (
-                                  <div key={`${pptViewer.slideIndex}-${index}`} className="flex items-start gap-3">
-                                    <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ui-bg-dark text-[10px] font-black text-white">
-                                      {index + 1}
-                                    </span>
-                                    <p className="text-[13px] leading-6 ui-text-ink">{bullet}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <PptSlideStage slide={activePptSlide} slideIndex={pptViewer.slideIndex} />
                       </div>
 
-                      <div className="border-t ui-border-soft bg-[#FCFDFE] p-5 lg:border-l lg:border-t-0">
-                        <div className="text-[11px] font-black uppercase ui-tracking-tight ui-text-navy">Slides</div>
-                        <p className="mt-1 text-sm font-black ui-text-ink">点击切换播放</p>
-                        <div className="mt-4 max-h-[460px] space-y-3 overflow-auto pr-1">
-                          {buildPptPreviewCards(pptViewer.slides).map((slide) => (
-                            <button
-                              key={`viewer-${slide.index}`}
-                              type="button"
-                              onClick={() => setPptViewer((current) => (current ? { ...current, slideIndex: slide.index - 1 } : current))}
-                              className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                                pptViewer.slideIndex + 1 === slide.index
-                                  ? "border-[#fb7299] bg-[#FFF7FA] shadow-[0_12px_24px_rgba(251,114,153,0.14)]"
-                                  : "border-[#E8EDF5] bg-white hover:border-[#D6E4FF]"
-                              }`}
-                            >
-                              <div className="flex items-start gap-3">
-                                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ui-bg-dark text-[10px] font-black text-white">
-                                  {slide.index}
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="rounded-full bg-[#EFF6FF] px-2 py-0.5 text-[9px] font-black ui-text-navy">{slide.typeLabel}</span>
-                                    <span className="text-[9px] font-black ui-text-subtle">播放</span>
-                                  </div>
-                                  <p className="mt-2 text-sm font-black ui-text-ink">{slide.title}</p>
-                                  {slide.subtitle ? <p className="mt-1 text-[11px] leading-5 ui-text-secondary">{slide.subtitle}</p> : null}
-                                </div>
-                              </div>
-                            </button>
-                          ))}
+                      <div className="border-t border-[#D4DCE6] bg-[#FCFDFE] p-4 lg:border-l lg:border-t-0">
+                        <div className="text-[11px] font-black text-[#002FA7]">编辑当前页</div>
+                        <p className="mt-1 text-xs font-black text-[#111827]">第 {pptViewer.slideIndex + 1} 页内容</p>
+                        <div className="mt-4 space-y-3">
+                          <label className="block">
+                            <span className="text-[10px] font-black text-[#64748B]">大标题</span>
+                            <input
+                              value={activePptSlide.title}
+                              onChange={(event) => updateActivePptSlide({ title: event.target.value })}
+                              className="mt-1 w-full rounded-md border border-[#D4DCE6] bg-white px-2.5 py-2 text-xs font-bold text-[#111827] outline-none focus:border-[#002FA7]"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] font-black text-[#64748B]">小标题</span>
+                            <input
+                              value={activePptSlide.subtitle || ""}
+                              onChange={(event) => updateActivePptSlide({ subtitle: event.target.value })}
+                              className="mt-1 w-full rounded-md border border-[#D4DCE6] bg-white px-2.5 py-2 text-xs text-[#111827] outline-none focus:border-[#002FA7]"
+                            />
+                          </label>
+                          <div>
+                            <div className="mb-1 text-[10px] font-black text-[#64748B]">页面要点</div>
+                            <div className="space-y-2">
+                              {activePptSlide.bullets.slice(0, 5).map((bullet, bulletIndex) => (
+                                <textarea
+                                  key={`edit-bullet-${pptViewer.slideIndex}-${bulletIndex}`}
+                                  value={bullet}
+                                  onChange={(event) => updateActivePptBullet(bulletIndex, event.target.value)}
+                                  rows={2}
+                                  className="w-full resize-none rounded-md border border-[#D4DCE6] bg-white px-2.5 py-2 text-[11px] leading-5 text-[#111827] outline-none focus:border-[#002FA7]"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void exportPptxOnDemand(pptViewer.fileName, pptViewer.slides)}
+                            className="mt-1 w-full rounded-md bg-[#111827] px-3 py-2 text-xs font-black text-white hover:bg-black"
+                          >
+                            导出当前 PPT
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -2755,32 +3810,26 @@ export default function CourseLearning() {
 
   useEffect(() => {
     setVideoPlaying(false);
-    setCurrentPlaybackTime(0);
     setVideoFrameReady(false);
-    setShowVideoLoadingOverlay(true);
-    const loadingOverlayTimer = window.setTimeout(() => {
-      setShowVideoLoadingOverlay(false);
-    }, 1200);
     const runtime = readPersistedCourseRuntime(courseId);
     const savedPlayback = Number(localStorage.getItem(playbackStorageKey) || "0");
     const runtimePlayback =
       runtime && runtime.activeEpisodeIdx === activeEpisodeIdx && runtime.currentPlaybackTime > 0
         ? runtime.currentPlaybackTime
         : 0;
-    pendingResumeTimeRef.current = shouldAutoplayOnEnter
+    const nextResumeTime = shouldAutoplayOnEnter
       ? resumeStartAt
       : runtimePlayback > 0
         ? runtimePlayback
         : savedPlayback > 0
           ? savedPlayback
           : null;
+    pendingResumeTimeRef.current = nextResumeTime;
+    setCurrentPlaybackTime(Number(nextResumeTime || 0));
+    setVideoSourceMounted(shouldAutoplayOnEnter);
+    setShowVideoLoadingOverlay(shouldAutoplayOnEnter);
     shouldResumeAutoplayRef.current = shouldAutoplayOnEnter || Boolean(runtime?.wasPlaying);
     shouldResumeMutedRef.current = shouldMuteOnEnter || Boolean(runtime?.wasPlaying);
-    if (videoRef.current) {
-      videoRef.current.preload = "metadata";
-      videoRef.current.load();
-    }
-    return () => window.clearTimeout(loadingOverlayTimer);
   }, [activeEpisodeIdx, activeVideoSrc, courseId, playbackStorageKey, resumeStartAt, shouldAutoplayOnEnter, shouldMuteOnEnter]);
 
   const activeVideoKey = useMemo(
@@ -2907,7 +3956,7 @@ export default function CourseLearning() {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) {
+    if (!video || !videoSourceMounted) {
       return;
     }
 
@@ -2966,7 +4015,7 @@ export default function CourseLearning() {
     return () => {
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
     };
-  }, [activeVideoSrc, sortedDanmakus]);
+  }, [activeVideoSrc, sortedDanmakus, videoSourceMounted]);
 
   useEffect(() => {
     persistCourseRuntime(courseId, {
@@ -3485,6 +4534,207 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
     });
   };
 
+  const openGeneratedResourcePreview = (
+    resource: ResourceCard,
+    label: string,
+    stage: "running" | "completed" = "completed",
+    replace = false,
+  ) => {
+    const firstFile = resource.source_files?.[0] || null;
+    const resourceId = Number(resource.resource_id);
+    const fileId = Number(firstFile?.file_id || resource.resource_id);
+    const params = new URLSearchParams({ courseId });
+    if (Number.isFinite(resourceId) && resourceId > 0) {
+      params.set("resourceId", String(resourceId));
+    }
+    if (Number.isFinite(fileId) && fileId > 0) {
+      params.set("fileId", String(fileId));
+    }
+    params.set("generationStage", stage);
+    params.set("generationLabel", label);
+    params.set("generationType", resource.resource_type);
+    navigate(`/resources/preview?${params.toString()}`, {
+      replace,
+      state: {
+        initialResource: resource,
+        initialFileId: Number.isFinite(fileId) && fileId > 0 ? fileId : null,
+        initialPreviewFile: firstFile,
+        generationIntent: {
+          stage,
+          label,
+          type: resource.resource_type,
+        },
+      },
+    });
+  };
+
+  const buildPreviewResourceFromArtifact = (
+    artifact: RecentResourceArtifact,
+    resourceType: ResourceCard["resource_type"],
+    sourceResource?: ResourceCard | null,
+  ): ResourceCard => ({
+    ...(sourceResource || {}),
+    resource_id: sourceResource?.resource_id ?? artifact.resourceId ?? null,
+    resource_type: resourceType,
+    title: artifact.customTitle || artifact.title,
+    summary: artifact.summary,
+    content_markdown:
+      artifact.rawContent ||
+      sourceResource?.content_markdown ||
+      artifact.previewContent?.join("\n\n") ||
+      artifact.summary,
+    source_titles: sourceResource?.source_titles?.length ? sourceResource.source_titles : [artifact.sectionTitle],
+    study_suggestion: sourceResource?.study_suggestion || "可在这个预览页直接查看生成内容，也可以继续交给 AI 导师追问。",
+    source_file_count: sourceResource?.source_file_count || sourceResource?.source_files?.length || 0,
+    source_files: sourceResource?.source_files || [],
+    generated_at: sourceResource?.generated_at,
+    updated_at: sourceResource?.updated_at,
+    generation_context: sourceResource?.generation_context || null,
+  });
+
+  const buildPptPreviewResource = (artifact: RecentPptArtifact, sourceResource?: ResourceCard | null): ResourceCard => {
+    const title = artifact.customTitle || artifact.fileName.replace(/\.pptx$/i, "");
+    const templateId =
+      artifact.pptTemplate ||
+      ((artifact.slides?.find((slide) => PPT_TEMPLATE_OPTIONS.some((template) => template.id === slide.accent))?.accent as PptTemplateId | undefined) || "academic");
+    const slideMarkdown = artifact.slides
+      .map((slide) => {
+        const bullets = slide.bullets?.length ? slide.bullets.map((item) => `- ${item}`).join("\n") : "- 暂无要点";
+        const speakerNote = (slide as { speakerNote?: string }).speakerNote;
+        const illustration = slide.illustration
+          ? `\n\n> 图解：${slide.illustration.title.replace(/插画/g, "图解")}｜${slide.illustration.caption.replace(/插画/g, "图像")}`
+          : "";
+        return `## ${slide.title}\n\n${slide.subtitle ? `${slide.subtitle}\n\n` : ""}${bullets}${illustration}${speakerNote ? `\n\n> ${speakerNote}` : ""}`;
+      })
+      .join("\n\n");
+    const markedSlideMarkdown = `<!-- ppt-template:${templateId} -->\n\n${slideMarkdown}`;
+    return {
+      ...(sourceResource || {}),
+      resource_id: sourceResource?.resource_id ?? artifact.resourceId ?? null,
+      resource_type: "ppt",
+      title,
+      summary: artifact.summary || "已按当前章节生成课件草案。",
+      content_markdown: artifact.rawContent ? `<!-- ppt-template:${templateId} -->\n\n${artifact.rawContent}` : markedSlideMarkdown || artifact.previewContent?.join("\n\n") || artifact.summary || title,
+      source_titles: sourceResource?.source_titles?.length ? sourceResource.source_titles : [artifact.sectionTitle],
+      study_suggestion: sourceResource?.study_suggestion || "先浏览课件结构，再把不清楚的页交给 AI 导师继续讲解。",
+      source_file_count: sourceResource?.source_file_count || sourceResource?.source_files?.length || 0,
+      source_files: sourceResource?.source_files || [],
+      generated_at: sourceResource?.generated_at,
+      updated_at: sourceResource?.updated_at,
+      generation_context: sourceResource?.generation_context || null,
+    };
+  };
+
+  const buildPptExplanationVideoPreviewResource = (artifact: RecentPptArtifact): ResourceCard => {
+    const video = artifact.explanationVideo || buildPptExplanationVideoArtifact(artifact, course.title, currentSectionTitle);
+    const title = video.title || `${artifact.fileName.replace(/\.pptx$/i, "")} · 讲解视频`;
+    const storyboardMarkdown = video.storyboard
+      .map(
+        (scene) =>
+          `## ${String(scene.slideIndex).padStart(2, "0")} ${scene.title}\n\n- 时长：${scene.durationSeconds} 秒\n- 画面：${scene.visualHint}\n- 旁白：${scene.narration}`,
+      )
+      .join("\n\n");
+    const content = `# ${title}\n\n${video.summary}\n\n## 视频信息\n\n- 时长：${video.durationLabel}\n- 旁白：${video.voiceRole}\n- 分镜：${video.storyboard.length} 段\n\n${storyboardMarkdown}\n\n## 完整旁白稿\n\n${video.transcript}`;
+    return {
+      resource_id: artifact.resourceId ?? null,
+      resource_type: "micro_video",
+      title,
+      summary: video.summary,
+      content_markdown: content,
+      source_titles: [artifact.sectionTitle, artifact.fileName],
+      study_suggestion: "先看分镜和旁白稿，再根据需要让 AI 导师压缩成答辩口播或课堂短视频脚本。",
+      source_file_count: 1,
+      source_files: [
+        {
+          file_id: 930001,
+          display_name: `${title}.md`,
+          relative_path: `generated://ppt-explanation-video/${artifact.sectionTitle}`,
+          top_level_category: "PPT讲解视频",
+          file_extension: ".md",
+          mime_type: "text/markdown",
+          file_size: content.length,
+          preview_text: content,
+          preview_mode: "text",
+          preview_url: null,
+          open_url: "",
+          is_inline_previewable: true,
+        },
+      ],
+      generated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      generation_context: {
+        course_id: backendCourseId,
+        course_code: backendCourseCode,
+        knowledge_points: [course.title, currentSectionTitle, "PPT讲解视频"],
+        resource_types: ["micro_video"],
+      },
+    };
+  };
+
+  const pickReusableResource = (resources: ResourceCard[], resourceTypes: string[]) => {
+    const normalizedTypes = new Set(resourceTypes);
+    const deduped = new Map<number | string, ResourceCard>();
+    for (const resource of resources) {
+      if (!normalizedTypes.has(resource.resource_type)) continue;
+      const key = resource.resource_id ? `id:${resource.resource_id}` : `${resource.resource_type}:${resource.title}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, resource);
+      }
+    }
+
+    const candidates = Array.from(deduped.values());
+    if (!candidates.length) return null;
+
+    const currentSectionMatches = candidates.filter((resource) => {
+      const sectionTitle = resolveGeneratedSectionTitle(resource, "");
+      const haystack = `${resource.title || ""}\n${resource.summary || ""}\n${resource.content_markdown || ""}\n${resource.source_titles?.join("\n") || ""}`;
+      return (
+        (sectionTitle && currentSectionTitle.includes(sectionTitle)) ||
+        (sectionTitle && sectionTitle.includes(currentSectionTitle)) ||
+        haystack.includes(currentSectionTitle)
+      );
+    });
+
+    return [...(currentSectionMatches.length ? currentSectionMatches : candidates)].sort((left, right) => {
+      const leftTime = new Date(left.updated_at || left.generated_at || 0).getTime() || 0;
+      const rightTime = new Date(right.updated_at || right.generated_at || 0).getTime() || 0;
+      return rightTime - leftTime;
+    })[0] || null;
+  };
+
+  const findReusableResourceFromLibrary = async (resourceTypes: string[]) => {
+    const localMatch = pickReusableResource(courseLibraryResources, resourceTypes);
+    if (localMatch) {
+      return localMatch;
+    }
+
+    try {
+      const result = await Promise.race([
+        studentApi.listResourcesByCourseCode(activeUserId, backendCourseCode),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(() => reject(new Error("RESOURCE_REUSE_LOOKUP_TIMEOUT")), RESOURCE_REUSE_LOOKUP_TIMEOUT_MS),
+        ),
+      ]);
+      const reusableItems = (result.items || []).filter((item) =>
+        ["lecture_note", "mindmap", "mind_map", "practice_set", "quiz_set", "ppt"].includes(item.resource_type),
+      );
+      setCourseLibraryResources(reusableItems);
+      return pickReusableResource(reusableItems, resourceTypes);
+    } catch {
+      return null;
+    }
+  };
+
+  const pickRecentArtifact = (kind: RecentResourceArtifact["kind"]) => {
+    const candidates = recentArtifacts.filter((item) => item.kind === kind && !item.loading);
+    return (
+      candidates.find((item) => item.sectionTitle === currentSectionTitle) ||
+      candidates.find((item) => item.sectionTitle.includes(currentSectionTitle) || currentSectionTitle.includes(item.sectionTitle)) ||
+      candidates[0] ||
+      null
+    );
+  };
+
   const toggleRecentArtifactStar = (kind: RecentResourceArtifact["kind"]) => {
     setRecentArtifacts((prev) =>
       prev.map((item) => (item.kind === kind ? { ...item, starred: !item.starred } : item)),
@@ -3651,27 +4901,100 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
     setCollapsedRecentKeys((current) => current.filter((item) => item !== "artifact-ppt"));
   };
 
+  const handleGeneratePptExplanationVideo = async (sourcePpt?: RecentPptArtifact | null) => {
+    if (generatingPptVideo || generatingPpt) return;
+    let targetPpt = sourcePpt || recentPpt;
+    if (targetPpt?.loading) {
+      showToast("PPT 正在生成中，完成后再生成讲解视频");
+      return;
+    }
+
+    setGeneratingPptVideo(true);
+    try {
+      if (!targetPpt) {
+        const slides = buildCourseDeckSlides(
+          [buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle, outlineLines)],
+          course.title,
+          currentSectionTitle,
+          outlineLines,
+          selectedPptTemplate,
+        );
+        targetPpt = {
+          resourceId: null,
+          fileName: `${course.title.replace(/[\\/:*?"<>|]+/g, "-")}-${currentSectionTitle.replace(/[\\/:*?"<>|]+/g, "-")}.pptx`,
+          slideCount: slides.length,
+          generatedAt: formatGenerationTime(),
+          slides,
+          summary: "已为讲解视频同步生成配套 PPT 草案。",
+          sectionTitle: currentSectionTitle,
+          downloadUrl: "",
+          preferredFormat: "pptx",
+          pptTemplate: selectedPptTemplate,
+        };
+      }
+      const explanationVideo = buildPptExplanationVideoArtifact(targetPpt, course.title, currentSectionTitle);
+      const nextPpt = {
+        ...targetPpt,
+        explanationVideo,
+      };
+      setRecentPpt(nextPpt);
+      setShowOnlyCurrentSectionResults(true);
+      expandRecentCard("artifact-ppt");
+      showToast("PPT 讲解视频已生成，正在打开预览页");
+      openGeneratedResourcePreview(
+        buildPptExplanationVideoPreviewResource(nextPpt),
+        "PPT讲解视频",
+      );
+    } finally {
+      setGeneratingPptVideo(false);
+    }
+  };
+
   const handleGenerateHandout = async () => {
     if (generatingHandout || generatingPpt || generatingMindmap || generatingPractice) return;
     setGeneratingHandout(true);
-    beginUiProgress(0.14);
-    setUiProgress(0.24);
-    revealRecentArtifact({
+    const reusableResource = await findReusableResourceFromLibrary(["lecture_note", "lecture_notes"]);
+    if (reusableResource) {
+      const reusableArtifact = mapBackendResourceToArtifact(reusableResource, course.title, currentSectionTitle, courseId);
+      if (reusableArtifact) {
+        upsertRecentArtifact(reusableArtifact);
+        showToast("已找到资料库里的讲义，正在直接打开");
+        openGeneratedResourcePreview(
+          buildPreviewResourceFromArtifact(reusableArtifact, "lecture_note", reusableResource),
+          "课堂讲义",
+        );
+        setGeneratingHandout(false);
+        return;
+      }
+    }
+    const optimisticHandoutResource = buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle, outlineLines);
+    const optimisticHandoutArtifact: RecentResourceArtifact = {
       kind: "handout",
+      resourceId: null,
+      preferredFormat: "docx",
       title: `${course.title} · ${currentSectionTitle} 讲义`,
-      summary: "正在整理本节讲义，完成后会自动切换成可下载版本。",
-      downloadUrl: "",
+      summary: buildResourceSummary(optimisticHandoutResource, "系统已进入讲义生成流程，当前先打开课堂内可读预览稿。"),
+      downloadUrl: buildWorkspaceResourceLink(courseId, currentSectionTitle, "handout", `${course.title} · ${currentSectionTitle} 讲义`),
       generatedAt: formatGenerationTime(),
       sectionTitle: currentSectionTitle,
-      previewContent: buildExpandedHandoutPreviewContent(null, course.title, currentSectionTitle).slice(0, 6),
-      loading: true,
-    });
+      previewContent: buildExpandedHandoutPreviewContent(optimisticHandoutResource, course.title, currentSectionTitle),
+      rawContent: optimisticHandoutResource.content_markdown || "",
+    };
+    upsertRecentArtifact(optimisticHandoutArtifact);
+    showToast("正在打开讲义预览页，正式内容会继续生成");
+    openGeneratedResourcePreview(
+      buildPreviewResourceFromArtifact(optimisticHandoutArtifact, "lecture_note", optimisticHandoutResource),
+      "课堂讲义",
+      "running",
+    );
+    beginUiProgress(0.14);
+    setUiProgress(0.24);
     try {
       const result = await Promise.race([
         studentApi.generateResources({
           user_id: activeUserId,
           course_id: backendCourseId,
-          knowledge_points: [course.title, currentSectionTitle],
+          knowledge_points: [course.title, currentSectionTitle, ...outlineLines],
           resource_types: ["lecture_note"],
         }),
         new Promise<never>((_, reject) =>
@@ -3680,33 +5003,44 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       ]);
       setUiProgress(0.56);
       const hydratedResources = await loadGeneratedResourceCards(result.resources || []);
+      mergeResourcesIntoCourseLibrary(hydratedResources);
+      void refreshCourseLibraryFromDatabase();
       const firstResourceId = Number(hydratedResources?.[0]?.resource_id);
       const primaryResource = hydratedResources?.[0];
-      if (Number.isFinite(firstResourceId)) {
-        const download = await studentApi.getResourceDownloadUrl(firstResourceId, activeUserId, "docx");
+      if (primaryResource) {
         const workspaceUrl = buildWorkspaceResourceLink(courseId, currentSectionTitle, "handout", `${course.title} · ${currentSectionTitle} 讲义`);
+        let downloadUrl = workspaceUrl;
+        if (Number.isFinite(firstResourceId) && firstResourceId > 0) {
+          const download = await studentApi.getResourceDownloadUrl(firstResourceId, activeUserId, "docx");
+          downloadUrl = download.download_url || workspaceUrl;
+        }
         const nextArtifact: RecentResourceArtifact = {
           kind: "handout",
           resourceId: primaryResource?.resource_id ? Number(primaryResource.resource_id) : null,
           preferredFormat: "docx",
           title: `${course.title} · ${currentSectionTitle} 讲义`,
           summary: buildResourceSummary(primaryResource, "已整理出本节讲义，适合课后快速复习。"),
-          downloadUrl: download.download_url || workspaceUrl,
+          downloadUrl,
           generatedAt: formatGenerationTime(),
           sectionTitle: currentSectionTitle,
           previewContent: buildExpandedHandoutPreviewContent(primaryResource, course.title, currentSectionTitle),
           rawContent: primaryResource?.content_markdown || "",
         };
-        revealRecentArtifact(nextArtifact);
-        expandRecentCard("artifact-handout");
+        upsertRecentArtifact(nextArtifact);
         setUiProgress(0.92);
-        showToast("讲义已生成，结果已显示在视频下方，可直接下载或交给 AI 导师继续展开");
+        showToast("讲义已生成，正在刷新预览页");
+        openGeneratedResourcePreview(
+          buildPreviewResourceFromArtifact(nextArtifact, "lecture_note", primaryResource),
+          "课堂讲义",
+          "completed",
+          true,
+        );
       } else {
         showToast("讲义已生成，但暂时没有拿到下载链接");
       }
     } catch {
-      const fallbackResource = buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle);
-      revealRecentArtifact({
+      const fallbackResource = buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle, outlineLines);
+      const fallbackArtifact: RecentResourceArtifact = {
         kind: "handout",
         resourceId: fallbackResource.resource_id ? Number(fallbackResource.resource_id) : null,
         preferredFormat: "docx",
@@ -3717,9 +5051,15 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         sectionTitle: currentSectionTitle,
         previewContent: buildExpandedHandoutPreviewContent(fallbackResource, course.title, currentSectionTitle),
         rawContent: fallbackResource.content_markdown || "",
-      });
-      expandRecentCard("artifact-handout");
-      showToast("讲义已先用课堂内版本生成，结果已显示在视频下方，可继续下载或交给 AI 导师");
+      };
+      upsertRecentArtifact(fallbackArtifact);
+      showToast("讲义暂时切到课堂内版本，已刷新预览页");
+      openGeneratedResourcePreview(
+        buildPreviewResourceFromArtifact(fallbackArtifact, "lecture_note", fallbackResource),
+        "课堂讲义",
+        "completed",
+        true,
+      );
     } finally {
       finishUiProgress();
       setGeneratingHandout(false);
@@ -3729,24 +5069,49 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
   const handleGenerateMindmap = async () => {
     if (generatingHandout || generatingPpt || generatingMindmap || generatingPractice) return;
     setGeneratingMindmap(true);
-    beginUiProgress(0.14);
-    setUiProgress(0.26);
-    revealRecentArtifact({
+    const reusableResource = await findReusableResourceFromLibrary(["mindmap", "mind_map"]);
+    if (reusableResource) {
+      const reusableArtifact = mapBackendResourceToArtifact(reusableResource, course.title, currentSectionTitle, courseId);
+      if (reusableArtifact) {
+        upsertRecentArtifact(reusableArtifact);
+        showToast("已找到资料库里的导图，正在直接打开");
+        openGeneratedResourcePreview(
+          buildPreviewResourceFromArtifact(reusableArtifact, "mindmap", reusableResource),
+          "课堂导图",
+        );
+        setGeneratingMindmap(false);
+        return;
+      }
+    }
+    const optimisticMindmapResource = buildLocalGeneratedResource("mindmap", course.title, currentSectionTitle, outlineLines);
+    const optimisticMindmapArtifact: RecentResourceArtifact = {
       kind: "mindmap",
+      resourceId: null,
+      preferredFormat: "xmind",
       title: `${course.title} · ${currentSectionTitle} 导图`,
-      summary: "正在生成本节知识结构导图，完成后会自动切换成结构化导图。",
-      downloadUrl: "",
+      summary: buildResourceSummary(optimisticMindmapResource, "系统已进入导图生成流程，当前先打开结构预览稿。"),
+      downloadUrl: buildWorkspaceResourceLink(courseId, currentSectionTitle, "mindmap", `${course.title} · ${currentSectionTitle} 导图`),
       generatedAt: formatGenerationTime(),
       sectionTitle: currentSectionTitle,
-      previewContent: ["正在提炼核心概念", "正在梳理知识分支关系", "完成后可下载导图结构"],
-      loading: true,
-    });
+      previewContent: buildResourcePreviewContent(optimisticMindmapResource, ["系统正在补全正式导图文件，当前先展示结构预览。"]),
+      rawContent: optimisticMindmapResource.content_markdown || "",
+      mindmapNodes: extractMindmapNodes(optimisticMindmapResource, course.title, currentSectionTitle),
+    };
+    upsertRecentArtifact(optimisticMindmapArtifact);
+    showToast("正在打开导图预览页，正式内容会继续生成");
+    openGeneratedResourcePreview(
+      buildPreviewResourceFromArtifact(optimisticMindmapArtifact, "mindmap", optimisticMindmapResource),
+      "课堂导图",
+      "running",
+    );
+    beginUiProgress(0.14);
+    setUiProgress(0.26);
     try {
       const result = await Promise.race([
         studentApi.generateResources({
           user_id: activeUserId,
           course_id: backendCourseId,
-          knowledge_points: [course.title, currentSectionTitle],
+          knowledge_points: [course.title, currentSectionTitle, ...outlineLines],
           resource_types: ["mindmap"],
         }),
         new Promise<never>((_, reject) =>
@@ -3755,11 +5120,17 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       ]);
       setUiProgress(0.58);
       const hydratedResources = await loadGeneratedResourceCards(result.resources || []);
+      mergeResourcesIntoCourseLibrary(hydratedResources);
+      void refreshCourseLibraryFromDatabase();
       const firstResourceId = Number(hydratedResources?.[0]?.resource_id);
       const primaryResource = hydratedResources?.[0];
-      if (Number.isFinite(firstResourceId)) {
-        const download = await studentApi.getResourceDownloadUrl(firstResourceId, activeUserId, "markdown");
+      if (primaryResource) {
         const workspaceUrl = buildWorkspaceResourceLink(courseId, currentSectionTitle, "mindmap", `${course.title} · ${currentSectionTitle} 导图`);
+        let downloadUrl = workspaceUrl;
+        if (Number.isFinite(firstResourceId) && firstResourceId > 0) {
+          const download = await studentApi.getResourceDownloadUrl(firstResourceId, activeUserId, "markdown");
+          downloadUrl = download.download_url || workspaceUrl;
+        }
         const mindmapNodes = extractMindmapNodes(primaryResource, course.title, currentSectionTitle);
         const nextArtifact: RecentResourceArtifact = {
           kind: "mindmap",
@@ -3767,23 +5138,28 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
           preferredFormat: "xmind",
           title: `${course.title} · ${currentSectionTitle} 导图`,
           summary: buildResourceSummary(primaryResource, "已提炼出本节知识结构，适合先总览再精读。"),
-          downloadUrl: download.download_url || workspaceUrl,
+          downloadUrl,
           generatedAt: formatGenerationTime(),
           sectionTitle: currentSectionTitle,
           previewContent: buildResourcePreviewContent(primaryResource, ["已提炼出本节知识结构，适合先总览再精读。"]),
           rawContent: primaryResource?.content_markdown || "",
           mindmapNodes,
         };
-        revealRecentArtifact(nextArtifact);
-        expandRecentCard("artifact-mindmap");
+        upsertRecentArtifact(nextArtifact);
         setUiProgress(0.92);
-        showToast("导图已生成，结果已显示在视频下方，可直接下载或交给 AI 导师继续展开");
+        showToast("导图已生成，正在刷新预览页");
+        openGeneratedResourcePreview(
+          buildPreviewResourceFromArtifact(nextArtifact, "mindmap", primaryResource),
+          "课堂导图",
+          "completed",
+          true,
+        );
       } else {
         showToast("导图已生成，但暂时没有拿到下载链接");
       }
     } catch {
-      const fallbackResource = buildLocalGeneratedResource("mindmap", course.title, currentSectionTitle);
-      revealRecentArtifact({
+      const fallbackResource = buildLocalGeneratedResource("mindmap", course.title, currentSectionTitle, outlineLines);
+      const fallbackArtifact: RecentResourceArtifact = {
         kind: "mindmap",
         resourceId: fallbackResource.resource_id ? Number(fallbackResource.resource_id) : null,
         preferredFormat: "xmind",
@@ -3795,9 +5171,15 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         previewContent: buildResourcePreviewContent(fallbackResource, ["已切换为课堂内本地导图，可先继续学习。"]),
         rawContent: fallbackResource.content_markdown || "",
         mindmapNodes: extractMindmapNodes(fallbackResource, course.title, currentSectionTitle),
-      });
-      expandRecentCard("artifact-mindmap");
-      showToast("导图已先用课堂内版本生成，结果已显示在视频下方，可继续下载或交给 AI 导师");
+      };
+      upsertRecentArtifact(fallbackArtifact);
+      showToast("导图暂时切到课堂内版本，已刷新预览页");
+      openGeneratedResourcePreview(
+        buildPreviewResourceFromArtifact(fallbackArtifact, "mindmap", fallbackResource),
+        "课堂导图",
+        "completed",
+        true,
+      );
     } finally {
       finishUiProgress();
       setGeneratingMindmap(false);
@@ -3807,24 +5189,48 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
   const handleGeneratePractice = async () => {
     if (generatingHandout || generatingPpt || generatingMindmap || generatingPractice) return;
     setGeneratingPractice(true);
-    beginUiProgress(0.14);
-    setUiProgress(0.26);
-    revealRecentArtifact({
+    const reusableResource = await findReusableResourceFromLibrary(["practice_set", "quiz_set"]);
+    if (reusableResource) {
+      const reusableArtifact = mapBackendResourceToArtifact(reusableResource, course.title, currentSectionTitle, courseId);
+      if (reusableArtifact) {
+        upsertRecentArtifact(reusableArtifact);
+        showToast("已找到资料库里的练习，正在直接打开");
+        openGeneratedResourcePreview(
+          buildPreviewResourceFromArtifact(reusableArtifact, "practice_set", reusableResource),
+          "课堂练习",
+        );
+        setGeneratingPractice(false);
+        return;
+      }
+    }
+    const optimisticPracticeResource = buildLocalGeneratedResource("practice_set", course.title, currentSectionTitle, outlineLines);
+    const optimisticPracticeArtifact: RecentResourceArtifact = {
       kind: "practice",
+      resourceId: null,
+      preferredFormat: "docx",
       title: `${course.title} · ${currentSectionTitle} 练习`,
-      summary: "正在根据当前章节生成随堂测评，完成后会自动切换成可作答练习。",
-      downloadUrl: "",
+      summary: buildResourceSummary(optimisticPracticeResource, "系统已进入练习生成流程，当前先打开随堂练习预览。"),
+      downloadUrl: buildWorkspaceResourceLink(courseId, currentSectionTitle, "practice", `${course.title} · ${currentSectionTitle} 练习`),
       generatedAt: formatGenerationTime(),
       sectionTitle: currentSectionTitle,
-      previewContent: ["正在生成单选、多选与简答题", "正在整理答案与解析", "完成后可立即提交判分"],
-      loading: true,
-    });
+      previewContent: buildResourcePreviewContent(optimisticPracticeResource, ["系统正在补全正式练习文件，当前先展示可答题预览。"]),
+      rawContent: optimisticPracticeResource.content_markdown || "",
+    };
+    upsertRecentArtifact(optimisticPracticeArtifact);
+    showToast("正在打开练习预览页，正式内容会继续生成");
+    openGeneratedResourcePreview(
+      buildPreviewResourceFromArtifact(optimisticPracticeArtifact, "practice_set", optimisticPracticeResource),
+      "课堂练习",
+      "running",
+    );
+    beginUiProgress(0.14);
+    setUiProgress(0.26);
     try {
       const result = await Promise.race([
         studentApi.generateResources({
           user_id: activeUserId,
           course_id: backendCourseId,
-          knowledge_points: [course.title, currentSectionTitle],
+          knowledge_points: [course.title, currentSectionTitle, ...outlineLines],
           resource_types: ["practice_set"],
         }),
         new Promise<never>((_, reject) =>
@@ -3833,11 +5239,17 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       ]);
       setUiProgress(0.58);
       const hydratedResources = await loadGeneratedResourceCards(result.resources || []);
+      mergeResourcesIntoCourseLibrary(hydratedResources);
+      void refreshCourseLibraryFromDatabase();
       const firstResourceId = Number(hydratedResources?.[0]?.resource_id);
       const primaryResource = hydratedResources?.[0];
-      if (Number.isFinite(firstResourceId)) {
-        const download = await studentApi.getResourceDownloadUrl(firstResourceId, activeUserId, "markdown");
+      if (primaryResource) {
         const workspaceUrl = buildWorkspaceResourceLink(courseId, currentSectionTitle, "practice", `${course.title} · ${currentSectionTitle} 练习`);
+        let downloadUrl = workspaceUrl;
+        if (Number.isFinite(firstResourceId) && firstResourceId > 0) {
+          const download = await studentApi.getResourceDownloadUrl(firstResourceId, activeUserId, "markdown");
+          downloadUrl = download.download_url || workspaceUrl;
+        }
         const practiceQuestions = extractPracticeQuestions(primaryResource, course.title, currentSectionTitle);
         const nextArtifact: RecentResourceArtifact = {
           kind: "practice",
@@ -3845,23 +5257,28 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
           preferredFormat: "docx",
           title: `${course.title} · ${currentSectionTitle} 练习`,
           summary: buildResourceSummary(primaryResource, "已生成针对本节知识点的随堂练习。"),
-          downloadUrl: download.download_url || workspaceUrl,
+          downloadUrl,
           generatedAt: formatGenerationTime(),
           sectionTitle: currentSectionTitle,
           previewContent: buildResourcePreviewContent(primaryResource, ["已生成针对本节知识点的随堂练习。"]),
           rawContent: primaryResource?.content_markdown || "",
           practiceQuestions,
         };
-        revealRecentArtifact(nextArtifact);
-        expandRecentCard("artifact-practice");
+        upsertRecentArtifact(nextArtifact);
         setUiProgress(0.92);
-        showToast("练习已生成，结果已显示在视频下方，可直接作答、下载或交给 AI 导师继续讲解");
+        showToast("练习已生成，正在刷新预览页");
+        openGeneratedResourcePreview(
+          buildPreviewResourceFromArtifact(nextArtifact, "practice_set", primaryResource),
+          "课堂练习",
+          "completed",
+          true,
+        );
       } else {
         showToast("练习已生成，但暂时没有拿到下载链接");
       }
     } catch {
-      const fallbackResource = buildLocalGeneratedResource("practice_set", course.title, currentSectionTitle);
-      revealRecentArtifact({
+      const fallbackResource = buildLocalGeneratedResource("practice_set", course.title, currentSectionTitle, outlineLines);
+      const fallbackArtifact: RecentResourceArtifact = {
         kind: "practice",
         resourceId: fallbackResource.resource_id ? Number(fallbackResource.resource_id) : null,
         preferredFormat: "docx",
@@ -3873,9 +5290,15 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         previewContent: buildResourcePreviewContent(fallbackResource, ["已切换为课堂内本地练习，可先继续学习。"]),
         rawContent: fallbackResource.content_markdown || "",
         practiceQuestions: extractPracticeQuestions(fallbackResource, course.title, currentSectionTitle),
-      });
-      expandRecentCard("artifact-practice");
-      showToast("练习已先用课堂内版本生成，结果已显示在视频下方，可继续作答、下载或交给 AI 导师");
+      };
+      upsertRecentArtifact(fallbackArtifact);
+      showToast("练习暂时切到课堂内版本，已刷新预览页");
+      openGeneratedResourcePreview(
+        buildPreviewResourceFromArtifact(fallbackArtifact, "practice_set", fallbackResource),
+        "课堂练习",
+        "completed",
+        true,
+      );
     } finally {
       finishUiProgress();
       setGeneratingPractice(false);
@@ -3885,28 +5308,51 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
   const handleGeneratePpt = async () => {
     if (generatingPpt || generatingHandout || generatingMindmap || generatingPractice) return;
     setGeneratingPpt(true);
-    beginUiProgress(0.14);
-    setUiProgress(0.24);
-    revealRecentPpt({
+    const reusableResource = await findReusableResourceFromLibrary(["ppt"]);
+    if (reusableResource) {
+      const reusablePpt = mapBackendResourceToPpt(reusableResource, course.title, currentSectionTitle);
+      if (reusablePpt) {
+        setRecentPpt(reusablePpt);
+        showToast("已找到资料库里的 PPT，正在直接打开");
+        openGeneratedResourcePreview(
+          buildPptPreviewResource(reusablePpt, reusableResource),
+          "课堂 PPT",
+        );
+        setGeneratingPpt(false);
+        return;
+      }
+    }
+    const optimisticSlides = buildCourseDeckSlides(
+      [buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle, outlineLines)],
+      course.title,
+      currentSectionTitle,
+      outlineLines,
+      selectedPptTemplate,
+    );
+    const optimisticPpt: RecentPptArtifact = {
       resourceId: null,
-      fileName: `${course.title.replace(/[\\/:*?\"<>|]+/g, "-")}-${currentSectionTitle.replace(/[\\/:*?\"<>|]+/g, "-")}.pptx`,
-      slideCount: 0,
+      fileName: `${course.title.replace(/[\\/:*?"<>|]+/g, "-")}-${currentSectionTitle.replace(/[\\/:*?"<>|]+/g, "-")}.pptx`,
+      slideCount: optimisticSlides.length,
       generatedAt: formatGenerationTime(),
-      slides: [],
-      summary: "正在按当前章节整理课件草案，完成后会自动切换成可导出的分页课件。",
+      slides: optimisticSlides,
+      summary: "系统已进入 PPT 生成流程，当前先打开可预览草案。",
       sectionTitle: currentSectionTitle,
       downloadUrl: "",
       preferredFormat: "pptx",
-      previewContent: ["正在生成封面与章节目标", "正在整理核心知识分页", "完成后可直接导出 PPT 文件"],
-      loading: true,
-    });
+      pptTemplate: selectedPptTemplate,
+    };
+    setRecentPpt(optimisticPpt);
+    showToast("正在打开 PPT 预览页，正式内容会继续生成");
+    openGeneratedResourcePreview(buildPptPreviewResource(optimisticPpt, null), "课堂 PPT", "running");
+    beginUiProgress(0.14);
+    setUiProgress(0.24);
     try {
       const result = await Promise.race([
         studentApi.generateResources({
           user_id: activeUserId,
           course_id: backendCourseId,
-          knowledge_points: [course.title, currentSectionTitle],
-          resource_types: ["course_overview", "teaching_plan", "lecture_note"],
+          knowledge_points: [course.title, currentSectionTitle, ...outlineLines],
+          resource_types: ["ppt"],
         }),
         new Promise<never>((_, reject) =>
           window.setTimeout(() => reject(new Error("RESOURCE_GENERATE_TIMEOUT")), RESOURCE_GENERATION_TIMEOUT_MS),
@@ -3914,10 +5360,15 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       ]);
       setUiProgress(0.62);
       const hydratedResources = await loadGeneratedResourceCards(result.resources || []);
+      mergeResourcesIntoCourseLibrary(hydratedResources);
+      void refreshCourseLibraryFromDatabase();
       const teachingPlanResource =
-        hydratedResources.find((item) => item.resource_type === "teaching_plan") || hydratedResources[0] || null;
+        hydratedResources.find((item) => item.resource_type === "ppt") ||
+        hydratedResources.find((item) => item.resource_type === "teaching_plan") ||
+        hydratedResources[0] ||
+        null;
       const fileName = `${course.title.replace(/[\\/:*?"<>|]+/g, "-")}-${currentSectionTitle.replace(/[\\/:*?"<>|]+/g, "-")}.pptx`;
-      const slides = buildCourseDeckSlides(hydratedResources, course.title, currentSectionTitle);
+      const slides = buildCourseDeckSlides(hydratedResources, course.title, currentSectionTitle, outlineLines, selectedPptTemplate);
       let downloadUrl = "";
       if (teachingPlanResource?.resource_id) {
         try {
@@ -3934,22 +5385,30 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         generatedAt: formatGenerationTime(),
         slides,
         summary: course.title.includes("软件工程")
-          ? buildSoftwareEngineeringChapterProfile(course.title, currentSectionTitle).pptSummary
+          ? `已按确认大纲生成 ${slides.length} 页可播放课件。`
           : "已按当前课程与章节整理为封面、目录、内容页和结尾页的课件草案。",
         sectionTitle: currentSectionTitle,
         downloadUrl,
         preferredFormat: "pptx",
         rawContent: teachingPlanResource?.content_markdown || "",
+        pptTemplate: selectedPptTemplate,
       };
-      revealRecentPpt(nextPpt);
-      expandRecentCard("artifact-ppt");
+      setRecentPpt(nextPpt);
       setUiProgress(0.92);
-      showToast("PPT 草案已生成，结果已显示在视频下方，可直接导出或交给 AI 导师继续展开");
+      showToast("PPT 草案已生成，正在刷新预览页");
+      openGeneratedResourcePreview(
+        buildPptPreviewResource(nextPpt, teachingPlanResource),
+        "课堂 PPT",
+        "completed",
+        true,
+      );
     } catch {
       const fallbackSlides = buildCourseDeckSlides(
-        [buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle)],
+        [buildLocalGeneratedResource("lecture_note", course.title, currentSectionTitle, outlineLines)],
         course.title,
         currentSectionTitle,
+        outlineLines,
+        selectedPptTemplate,
       );
       const fallbackPpt: RecentPptArtifact = {
         resourceId: null,
@@ -3961,10 +5420,16 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         sectionTitle: currentSectionTitle,
         downloadUrl: "",
         preferredFormat: "pptx",
+        pptTemplate: selectedPptTemplate,
       };
-      revealRecentPpt(fallbackPpt);
-      expandRecentCard("artifact-ppt");
-      showToast("PPT 草案已先用课堂内版本生成，结果已显示在视频下方，可继续导出或交给 AI 导师");
+      setRecentPpt(fallbackPpt);
+      showToast("PPT 草案暂时切到课堂内版本，已刷新预览页");
+      openGeneratedResourcePreview(
+        buildPptPreviewResource(fallbackPpt, null),
+        "课堂 PPT",
+        "completed",
+        true,
+      );
     } finally {
       finishUiProgress();
       setGeneratingPpt(false);
@@ -4170,6 +5635,14 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
   };
 
   const handleVideoPlayPause = async () => {
+    if (!videoSourceMounted) {
+      pendingResumeTimeRef.current = currentPlaybackTime > 0 ? currentPlaybackTime : pendingResumeTimeRef.current;
+      shouldResumeAutoplayRef.current = true;
+      setShowVideoLoadingOverlay(true);
+      setVideoSourceMounted(true);
+      return;
+    }
+
     if (!videoRef.current) {
       return;
     }
@@ -4181,9 +5654,11 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
     }
 
     try {
+      setShowVideoLoadingOverlay(true);
       await videoRef.current.play();
       setVideoPlaying(true);
     } catch {
+      setShowVideoLoadingOverlay(false);
       showToast("当前视频暂时无法播放，请稍后重试");
     }
   };
@@ -4439,35 +5914,70 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
               </div>
             </div>
 
-            <video
-              id="classroom-video-tag"
-              ref={videoRef}
-              key={activeEpisodeIdx} // Remounts to reset play status if switched
-              controls
-              autoPlay={false}
-              preload="metadata"
-              className="relative z-0 w-full h-full object-cover"
-              onLoadedMetadata={(event) => {
-                const duration = Number(event.currentTarget.duration || 0);
-                setVideoDuration(Number.isFinite(duration) ? duration : 0);
-              }}
-              onLoadedData={() => {
-                setVideoFrameReady(true);
-                setShowVideoLoadingOverlay(false);
-              }}
-              onCanPlay={() => {
-                setVideoFrameReady(true);
-                setShowVideoLoadingOverlay(false);
-              }}
-              onPlay={() => setVideoPlaying(true)}
-              onPause={() => setVideoPlaying(false)}
-              onTimeUpdate={handleVideoTimelineUpdate}
-            >
-              <source
-                src={activeVideoSrc}
-                type="video/mp4"
-              />
-            </video>
+            {videoSourceMounted ? (
+              <video
+                id="classroom-video-tag"
+                ref={videoRef}
+                key={activeEpisodeIdx} // Remounts to reset play status if switched
+                controls
+                autoPlay={false}
+                preload={currentPlaybackTime > 0 ? "auto" : "metadata"}
+                poster={currentPlaybackTime > 0 ? undefined : course.image}
+                className="relative z-0 h-full w-full object-cover"
+                onLoadedMetadata={(event) => {
+                  const duration = Number(event.currentTarget.duration || 0);
+                  setVideoDuration(Number.isFinite(duration) ? duration : 0);
+                }}
+                onSeeked={() => {
+                  setVideoFrameReady(true);
+                  setShowVideoLoadingOverlay(false);
+                }}
+                onLoadedData={() => {
+                  setVideoFrameReady(true);
+                  setShowVideoLoadingOverlay(false);
+                }}
+                onCanPlay={() => {
+                  setVideoFrameReady(true);
+                  setShowVideoLoadingOverlay(false);
+                }}
+                onError={() => {
+                  setShowVideoLoadingOverlay(false);
+                  showToast("当前视频加载失败，请稍后重试");
+                }}
+                onPlay={() => setVideoPlaying(true)}
+                onPause={() => setVideoPlaying(false)}
+                onTimeUpdate={handleVideoTimelineUpdate}
+              >
+                <source
+                  src={activeVideoSrc}
+                  type="video/mp4"
+                />
+              </video>
+            ) : (
+              <button
+                type="button"
+                onClick={handleVideoPlayPause}
+                className="relative z-0 flex h-full w-full cursor-pointer items-center justify-center overflow-hidden bg-[#111827] text-left"
+                aria-label="开始播放课堂视频"
+              >
+                <img
+                  src={course.image}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover opacity-55"
+                  loading="eager"
+                />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(17,24,39,0.22)_0%,rgba(17,24,39,0.38)_48%,rgba(17,24,39,0.82)_100%)]" />
+                <div className="relative flex max-w-[560px] flex-col items-center px-6 text-center text-white">
+                  <span className="inline-flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-white/18 shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-md transition-transform group-hover:scale-105">
+                    <Play className="ml-1 h-7 w-7 fill-white" />
+                  </span>
+                  <p className="mt-5 text-lg font-black">{currentSectionTitle}</p>
+                  <p className="mt-2 max-w-[420px] text-sm leading-6 text-white/76">
+                    点击后再加载课堂视频，先保持页面响应和 AI 工作台可用。
+                  </p>
+                </div>
+              </button>
+            )}
             {showVideoLoadingOverlay && !videoFrameReady ? (
               <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/35 backdrop-blur-[1px]">
                 <div className="rounded-2xl border border-white/15 bg-black/45 px-4 py-3 text-center text-white shadow-2xl">
@@ -4922,8 +6432,6 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         </aside>
 
       </div>
-
-      {classroomGeneratedResultsSection}
 
       {/* 4. Bottom Section: Other Recommended Courses switched directly in Classroom */}
       <section className="course-panel-surface space-y-4">

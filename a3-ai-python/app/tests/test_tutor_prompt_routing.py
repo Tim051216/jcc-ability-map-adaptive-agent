@@ -5,6 +5,12 @@ from app.agents.nodes.question_analyzer_agent import QuestionAnalyzerAgent
 from app.agents.nodes.video_recommender_agent import VideoRecommenderAgent
 
 
+def test_system_usage_question_routes_to_local_knowledge_branch() -> None:
+    assert AnswerGeneratorAgent._is_system_usage_question("如何使用该系统")
+    assert AnswerGeneratorAgent._is_system_usage_question("这个页面是做什么的")
+    assert AnswerGeneratorAgent._is_system_usage_question("项目怎么启动和联调")
+
+
 class _ShortLLMClient:
     async def chat_completion(self, *args, **kwargs):
         class _Message:

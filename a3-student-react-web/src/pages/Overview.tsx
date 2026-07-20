@@ -96,7 +96,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     title: "稳态实战型",
     subtitle: "任务拆解能力较强，适合结构化推进与实践验证",
     description: "当前画像显示，你在任务拆解、步骤组织和实践执行上表现稳定。更适合以明确主线驱动学习，通过案例验证和阶段推进完成知识内化。",
-    image: "/sbti/spta.svg",
+    image: "/sbti/spta.svg?v=2",
     accent: "from-[#fff4f8] via-white to-[#f4f9ff]",
     tags: ["结构化推进", "实践验证", "稳步进阶"],
   },
@@ -105,7 +105,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     title: "体系建构型",
     subtitle: "概念整合能力突出，适合先建框架再进入应用",
     description: "当前画像显示，你更擅长先厘清原理、结构与概念关系，再进入应用训练。更适合高密度讲义、分层讲解和知识图谱式学习材料。",
-    image: "/sbti/stca.svg",
+    image: "/sbti/stca.svg?v=2",
     accent: "from-[#f5f7ff] via-white to-[#fff8fb]",
     tags: ["原理优先", "框架搭建", "体系理解"],
   },
@@ -114,7 +114,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     title: "探索反馈型",
     subtitle: "试错与反馈驱动明显，适合快速迭代式学习",
     description: "当前画像显示，你对即时反馈和动态修正更敏感。更适合先尝试、再提问、再根据测评与答疑快速调整策略，以保持理解效率和学习投入。",
-    image: "/sbti/etfi.svg",
+    image: "/sbti/etfi.svg?v=2",
     accent: "from-[#fff8f2] via-white to-[#f4fbff]",
     tags: ["快速试错", "反馈驱动", "动态修正"],
   },
@@ -123,7 +123,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     title: "节奏推进型",
     subtitle: "节奏控制较稳定，适合主线清晰的渐进式提升",
     description: "当前画像显示，你在持续投入和阶段跟进上较为稳定。更适合围绕清晰主线逐步提升难度，通过连续完成小目标积累整体掌握度。",
-    image: "/sbti/spci.svg",
+    image: "/sbti/spci.svg?v=2",
     accent: "from-[#fff6fa] via-white to-[#f7fbff]",
     tags: ["主线清晰", "持续投入", "渐进提升"],
   },
@@ -372,11 +372,11 @@ export default function Overview({ user }: OverviewProps = {}) {
       const idleId = (window as Window & {
         requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
         cancelIdleCallback: (id: number) => void;
-      }).requestIdleCallback(warmRoutes, { timeout: 1200 });
+      }).requestIdleCallback(warmRoutes, { timeout: 5000 });
       return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
     }
 
-    const timer = globalThis.setTimeout(warmRoutes, 900);
+    const timer = globalThis.setTimeout(warmRoutes, 5000);
     return () => globalThis.clearTimeout(timer);
   }, []);
 
@@ -1487,7 +1487,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                   <div className="pointer-events-none absolute -right-10 -top-14 h-36 w-36 rounded-full border border-white/70 bg-white/20 blur-sm" />
                   <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,rgba(251,114,153,0),rgba(251,114,153,0.88),rgba(125,211,252,0.8),rgba(251,114,153,0))]" />
 
-                  <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_150px] lg:items-stretch">
+                  <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-stretch">
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -1535,19 +1535,74 @@ export default function Overview({ user }: OverviewProps = {}) {
                       </div>
                     </div>
 
-                    <div className="relative mx-auto flex w-full max-w-[150px] flex-col justify-between overflow-hidden rounded-[28px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(255,255,255,0.55))] p-2 shadow-[0_18px_34px_rgba(15,23,42,0.08)] backdrop-blur">
-                      <div className="absolute inset-x-4 top-3 h-px bg-[linear-gradient(90deg,transparent,rgba(251,114,153,0.72),transparent)]" />
-                      <div className="flex min-h-[126px] items-end justify-center overflow-hidden rounded-[22px] bg-white/70">
-                        <img src={sbtiPortrait.image} alt={sbtiPortrait.title} className="h-full w-full object-cover object-top scale-[1.04]" />
-                      </div>
-                      <div className="mt-2 rounded-[18px] bg-[#111827] px-3 py-2 text-white shadow-[0_12px_22px_rgba(17,24,39,0.18)]">
-                        <div className="flex items-center justify-between text-[9px] font-black tracking-[0.18em] text-white/62">
-                          <span>MATCH</span>
-                          <span>LIVE</span>
+                    <div className="relative mx-auto flex w-full max-w-[220px] flex-col justify-between overflow-hidden rounded-[30px] border border-white/82 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(255,246,250,0.7))] p-3 shadow-[0_20px_42px_rgba(15,23,42,0.09)] backdrop-blur">
+                      <div className="absolute inset-x-5 top-4 h-px bg-[linear-gradient(90deg,transparent,rgba(251,114,153,0.72),rgba(125,211,252,0.72),transparent)]" />
+                      <div className="flex items-center justify-between px-1">
+                        <div>
+                          <p className="text-[9px] font-black tracking-[0.2em] text-[#8a94a3]">PROFILE RADAR</p>
+                          <p className="mt-1 text-[13px] font-black text-[#101828]">{sbtiPortrait.code}</p>
                         </div>
-                        <div className="mt-1 flex items-end justify-between">
-                          <span className="text-[18px] font-black">92%</span>
-                          <span className="rounded-full bg-[#5eead4]/16 px-2 py-0.5 text-[9px] font-black text-[#99f6e4]">已更新</span>
+                        <span className="rounded-full bg-[#fff1f5] px-2.5 py-1 text-[9px] font-black text-[#fb7299]">
+                          已校准
+                        </span>
+                      </div>
+
+                      <div className="mt-3 overflow-hidden rounded-[24px] border border-white/80 bg-[radial-gradient(circle_at_50%_32%,rgba(251,114,153,0.14),transparent_28%),linear-gradient(180deg,#ffffff_0%,#fff8fb_100%)] px-3 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                        <div className="relative mx-auto h-[178px] w-[178px]">
+                          <div className="absolute inset-0 rounded-full border border-[#f3d7e2]" />
+                          <div className="absolute inset-[18px] rounded-full border border-[#dcecf8]" />
+                          <div className="absolute inset-[38px] rounded-full border border-[#f3d7e2]" />
+                          <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-[#f3d7e2]" />
+                          <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-[#dcecf8]" />
+                          <div className="absolute left-1/2 top-1/2 h-px w-full -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[#eef2f7]" />
+                          <div className="absolute left-1/2 top-1/2 h-px w-full -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-[#f3d7e2]" />
+                          <svg viewBox="0 0 178 178" className="absolute inset-0 h-full w-full overflow-visible">
+                            <polygon
+                              points="89,42 124,66 114,116 76,128 49,92 61,57"
+                              fill="rgba(251,114,153,0.24)"
+                              stroke="#fb7299"
+                              strokeWidth="3"
+                              strokeLinejoin="round"
+                            />
+                            {[
+                              [89, 42, "#fb7299"],
+                              [124, 66, "#8adcf7"],
+                              [114, 116, "#fb7299"],
+                              [76, 128, "#c7b5ff"],
+                              [49, 92, "#8adcf7"],
+                              [61, 57, "#fb7299"],
+                            ].map(([cx, cy, color], index) => (
+                              <circle key={index} cx={cx} cy={cy} r="6" fill={color as string} stroke="white" strokeWidth="3" />
+                            ))}
+                          </svg>
+                          <div className="absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-[22px] border border-white/90 bg-white/82 text-center shadow-[0_14px_28px_rgba(251,114,153,0.14)] backdrop-blur">
+                            <span className="text-[10px] font-black tracking-[0.18em] text-[#fb7299]">SBTI</span>
+                            <strong className="mt-1 text-lg font-black text-[#101828]">{sbtiPortrait.code}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid gap-2">
+                        <div className="rounded-[18px] bg-[#111827] px-3 py-2.5 text-white shadow-[0_12px_22px_rgba(17,24,39,0.18)]">
+                          <div className="flex items-center justify-between text-[9px] font-black tracking-[0.18em] text-white/62">
+                            <span>MATCH</span>
+                            <span>LIVE</span>
+                          </div>
+                          <div className="mt-1 flex items-end justify-between">
+                            <span className="text-[24px] font-black">92%</span>
+                            <span className="rounded-full bg-[#5eead4]/16 px-2 py-0.5 text-[9px] font-black text-[#99f6e4]">已更新</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-[16px] border border-white/80 bg-white/76 px-3 py-2 shadow-sm">
+                            <div className="text-[9px] font-black tracking-[0.18em] text-[#8a94a3]">重点策略</div>
+                            <div className="mt-1 text-[11px] font-black text-[#101828]">{sbtiPortraitTags[0] || "画像更新中"}</div>
+                          </div>
+                          <div className="rounded-[16px] border border-white/80 bg-white/76 px-3 py-2 shadow-sm">
+                            <div className="text-[9px] font-black tracking-[0.18em] text-[#8a94a3]">驱动方式</div>
+                            <div className="mt-1 text-[11px] font-black text-[#101828]">{sbtiPortraitTags[1] || "学习中生成"}</div>
+                          </div>
                         </div>
                       </div>
                     </div>

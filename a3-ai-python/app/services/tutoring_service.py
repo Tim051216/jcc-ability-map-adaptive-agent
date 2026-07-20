@@ -33,7 +33,6 @@ from app.schemas.tutoring import (
     TutoringQuestionCreate,
     TutoringQuestionResponse,
 )
-from app.services.course_service import CourseService
 from app.services.guardrail_service import GuardrailContext, GuardrailService, GuardrailViolationError
 from app.services.llm_health_service import LLMHealthService
 from app.services.profile_service import ProfileService
@@ -41,6 +40,8 @@ from app.services.tutoring_sensitive import assert_tutoring_text_allowed
 
 EmitFn = Callable[[dict[str, Any]], Awaitable[None]]
 PERSONA_PREFIX_RE = r"^\[(haibara|usagi)\]\s*"
+TUTORING_GENERATION_TIMEOUT_SECONDS = 60
+TUTORING_REVIEW_TIMEOUT_SECONDS = 6
 
 
 class TutoringBillingError(ValueError):
@@ -60,6 +61,24 @@ class TutoringService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.guardrail_service = GuardrailService()
+
+    async def _ensure_tutoring_tables(self) -> None:
+        """Create tutoring tables lazily for local/dev databases that missed migrations."""
+
+        tables = [
+            TutoringSession.__table__,
+            TutoringQuestion.__table__,
+            TutoringAnswer.__table__,
+            EscalationRecord.__table__,
+            TutoringFavorite.__table__,
+        ]
+        for table in tables:
+            await self.db.run_sync(
+                lambda sync_session, table=table: table.create(
+                    sync_session.connection(),
+                    checkfirst=True,
+                )
+            )
 
     @staticmethod
     def _generate_id() -> int:
@@ -115,6 +134,18 @@ class TutoringService:
         if not text:
             return False
         return "????????" in text or text.count("?") >= 6
+
+    @staticmethod
+    def _clean_tutor_answer_text(value: Any) -> str:
+        text = str(value or "")
+        unwanted_lines = {
+            "你先把真正想问的那句说出来，会更快。",
+            "- 你先把真正想问的那句说出来，会更快。",
+            "• 你先把真正想问的那句说出来，会更快。",
+        }
+        return "\n".join(
+            line for line in text.splitlines() if line.strip() not in unwanted_lines
+        ).strip()
 
     @staticmethod
     def _looks_like_billing_error_message(message: str | None) -> bool:
@@ -374,19 +405,26 @@ class TutoringService:
         reference_sources: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
         citations = self._extract_reference_citations(reference_sources)
-        review = await self.guardrail_service.review_output(
-            answer_text,
-            context=self._build_guardrail_context(
-                scene="tutoring_answer",
-                course_id=course_id,
-                user_id=user_id,
-                citations=citations,
-            ),
-            citations=citations,
-        )
-        safe_answer_text = answer_text
+        try:
+            review = await asyncio.wait_for(
+                self.guardrail_service.review_output(
+                    answer_text,
+                    context=self._build_guardrail_context(
+                        scene="tutoring_answer",
+                        course_id=course_id,
+                        user_id=user_id,
+                        citations=citations,
+                    ),
+                    citations=citations,
+                ),
+                timeout=TUTORING_REVIEW_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.warning("tutoring.answer_review_skipped", error=str(exc))
+            return self._clean_tutor_answer_text(answer_text), {"output_review": None}, None
+        safe_answer_text = self._clean_tutor_answer_text(answer_text)
         if review.output_review and review.output_review.blocked:
-            safe_answer_text = (
+            safe_answer_text = self._clean_tutor_answer_text(
                 review.output_review.rewritten_text
                 or "当前回答触发了内容安全保护，请换一个学习相关问题继续。"
             )
@@ -512,7 +550,9 @@ class TutoringService:
     ) -> dict[str, Any]:
         now = datetime.now()
         analysis = self._repair_mojibake_payload(result.get("question_analysis") or {})
-        repaired_answer_text = self._repair_mojibake_text(result.get("answer_text") or "")
+        repaired_answer_text = self._clean_tutor_answer_text(
+            self._repair_mojibake_text(result.get("answer_text") or "")
+        )
         reviewed_answer_text, safety_review, hallucination_review = await self._review_answer_content(
             answer_text=repaired_answer_text,
             course_id=question.course_id,
@@ -681,7 +721,7 @@ class TutoringService:
                     persona=persona,
                     on_event=on_event,
                 ),
-                timeout=18,
+                timeout=TUTORING_GENERATION_TIMEOUT_SECONDS,
             )
             result = self._repair_mojibake_payload(result)
             if self._contains_placeholder_noise(result.get("answer_text")) or self._contains_placeholder_noise(
@@ -690,55 +730,39 @@ class TutoringService:
                 raise ValueError("generated placeholder-heavy tutoring answer")
         except Exception as e:
             logger.exception("tutoring.generate_failed", question_id=question_id)
-            message = str(e)
-            result = self._build_local_fallback_result(
-                question_text=raw_question_text,
-                course_id=getattr(question, "course_id", None),
-                question_images=getattr(question, "question_images", None),
-                failure_reason=(
-                    "llm_billing_unavailable"
-                    if self._looks_like_billing_error_message(message)
-                    else message
-                ),
-            )
+            question.question_status = 3
+            question.has_answer = False
+            question.update_time = datetime.now()
+            await self.db.commit()
             if on_event:
                 await on_event(
                     {
-                        "chunk_type": "step",
-                        "content": "fallback",
-                        "metadata": {"label": "切换到本地兜底回答"},
+                        "chunk_type": "error",
+                        "content": str(e) or "AI 导师生成失败，请稍后重试。",
                     }
                 )
-                await on_event(
-                    {
-                        "chunk_type": "text_delta",
-                        "content": result["answer_text"],
-                    }
-                )
+            raise
 
         if not str(result.get("answer_text") or "").strip():
-            result = self._build_local_fallback_result(
-                question_text=raw_question_text,
-                course_id=getattr(question, "course_id", None),
-                question_images=getattr(question, "question_images", None),
-                failure_reason="empty tutoring answer",
-            )
+            question.question_status = 3
+            question.has_answer = False
+            question.update_time = datetime.now()
+            await self.db.commit()
+            raise ValueError("empty tutoring answer")
 
         try:
             return await self._persist_coordinator_result(question, result)
-        except Exception:
+        except Exception as exc:
             logger.exception("tutoring.persist_failed", question_id=question_id)
-            fallback_result = result
-            if not self._is_local_fallback_result(result):
-                fallback_result = self._build_local_fallback_result(
-                    question_text=raw_question_text,
-                    course_id=getattr(question, "course_id", None),
-                    question_images=getattr(question, "question_images", None),
-                    failure_reason="persist_failed",
-                )
-            return await self._persist_result_without_review(question, fallback_result)
+            question.question_status = 3
+            question.has_answer = False
+            question.update_time = datetime.now()
+            await self.db.commit()
+            raise RuntimeError("tutoring answer persistence failed") from exc
 
     async def query_history(self, user_id: int, query: TutoringHistoryQuery) -> dict[str, Any]:
+        await self._ensure_tutoring_tables()
+
         filters = [TutoringQuestion.user_id == user_id]
         if query.course_id is not None:
             filters.append(TutoringQuestion.course_id == query.course_id)

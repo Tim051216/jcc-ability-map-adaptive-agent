@@ -40,7 +40,7 @@ a3:
 
 encrypt:
   key-store:
-    alias: tjxt
-    location: file:F:/A3-cnsoftbei/_upstream_tjxt/tianji/tj-auth/tj-auth-service/tjxt.jks
+    alias: a3auth
+    location: classpath:a3auth.jks
     password: tj123321
     secret: tj123321

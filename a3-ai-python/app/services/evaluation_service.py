@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 
 from app.db.models import EvaluationQuestion as EvaluationQuestionModel
 from app.db.repositories.evaluation_paper_repository import EvaluationPaperRepository
@@ -33,9 +33,9 @@ from app.services.evaluation_agent_service import EvaluationAgentService
 class EvaluationService:
     PAPER_AGENT_TIMEOUT_SECONDS = 60
     QUESTION_BANK_USE_AGENT = True
-    QUESTION_BANK_SINGLE_TIMEOUT_SECONDS = 55
-    QUESTION_BANK_MAX_CONCURRENCY = 1
-    QUESTION_BANK_SINGLE_RETRY_COUNT = 2
+    QUESTION_BANK_SINGLE_TIMEOUT_SECONDS = 18
+    QUESTION_BANK_MAX_CONCURRENCY = 3
+    QUESTION_BANK_SINGLE_RETRY_COUNT = 1
     QUESTION_BANK_CACHE_PREFIX = "question_bank_cache:v2:"
     FALLBACK_SINGLE_CHOICE_VARIANTS = [
         {
@@ -123,7 +123,21 @@ class EvaluationService:
                 "course_code": course_context.course_code,
             }
         )
-        questions = await self._build_paper_questions(request)
+        reusable_questions = await self._load_reusable_question_bank(
+            test_id=course_context.course_id,
+            knowledge_points=request.knowledge_points or [request.target or request.course_code],
+            difficulty_level=self._paper_type_to_difficulty(request.paper_type),
+            question_type=1,
+            count=request.question_count,
+        )
+        questions = reusable_questions[: request.question_count]
+        if len(questions) < request.question_count:
+            missing_request = request.model_copy(update={"question_count": request.question_count - len(questions)})
+            questions.extend(await self._build_paper_questions(missing_request))
+        questions = [
+            item.model_copy(update={"question_id": f"q{index}"})
+            for index, item in enumerate(questions[: request.question_count], start=1)
+        ]
         now = datetime.now(timezone.utc).isoformat()
         async with async_session_factory() as session:
             paper = await EvaluationPaperRepository().create_paper(
@@ -138,6 +152,11 @@ class EvaluationService:
             )
             await session.commit()
         paper_id = paper.id
+        await self._save_question_pool_entries(
+            test_id=course_context.course_id,
+            questions=questions,
+            generation_prompt=f"paper:{paper_id}:{request.course_code}",
+        )
         return EvaluationPaperResponse(
             paper_id=paper_id,
             user_id=request.user_id,
@@ -168,6 +187,19 @@ class EvaluationService:
                 questions=cached_questions[:count],
                 response_source="cache",
             )
+        reusable_questions = await self._load_reusable_question_bank(
+            test_id=request.test_id,
+            knowledge_points=resolved_points,
+            difficulty_level=request.difficulty_level,
+            question_type=request.question_type,
+            count=count,
+        )
+        if len(reusable_questions) >= count:
+            return self._build_question_generate_response(
+                test_id=request.test_id,
+                questions=reusable_questions[:count],
+                response_source="cache",
+            )
         fallback_request = EvaluationPaperGenerateRequest(
             user_id=1,
             course_id=request.test_id or None,
@@ -177,7 +209,8 @@ class EvaluationService:
             question_count=count,
         )
 
-        generated_questions: list[EvaluationQuestion] = []
+        generated_questions: list[EvaluationQuestion] = reusable_questions[:]
+        missing_count = max(count - len(generated_questions), 0)
         if self.QUESTION_BANK_USE_AGENT:
             async def _build_indexed_question(index: int, point: str) -> EvaluationQuestion | None:
                 agent_question = await self._build_single_question_with_retries(
@@ -202,9 +235,12 @@ class EvaluationService:
                     return await _build_indexed_question(index, point)
 
             generated_candidates = await asyncio.gather(
-                *(_run_limited(index, point) for index, point in enumerate(point_batches, start=1))
+                *(
+                    _run_limited(index, point)
+                    for index, point in enumerate(point_batches[len(reusable_questions):len(reusable_questions) + missing_count], start=len(reusable_questions) + 1)
+                )
             )
-            generated_questions = [item for item in generated_candidates if item]
+            generated_questions.extend([item for item in generated_candidates if item])
 
         if len(generated_questions) < count:
             fallback_questions = [
@@ -328,6 +364,56 @@ class EvaluationService:
             return []
         return questions
 
+    async def _load_reusable_question_bank(
+        self,
+        *,
+        test_id: int,
+        knowledge_points: list[str],
+        difficulty_level: int,
+        question_type: int,
+        count: int,
+    ) -> list[EvaluationQuestion]:
+        normalized_points = [item.strip() for item in knowledge_points if item and item.strip()]
+        point_filters = []
+        for point in normalized_points:
+            point_filters.append(EvaluationQuestionModel.knowledge_point == point[:255])
+            if len(point) >= 4:
+                point_filters.append(EvaluationQuestionModel.knowledge_point.like(f"%{point[:24]}%"))
+
+        async with async_session_factory() as session:
+            stmt = (
+                select(EvaluationQuestionModel)
+                .where(
+                    EvaluationQuestionModel.test_id == test_id,
+                    EvaluationQuestionModel.status == 1,
+                    EvaluationQuestionModel.question_type == question_type,
+                    EvaluationQuestionModel.difficulty_level <= max(difficulty_level, 1),
+                )
+                .order_by(
+                    func.coalesce(EvaluationQuestionModel.quality_score, 0).desc(),
+                    EvaluationQuestionModel.id.desc(),
+                )
+                .limit(max(count * 3, count))
+            )
+            if point_filters:
+                stmt = stmt.where(or_(*point_filters))
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+
+        questions: list[EvaluationQuestion] = []
+        seen_prompts: set[str] = set()
+        for row in rows:
+            prompt_key = (row.question_content or "").strip()
+            if not prompt_key or prompt_key in seen_prompts:
+                continue
+            seen_prompts.add(prompt_key)
+            questions.append(self._db_question_to_schema(row))
+            if len(questions) >= count:
+                break
+        if self.QUESTION_BANK_USE_AGENT and questions and all(item.source == "fallback" for item in questions):
+            return []
+        return questions
+
     async def _save_cached_question_bank(
         self,
         *,
@@ -335,12 +421,45 @@ class EvaluationService:
         test_id: int,
         questions: list[EvaluationQuestion],
     ) -> None:
+        await self._save_question_pool_entries(
+            test_id=test_id,
+            questions=questions,
+            generation_prompt=cache_key,
+            delete_generation_prompt=cache_key,
+        )
+
+    async def _save_question_pool_entries(
+        self,
+        *,
+        test_id: int,
+        questions: list[EvaluationQuestion],
+        generation_prompt: str,
+        delete_generation_prompt: str | None = None,
+    ) -> None:
         async with async_session_factory() as session:
-            await session.execute(
-                delete(EvaluationQuestionModel).where(EvaluationQuestionModel.generation_prompt == cache_key)
+            if delete_generation_prompt:
+                await session.execute(
+                    delete(EvaluationQuestionModel).where(
+                        EvaluationQuestionModel.generation_prompt == delete_generation_prompt
+                    )
+                )
+            existing_result = await session.execute(
+                select(EvaluationQuestionModel.question_content).where(
+                    EvaluationQuestionModel.test_id == test_id,
+                    EvaluationQuestionModel.status == 1,
+                )
             )
+            existing_prompts = {
+                str(item).strip()
+                for item in existing_result.scalars().all()
+                if str(item).strip()
+            }
             next_id = await self._get_next_cached_question_id(session)
             for index, item in enumerate(questions, start=1):
+                prompt_key = item.prompt.strip()
+                if prompt_key in existing_prompts:
+                    continue
+                existing_prompts.add(prompt_key)
                 session.add(
                     EvaluationQuestionModel(
                         id=next_id,
@@ -354,7 +473,7 @@ class EvaluationService:
                         answer_analysis=item.explanation,
                         score=10.0,
                         order_num=index,
-                        generation_prompt=cache_key,
+                        generation_prompt=generation_prompt,
                         generation_model=f"cached_{item.source}",
                         quality_score=1.0 if item.source == "ai" else 0.6,
                         status=1,

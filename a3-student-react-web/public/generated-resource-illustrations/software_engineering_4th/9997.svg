@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
   <rect width="1400" height="860" rx="40" fill="#eff6ff"/>
   <rect x="88" y="84" width="1224" height="692" rx="34" fill="white"/>
-  <text x="124" y="150" font-size="38" font-family="Arial, sans-serif" font-weight="700" fill="#0f172a">软件工程与实践（第4版） 教学插图</text>
-  <text x="124" y="194" font-size="19" font-family="Arial, sans-serif" fill="#475467">围绕 软件工程与实践（第4版）、补教学插图、结构图示 生成结构示意、流程拆图与课堂配图，方便快速看懂概念关系。</text>
+  <text x="124" y="150" font-size="38" font-family="Arial, sans-serif" font-weight="700" fill="#0f172a">软件项目从想法到维护阶段图</text>
+  <text x="124" y="194" font-size="19" font-family="Arial, sans-serif" fill="#475467">用于讲义、课件或 AI 答疑页的结构示意图说明，帮助解释流程关系。</text>
   <rect x="1100" y="126" width="144" height="34" rx="17" fill="#dbeafe"/>
   <text x="1172" y="148" text-anchor="middle" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="#0f172a">讲义插图版</text>
   <rect x="124" y="256" width="270" height="144" rx="26" fill="#dbeafe"/>

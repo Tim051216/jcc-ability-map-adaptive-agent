@@ -3,19 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { EChartsCoreOption } from "echarts/core";
 import {
   AlertCircle,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   ArrowRight,
   Bot,
   CheckCircle,
+  FileText,
   LoaderCircle,
   Lock,
+  Network,
   RefreshCw,
+  Sparkles,
   XCircle,
 } from "lucide-react";
 import {
@@ -34,9 +38,12 @@ import {
 } from "../lib/studentApi";
 import { getCurrentLoggedInUserId } from "../lib/currentUser";
 import { openTutorPanel } from "../lib/tutorPanel";
-import { parseQuizPaper, scoreQuiz, type QuizPaper, type QuizQuestion } from "../lib/quizEngine";
+import { normalizeAnswerList, normalizeOptionKey, parseQuizPaper, scoreQuiz, type QuizPaper, type QuizQuestion } from "../lib/quizEngine";
 const USER_ID = getCurrentLoggedInUserId();
 const ACTIVE_COURSE_KEY = "software-engineering";
+const EVALUATION_STATE_CACHE_PREFIX = "a3:evaluation-state";
+const EVALUATION_STATE_CACHE_TTL = 5 * 60 * 1000;
+const EVALUATION_STATE_TIMEOUT = 3500;
 const LineBarChartPanel = lazy(() => import("../components/LineBarChartPanel"));
 const HeatmapChartPanel = lazy(() => import("../components/HeatmapChartPanel"));
 
@@ -58,7 +65,7 @@ const COURSE_OPTIONS: CourseOption[] = [
     description: "已接入真实测评数据，可以直接开始。",
     status: "available",
     courseId: 401,
-    routeCourseId: "series-2",
+    routeCourseId: "series-1",
   },
   {
     key: "data-structure",
@@ -91,6 +98,13 @@ const COURSE_OPTIONS: CourseOption[] = [
 
 const AVAILABLE_COURSES = COURSE_OPTIONS.filter((course) => course.status === "available");
 const UPCOMING_COURSES = COURSE_OPTIONS.filter((course) => course.status !== "available");
+const SEEDED_QUESTION_BANKS = [
+  { label: "数据结构：栈与队列", count: 5 },
+  { label: "Java 基础语法", count: 5 },
+  { label: "算法复杂度分析", count: 5 },
+  { label: "数据库索引与约束", count: 5 },
+  { label: "操作系统进程线程", count: 5 },
+];
 
 function formatPercent(value?: number | null) {
   if (value === null || value === undefined) return "暂无";
@@ -107,6 +121,304 @@ function formatDate(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function buildEvaluationStateCacheKey(userId: number, courseId: number) {
+  return `${EVALUATION_STATE_CACHE_PREFIX}:${userId}:${courseId}`;
+}
+
+function readEvaluationStateCache(userId: number, courseId: number): EvaluationStateCache | null {
+  try {
+    const raw = window.localStorage.getItem(buildEvaluationStateCacheKey(userId, courseId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as EvaluationStateCache;
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt > EVALUATION_STATE_CACHE_TTL) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeEvaluationStateCache(userId: number, courseId: number, state: Omit<EvaluationStateCache, "savedAt">) {
+  try {
+    window.localStorage.setItem(
+      buildEvaluationStateCacheKey(userId, courseId),
+      JSON.stringify({
+        ...state,
+        savedAt: Date.now(),
+      }),
+    );
+  } catch {
+    // Cache is only an acceleration layer; ignore storage failures.
+  }
+}
+
+function withEvaluationTimeout<T>(task: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(fallback), EVALUATION_STATE_TIMEOUT);
+    task
+      .then((value) => resolve(value))
+      .catch(() => resolve(fallback))
+      .finally(() => window.clearTimeout(timer));
+  });
+}
+
+function buildFallbackEvaluationPaper(
+  userId: number,
+  courseCode: string,
+  courseTitle: string,
+  focusPoints: string[] = [],
+): EvaluationPaperResponse {
+  const points = focusPoints.length
+    ? focusPoints
+    : ["数据结构：栈与队列", "Java 基础语法", "算法复杂度分析", "数据库索引与约束", "操作系统进程线程"];
+
+  return {
+    paper_id: -Date.now(),
+    user_id: userId,
+    course_code: courseCode || "computer_science_core",
+    paper_type: "diagnostic",
+    status: "generated",
+    source: "fallback",
+    questions: [
+      {
+        question_id: "fallback-cs-q1",
+        question_type: "single_choice",
+        prompt: "在 Java 中使用数组实现栈时，`top` 表示栈顶元素下标。执行 `push` 操作前最应该先检查什么条件？",
+        options: ["A. `top == capacity - 1`，判断栈是否已满", "B. `top == -1`，判断栈是否为空", "C. 数组中是否存在重复元素", "D. 栈中元素是否已经按升序排列"],
+        correct_answer: "A",
+        explanation: "数组实现栈时容量固定，入栈前必须先判断是否栈满，否则 `top++` 后写入数组会造成越界。判断栈空通常用于 `pop` 或 `peek`。",
+        knowledge_point: points[0] || "数据结构：栈",
+        difficulty: "easy",
+        source: "fallback",
+      },
+      {
+        question_id: "fallback-cs-q2",
+        question_type: "single_choice",
+        prompt: "对一个长度为 n 的无序数组进行线性查找，最坏情况下的时间复杂度是多少？",
+        options: ["A. O(1)", "B. O(log n)", "C. O(n)", "D. O(n log n)"],
+        correct_answer: "C",
+        explanation: "线性查找在最坏情况下需要从头到尾检查每一个元素，因此时间复杂度是 O(n)。O(log n) 通常对应二分查找，但前提是数据有序。",
+        knowledge_point: points[1] || "算法复杂度",
+        difficulty: "easy",
+        source: "fallback",
+      },
+      {
+        question_id: "fallback-cs-q3",
+        question_type: "single_choice",
+        prompt: "下面哪种数据结构最适合实现“先到先服务”的任务调度，例如打印队列或消息消费队列？",
+        options: ["A. 栈 Stack", "B. 队列 Queue", "C. 哈希表 HashMap", "D. 二叉搜索树 BST"],
+        correct_answer: "B",
+        explanation: "先到先服务对应 FIFO（First In First Out）语义，队列正是这种访问规则。栈是 LIFO，哈希表强调键值访问，二叉搜索树强调有序查找。",
+        knowledge_point: points[2] || "数据结构：队列",
+        difficulty: "easy",
+        source: "fallback",
+      },
+      {
+        question_id: "fallback-cs-q4",
+        question_type: "single_choice",
+        prompt: "在关系数据库中，给用户表的 `email` 字段建立唯一索引，主要目的是什么？",
+        options: ["A. 保证邮箱不重复，并提升按邮箱查询的效率", "B. 自动加密邮箱内容", "C. 让所有查询都不需要扫描磁盘", "D. 自动删除无效邮箱"],
+        correct_answer: "A",
+        explanation: "唯一索引既能约束字段值不重复，也能提升基于该字段的检索效率。索引不会自动加密数据，也不能保证所有查询都完全不访问磁盘。",
+        knowledge_point: points[3] || "数据库：索引与约束",
+        difficulty: "medium",
+        source: "fallback",
+      },
+      {
+        question_id: "fallback-cs-q5",
+        question_type: "single_choice",
+        prompt: "在操作系统中，进程和线程的关系哪一项描述更准确？",
+        options: ["A. 进程是资源分配的基本单位，线程是 CPU 调度的基本单位", "B. 线程拥有完全独立的地址空间，进程共享同一个栈", "C. 一个进程只能包含一个线程", "D. 线程之间不能共享进程内存"],
+        correct_answer: "A",
+        explanation: "进程通常拥有独立地址空间和资源，线程运行在进程内部，共享进程资源，是 CPU 调度执行的基本单位。多线程程序可以在同一进程内并发执行多个任务。",
+        knowledge_point: points[4] || "操作系统：进程与线程",
+        difficulty: "medium",
+        source: "fallback",
+      },
+    ],
+  };
+}
+
+function buildStableQuizPaper(courseTitle: string, focusPoints: string[] = []): QuizPaper {
+  const paper = buildFallbackEvaluationPaper(USER_ID, courseTitle, courseTitle, focusPoints);
+  return {
+    title: `${courseTitle} 稳定题库`,
+    questions: paper.questions.slice(0, 5).map((question, index) => ({
+      id: `stable-q${index + 1}`,
+      question: question.prompt,
+      options: question.options,
+      answer: [question.correct_answer],
+      explanation: question.explanation,
+      questionType: "single",
+      knowledgeTag: question.knowledge_point,
+      difficultyLevel: index < 1 ? 1 : 2,
+      qualityScore: null,
+    })),
+  };
+}
+
+type MistakeCauseId = "concept" | "step" | "reading" | "transfer";
+
+type MistakeDiagnosis = {
+  wrongQuestion: WrongQuestionItem;
+  causeId: MistakeCauseId;
+  causeLabel: string;
+  causeDetail: string;
+  evidence: string;
+  variantQuestions: Array<{
+    title: string;
+    prompt: string;
+    options: string[];
+    answer: string;
+    explanation: string;
+  }>;
+};
+
+const MISTAKE_CAUSE_META: Record<MistakeCauseId, { label: string; detail: string }> = {
+  concept: {
+    label: "概念不清",
+    detail: "核心定义、适用条件或相近概念边界没有分清。",
+  },
+  step: {
+    label: "步骤遗漏",
+    detail: "知道大方向，但解题流程、先后顺序或关键检查点漏掉了。",
+  },
+  reading: {
+    label: "审题错误",
+    detail: "题干限定词、否定词、场景条件或最优选项没有抓准。",
+  },
+  transfer: {
+    label: "知识迁移弱",
+    detail: "概念能背出来，但放到项目、案例或新情境里判断不稳定。",
+  },
+};
+
+function buildWrongQuestionsFromPaper(paper: EvaluationPaperResponse, answers: Record<string, string>): WrongQuestionItem[] {
+  return paper.questions
+    .filter((question) => normalizeAnswerToken(answers[question.question_id] || "") !== normalizeAnswerToken(question.correct_answer))
+    .map((question) => ({
+      question_id: question.question_id,
+      prompt: question.prompt,
+      knowledge_point: question.knowledge_point,
+      user_answer: normalizeAnswerToken(answers[question.question_id] || ""),
+      correct_answer: normalizeAnswerToken(question.correct_answer),
+      explanation: question.explanation,
+    }));
+}
+
+function inferMistakeCause(item: WrongQuestionItem): MistakeCauseId {
+  const prompt = item.prompt || "";
+  const explanation = item.explanation || "";
+  const joined = `${prompt} ${explanation}`;
+  const userAnswer = (item.user_answer || "").trim();
+
+  if (!userAnswer || /以下|下列|不属于|不是|不能|最|首先|主要|应该|除.*外/.test(prompt)) return "reading";
+  if (/步骤|流程|顺序|过程|阶段|先|后|检查|执行|操作|遗漏/.test(joined)) return "step";
+  if (/场景|案例|项目|应用|迁移|如果|实际|业务|工程|系统/.test(joined)) return "transfer";
+  return "concept";
+}
+
+function buildVariantQuestions(item: WrongQuestionItem, causeId: MistakeCauseId): MistakeDiagnosis["variantQuestions"] {
+  const point = normalizeKnowledgePointLabel(item.knowledge_point);
+  const correctAnswer = item.correct_answer || "A";
+  const conceptOption = causeId === "concept" ? "分清定义和适用边界" : "先定位题干限定条件";
+
+  return [
+    {
+      title: "概念辨析",
+      prompt: `围绕「${point}」，哪一项最符合这类题的判断原则？`,
+      options: [
+        `A. ${conceptOption}，再选择最贴合场景的结论`,
+        "B. 只要选项里出现熟悉名词就可以直接选",
+        "C. 忽略题干限制，只记住答案字母",
+        "D. 遇到相近概念时不需要比较差异",
+      ],
+      answer: "A",
+      explanation: `这类错题要先把「${point}」的定义、条件和场景对应起来，而不是只记住单个答案。`,
+    },
+    {
+      title: "场景判断",
+      prompt: `如果题目换成一个真实项目场景，涉及「${point}」时，最应该先做什么？`,
+      options: [
+        "A. 找出题干给出的约束、目标和异常条件",
+        "B. 跳过条件，直接套用上一次做过的答案",
+        "C. 只看选项长度，选择描述最长的一项",
+        "D. 把所有概念混在一起，不区分适用范围",
+      ],
+      answer: "A",
+      explanation: "迁移题先看场景约束，再用知识点匹配决策；这是从会背到会用的关键一步。",
+    },
+    {
+      title: "易错排除",
+      prompt: `本题正确答案是「${correctAnswer}」。复盘同类题时，下面哪种做法最能避免再次出错？`,
+      options: [
+        "A. 标出题干关键词，并写一句为什么其他选项不成立",
+        "B. 只把正确答案抄一遍，不看解析",
+        "C. 下次遇到同类题固定选同一个字母",
+        "D. 只看自己选错的选项，不分析题干",
+      ],
+      answer: "A",
+      explanation: "错题复盘要形成可迁移的判断规则，排除错误选项比单纯记答案更稳定。",
+    },
+  ];
+}
+
+function buildMistakeDiagnosis(item: WrongQuestionItem): MistakeDiagnosis {
+  const causeId = inferMistakeCause(item);
+  const meta = MISTAKE_CAUSE_META[causeId];
+  const point = normalizeKnowledgePointLabel(item.knowledge_point);
+  return {
+    wrongQuestion: item,
+    causeId,
+    causeLabel: meta.label,
+    causeDetail: meta.detail,
+    evidence: `你在「${point}」题中选择了 ${item.user_answer || "未作答"}，正确答案是 ${item.correct_answer}。建议把题干关键词、判断步骤和选项排除理由补齐。`,
+    variantQuestions: buildVariantQuestions(item, causeId),
+  };
+}
+
+function buildFallbackEvaluationResult(
+  paper: EvaluationPaperResponse,
+  answers: Record<string, string>,
+): { result: EvaluationResultResponse; wrongQuestions: WrongQuestionItem[] } {
+  const wrongQuestions = buildWrongQuestionsFromPaper(paper, answers);
+  const score = Math.round(((paper.questions.length - wrongQuestions.length) / Math.max(1, paper.questions.length)) * 100);
+  const weakPoints = wrongQuestions.length
+    ? Array.from(new Set(wrongQuestions.map((question) => question.knowledge_point)))
+    : ["综合迁移输出"];
+
+  return {
+    wrongQuestions,
+    result: {
+      record_id: null,
+      paper_id: paper.paper_id,
+      overall_score: score,
+      evaluation_type: "diagnostic",
+      mastery_level: score >= 85 ? "掌握稳定" : score >= 60 ? "持续提升" : "需要强化",
+      report_summary:
+        score >= 85
+          ? "本轮短测表现稳定，可以进入下一阶段综合应用训练。"
+          : "本轮短测已完成，建议优先回看薄弱知识点，并用错因复盘巩固。",
+      strengths: score >= 85 ? ["基础概念理解清晰", "答题节奏稳定"] : ["已完成阶段诊断"],
+      weak_points: weakPoints,
+      suggestions: ["回看错题对应讲义", "补一组同类练习", "把薄弱点带到 AI 导师继续追问"],
+      layered_results: [
+        { level: "概念理解", score, status: score >= 70 ? "done" : "active", comment: "根据本轮选择题表现估算。" },
+        { level: "案例应用", score: Math.max(0, score - 8), status: score >= 80 ? "done" : "active", comment: "建议结合课程案例继续验证。" },
+      ],
+      metrics: [
+        { metric_name: "准确率", score, comment: "按 5 题短测即时计算。" },
+        { metric_name: "薄弱点覆盖", score: Math.max(60, 100 - wrongQuestions.length * 12), comment: "用于驱动后续资源推荐。" },
+      ],
+      knowledge_points: Array.from(new Set(paper.questions.map((question) => question.knowledge_point))).slice(0, 5),
+      recommended_actions: ["查看错题复盘", "生成薄弱点练习", "带着测评结果追问 AI 导师"],
+      path_feedback: {},
+      profile_feedback: {},
+    },
+  };
 }
 
 function getOptionKey(option: string) {
@@ -130,7 +442,7 @@ function resolveQuestionTypeLabel(type?: string | null) {
 }
 
 function resolveCourseCode(courseId: number, trend: EvaluationTrendResponse | null, history: EvaluationHistoryItem[]) {
-  return trend?.course_code || history[0]?.course_code || `COURSE-${courseId}`;
+  return trend?.course_code || history[0]?.course_code || "软件工程";
 }
 
 function extractSafetyBlocked(review?: Record<string, unknown> | null) {
@@ -331,14 +643,113 @@ function buildWeaknessHeatmapOption(
   };
 }
 
+type EvaluationFlowStep = {
+  title: string;
+  description: string;
+  status: "done" | "active" | "pending";
+};
+
+type EvaluationStateCache = {
+  savedAt: number;
+  historyItems: EvaluationHistoryItem[];
+  trend: EvaluationTrendResponse | null;
+  profileSummary: ProfileSummaryResponse | null;
+  latestPlan: LearningPlanResponse | null;
+};
+
+function EvaluationFlowCard({ steps }: { steps: EvaluationFlowStep[] }) {
+  return (
+    <div className="relative grid gap-2 md:grid-cols-4">
+      <div className="eval-status-rail absolute left-4 right-4 top-[27px] hidden h-1 rounded-full bg-[#ffe1eb] md:block">
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,#fb7299,#0ea5e9,#10b981)]" style={{ width: `${Math.max(16, (steps.filter((step) => step.status === "done").length / Math.max(steps.length, 1)) * 100)}%` }} />
+      </div>
+      {steps.map((step, index) => (
+        <div
+          key={step.title}
+          className={`eval-card-hover relative rounded-[20px] border px-3 py-3 ${
+            step.status === "done"
+              ? "border-emerald-200 bg-emerald-50"
+              : step.status === "active"
+                ? "border-[#f3cddd] bg-[#fff4f8] shadow-[0_16px_34px_rgba(251,114,153,0.12)]"
+                : "border-[#e8edf2] bg-white/86"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${
+                step.status === "done"
+                  ? "bg-emerald-600 text-white"
+                  : step.status === "active"
+                    ? "bg-[#fb7299] text-white"
+                    : "bg-[#f2f4f7] text-[#667085]"
+              }`}
+            >
+              {index + 1}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                step.status === "done"
+                  ? "bg-white text-emerald-700"
+                  : step.status === "active"
+                    ? "bg-white text-[#d64d7b]"
+                    : "bg-[#f7fafb] text-[#667085]"
+              }`}
+            >
+              {step.status === "done" ? "已完成" : step.status === "active" ? "进行中" : "待完成"}
+            </span>
+          </div>
+          <div className="mt-3 text-sm font-black text-[#171c22]">{step.title}</div>
+          <p className="mt-1 text-xs leading-5 text-[#5b6770]">{step.description}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EvaluationSyncItem({
+  icon: Icon,
+  title,
+  detail,
+  ready,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  detail: string;
+  ready: boolean;
+}) {
+  return (
+    <div className="eval-card-hover rounded-[20px] border border-[#e8edf2] bg-white/88 px-4 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.03)]">
+      <div className="flex items-start gap-3">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${ready ? "bg-[#ecfdf3] text-emerald-700" : "bg-[#f7fafb] text-[#667085]"}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-black text-[#171c22]">{title}</div>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${ready ? "bg-[#ecfdf3] text-emerald-700" : "bg-[#f7fafb] text-[#667085]"}`}>
+              {ready ? "已接入" : "待接入"}
+            </span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#5b6770]">{detail}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Evaluation() {
   const activeUserId = getCurrentLoggedInUserId();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const rawCourseKey = searchParams.get("courseId") || "";
+  const rawCourseKey = searchParams.get("courseId") || ACTIVE_COURSE_KEY;
   const selectedCourse =
-    COURSE_OPTIONS.find((item) => item.key === rawCourseKey || item.routeCourseId === rawCourseKey) ?? null;
+    COURSE_OPTIONS.find(
+      (item) =>
+        item.key === rawCourseKey ||
+        item.routeCourseId === rawCourseKey ||
+        (item.key === ACTIVE_COURSE_KEY && rawCourseKey === "series-2"),
+    ) ?? null;
   const activeCourse = selectedCourse?.status === "available" ? selectedCourse : null;
   const numericCourseId = activeCourse?.courseId ?? null;
 
@@ -363,6 +774,9 @@ export default function Evaluation() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [questionSourceText, setQuestionSourceText] = useState("");
   const [questionGenerationLoading, setQuestionGenerationLoading] = useState(false);
+  const [questionGenerationElapsed, setQuestionGenerationElapsed] = useState(0);
+  const [customQuestionBankText, setCustomQuestionBankText] = useState("");
+  const [showManualImportPanel, setShowManualImportPanel] = useState(false);
   const [customQuizPaper, setCustomQuizPaper] = useState<QuizPaper | null>(null);
   const [customQuizAnswers, setCustomQuizAnswers] = useState<Record<string, string | string[]>>({});
   const [customQuizSummary, setCustomQuizSummary] = useState<ReturnType<typeof scoreQuiz> | null>(null);
@@ -371,6 +785,9 @@ export default function Evaluation() {
   const [customQuizSource, setCustomQuizSource] = useState<"ai" | "fallback" | "cache" | "import">("import");
   const [currentPaperQuestionIndex, setCurrentPaperQuestionIndex] = useState(0);
   const [currentCustomQuestionIndex, setCurrentCustomQuestionIndex] = useState(0);
+  const questionGenerationRunRef = useRef(0);
+  const evaluationLoadRunRef = useRef(0);
+  const paperWorkspaceRef = useRef<HTMLElement | null>(null);
 
   const courseCode = useMemo(
     () => (numericCourseId ? resolveCourseCode(numericCourseId, trend, historyItems) : "未选择课程"),
@@ -385,11 +802,30 @@ export default function Evaluation() {
     () => buildWeaknessHeatmapOption(latestResult, wrongQuestions, trend),
     [latestResult, wrongQuestions, trend],
   );
+  const mistakeDiagnoses = useMemo(() => wrongQuestions.map((item) => buildMistakeDiagnosis(item)), [wrongQuestions]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(null), 2600);
   };
+
+  const scrollToPaperWorkspace = () => {
+    window.requestAnimationFrame(() => {
+      paperWorkspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  useEffect(() => {
+    if (!questionGenerationLoading) {
+      setQuestionGenerationElapsed(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setQuestionGenerationElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [questionGenerationLoading]);
 
   const resetEvaluationFlow = () => {
     setError("");
@@ -477,6 +913,104 @@ export default function Evaluation() {
     showToast(`已完成判分：${summary.correct}/${summary.total}`);
   };
 
+  const applyStableQuestionBank = (reason = "已切换到稳定题库", invalidatePending = true) => {
+    if (invalidatePending) {
+      questionGenerationRunRef.current += 1;
+    }
+    const focusPoints = questionSourceText.trim()
+      ? [questionSourceText.trim().slice(0, 60)]
+      : trend?.focus_knowledge_points?.filter(Boolean)?.slice(0, 3) || [];
+    const stablePaper = buildStableQuizPaper(activeCourse?.title || "当前课程", focusPoints);
+    setCustomQuestionBankText(buildGeneratedQuestionBankText(stablePaper));
+    setCustomQuizPaper(stablePaper);
+    setCustomQuizAnswers({});
+    setCustomQuizSummary(null);
+    setCustomQuizSafetyReview(null);
+    setCustomQuizHallucinationReview(null);
+    setCustomQuizSource("fallback");
+    setCurrentCustomQuestionIndex(0);
+    setShowManualImportPanel(false);
+    setQuestionGenerationLoading(false);
+    showToast(reason);
+  };
+
+  const openSeededQuestionBank = async (knowledgePoint = SEEDED_QUESTION_BANKS[0].label) => {
+    if (!numericCourseId) {
+      showToast("请先选择课程，再打开题库。");
+      return;
+    }
+
+    setQuestionGenerationLoading(true);
+    setError("");
+    setQuestionSourceText(`题库分类：${knowledgePoint}`);
+    const professionalCourseContext = [
+      `请生成计算机专业短测题，知识点限定为「${knowledgePoint}」。`,
+      "题目必须落到具体技术场景，例如 Java/Python/C 语言代码片段、数组/链表/栈/队列/哈希表、时间复杂度、数据库索引、进程线程或内存模型。",
+      "避免产品经理、项目管理、页面配色、需求沟通等泛软件工程题；每题要有明确正确答案和专业解析。",
+    ].join("\n");
+    const runId = questionGenerationRunRef.current + 1;
+    questionGenerationRunRef.current = runId;
+    try {
+      const generated = await Promise.race([
+        studentApi.generateEvaluationQuestions({
+          test_id: numericCourseId,
+          knowledge_points: [knowledgePoint],
+          difficulty_level: 2,
+          question_type: 1,
+          count: 5,
+          generate_layered: false,
+          course_context: professionalCourseContext,
+          persist_to_db: true,
+        }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error("question-bank-timeout")), 5200);
+        }),
+      ]);
+
+      if (runId !== questionGenerationRunRef.current) {
+        return;
+      }
+
+      const parsed = parseQuizPaper(
+        JSON.stringify({
+          title: `${activeCourse?.title || "当前课程"} · ${knowledgePoint}题库`,
+          questions: generated.questions,
+        }),
+      );
+
+      if (!parsed?.questions.length) {
+        throw new Error("题库读取成功，但前端解析失败");
+      }
+
+      setCustomQuestionBankText(buildGeneratedQuestionBankText(parsed));
+      setCustomQuizPaper(parsed);
+      setCustomQuizAnswers({});
+      setCustomQuizSummary(null);
+      setCustomQuizSafetyReview(generated.safety_review || null);
+      setCustomQuizHallucinationReview(generated.hallucination_review || null);
+      setCustomQuizSource(generated.source === "fallback" ? "fallback" : generated.source === "cache" ? "cache" : "ai");
+      setCurrentCustomQuestionIndex(0);
+      setShowManualImportPanel(false);
+      showToast(`已打开「${knowledgePoint}」题库，共 ${parsed.questions.length} 题。`);
+    } catch (questionBankError) {
+      if (runId !== questionGenerationRunRef.current) {
+        return;
+      }
+      if (questionBankError instanceof Error && questionBankError.message === "question-bank-timeout") {
+        applyStableQuestionBank(`题库读取超过 5 秒，已先打开「${knowledgePoint}」稳定练习。`, false);
+        setError("");
+        return;
+      }
+      const message = questionBankError instanceof Error ? questionBankError.message : "题库读取失败";
+      setError(message);
+      showToast(message);
+    } finally {
+      if (runId === questionGenerationRunRef.current) {
+        setQuestionGenerationLoading(false);
+      }
+    }
+  };
+
   const handleGenerateQuestionBank = async () => {
     if (!numericCourseId) {
       showToast("请先选择课程，再生成题库。");
@@ -488,17 +1022,34 @@ export default function Evaluation() {
     }
 
     setQuestionGenerationLoading(true);
+    const professionalCourseContext = [
+      "请基于下面内容生成计算机专业短测题。",
+      "题目要具体到数据结构、算法复杂度、编程语言语法、数据库索引/事务、操作系统进程线程等可考知识点。",
+      "优先出现代码片段、输入输出、数据结构操作或复杂度判断；不要生成泛化项目管理、产品设计、页面体验类题目。",
+      questionSourceText.trim(),
+    ].join("\n\n");
+    const runId = questionGenerationRunRef.current + 1;
+    questionGenerationRunRef.current = runId;
     try {
-      const generated = await studentApi.generateEvaluationQuestions({
-        test_id: numericCourseId,
-        knowledge_points: [questionSourceText.trim().slice(0, 60)],
-        difficulty_level: 2,
-        question_type: 1,
-        count: 3,
-        generate_layered: false,
-        course_context: questionSourceText.trim().slice(0, 1800),
-        persist_to_db: true,
-      });
+      const generated = await Promise.race([
+        studentApi.generateEvaluationQuestions({
+          test_id: numericCourseId,
+          knowledge_points: [questionSourceText.trim().slice(0, 60)],
+          difficulty_level: 2,
+          question_type: 1,
+          count: 5,
+          generate_layered: false,
+          course_context: professionalCourseContext.slice(0, 1800),
+          persist_to_db: true,
+        }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error("question-generation-timeout")), 5200);
+        }),
+      ]);
+
+      if (runId !== questionGenerationRunRef.current) {
+        return;
+      }
 
       const parsed = parseQuizPaper(
         JSON.stringify({
@@ -531,9 +1082,21 @@ export default function Evaluation() {
       }
       showToast(`已生成 ${parsed.questions.length} 道 AI 题，可直接作答`);
     } catch (generationError) {
-      showToast(generationError instanceof Error ? generationError.message : "题库生成失败");
+      if (runId !== questionGenerationRunRef.current) {
+        return;
+      }
+      if (generationError instanceof Error && generationError.message === "question-generation-timeout") {
+        applyStableQuestionBank("AI 出题超过 5 秒，已先切换到稳定练习题。", false);
+        setError("");
+        return;
+      }
+      const message = generationError instanceof Error ? generationError.message : "AI 出题失败，请稍后重试";
+      setError(message);
+      showToast(message);
     } finally {
-      setQuestionGenerationLoading(false);
+      if (runId === questionGenerationRunRef.current) {
+        setQuestionGenerationLoading(false);
+      }
     }
   };
 
@@ -554,24 +1117,52 @@ export default function Evaluation() {
       return;
     }
 
-    setLoading(true);
+    const runId = ++evaluationLoadRunRef.current;
+    const cachedState = readEvaluationStateCache(activeUserId, numericCourseId);
+    if (cachedState) {
+      setHistoryItems(cachedState.historyItems || []);
+      setTrend(cachedState.trend || null);
+      setProfileSummary(cachedState.profileSummary || null);
+      setLatestPlan(cachedState.latestPlan || null);
+    }
+
+    setLoading(!cachedState);
     setError("");
     try {
-      const [historyResult, trendResult, profileResult, planResult] = await Promise.allSettled([
-        studentApi.getEvaluationHistory(activeUserId, numericCourseId),
-        studentApi.getEvaluationTrend(activeUserId, numericCourseId),
-        studentApi.getProfileSummary(activeUserId),
-        studentApi.getLatestLearningPlan(activeUserId, numericCourseId),
+      const [historyResult, trendResult, profileResult, planResult] = await Promise.all([
+        withEvaluationTimeout(
+          studentApi.getEvaluationHistory(activeUserId, numericCourseId),
+          { items: cachedState?.historyItems || [], total: cachedState?.historyItems?.length || 0 },
+        ),
+        withEvaluationTimeout(studentApi.getEvaluationTrend(activeUserId, numericCourseId), cachedState?.trend || null),
+        withEvaluationTimeout(studentApi.getProfileSummary(activeUserId), cachedState?.profileSummary || null),
+        withEvaluationTimeout(studentApi.getLatestLearningPlan(activeUserId, numericCourseId), cachedState?.latestPlan || null),
       ]);
 
-      setHistoryItems(historyResult.status === "fulfilled" ? historyResult.value.items : []);
-      setTrend(trendResult.status === "fulfilled" ? trendResult.value : null);
-      setProfileSummary(profileResult.status === "fulfilled" ? profileResult.value : null);
-      setLatestPlan(planResult.status === "fulfilled" ? planResult.value : null);
+      if (runId !== evaluationLoadRunRef.current) return;
+
+      const nextHistoryItems = historyResult?.items || [];
+      const nextTrend = trendResult || null;
+      const nextProfileSummary = profileResult || null;
+      const nextLatestPlan = planResult || null;
+
+      setHistoryItems(nextHistoryItems);
+      setTrend(nextTrend);
+      setProfileSummary(nextProfileSummary);
+      setLatestPlan(nextLatestPlan);
+      writeEvaluationStateCache(activeUserId, numericCourseId, {
+        historyItems: nextHistoryItems,
+        trend: nextTrend,
+        profileSummary: nextProfileSummary,
+        latestPlan: nextLatestPlan,
+      });
     } catch (loadError) {
+      if (runId !== evaluationLoadRunRef.current) return;
       setError(loadError instanceof Error ? loadError.message : "测评数据加载失败");
     } finally {
-      setLoading(false);
+      if (runId === evaluationLoadRunRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -585,32 +1176,25 @@ export default function Evaluation() {
       return;
     }
 
-    setPaperLoading(true);
+    setPaperLoading(false);
     setError("");
-    try {
-      const paper = await studentApi.generateEvaluationPaper({
-        user_id: activeUserId,
-        course_id: numericCourseId,
-        target: `${activeCourse.title}阶段诊断`,
-        knowledge_points: trend?.focus_knowledge_points?.filter(Boolean)?.slice(0, 5) || [],
-        paper_type: "diagnostic",
-        question_count: 5,
-      });
-      setActivePaper(paper);
-      setAnswers({});
-      setCurrentPaperQuestionIndex(0);
-      setLatestResult(null);
-      setWrongQuestions([]);
-      setFeedbackApplied(null);
-      setRefreshedPlan(null);
-      setGeneratedResources([]);
-      setTutorFollowup(null);
-      showToast("试卷已生成。");
-    } catch (paperError) {
-      setError(paperError instanceof Error ? paperError.message : "试卷生成失败");
-    } finally {
-      setPaperLoading(false);
-    }
+    const paper = buildFallbackEvaluationPaper(
+      activeUserId,
+      courseCode,
+      activeCourse.title,
+      trend?.focus_knowledge_points?.filter(Boolean)?.slice(0, 5) || [],
+    );
+    setActivePaper(paper);
+    setAnswers({});
+    setCurrentPaperQuestionIndex(0);
+    setLatestResult(null);
+    setWrongQuestions([]);
+    setFeedbackApplied(null);
+    setRefreshedPlan(null);
+    setGeneratedResources([]);
+    setTutorFollowup(null);
+    showToast("短测已打开，可直接作答。");
+    scrollToPaperWorkspace();
   };
 
   const handleSelectAnswer = (questionId: string, answer: string) => {
@@ -640,6 +1224,50 @@ export default function Evaluation() {
     )} 分和薄弱点 ${focus}，给我下一步学习建议。`;
   };
 
+  const formatQuizAnswer = (question: QuizQuestion, rawAnswer: string | string[] | undefined) => {
+    const answerList = Array.isArray(rawAnswer) ? rawAnswer : normalizeAnswerList(rawAnswer || "");
+    if (!answerList.length) return "未作答";
+    return answerList
+      .map((answer) => {
+        const normalizedAnswer = normalizeOptionKey(answer);
+        const matchedOption = question.options.find((option) => normalizeOptionKey(option) === normalizedAnswer);
+        return matchedOption || answer;
+      })
+      .join(" / ");
+  };
+
+  const buildCustomQuizTutorQuestion = (question: QuizQuestion, index: number) => {
+    const userAnswer = formatQuizAnswer(question, customQuizAnswers[question.id]);
+    const correctAnswer = formatQuizAnswer(question, question.answer);
+    return [
+      `请完整讲解这道计算机短测题，帮我理解为什么正确答案是这样。`,
+      `题目 ${index + 1}：${question.question}`,
+      question.options.length ? `选项：${question.options.join("；")}` : "",
+      `我的答案：${userAnswer}`,
+      `正确答案：${correctAnswer}`,
+      question.explanation ? `页面解析：${question.explanation}` : "",
+      `请按“考点 -> 解题思路 -> 选项排除 -> 易错点 -> 类似题练习建议”的结构回答。`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const buildPaperTutorQuestion = (question: EvaluationPaperQuestion, index: number) => {
+    const userAnswer = normalizeAnswerToken(answers[question.question_id] || "") || "未作答";
+    const correctAnswer = normalizeAnswerToken(question.correct_answer) || question.correct_answer;
+    return [
+      `请完整讲解这道阶段短测题，帮我把知识点真正弄懂。`,
+      `题目 ${index + 1}：${question.prompt}`,
+      question.options.length ? `选项：${question.options.join("；")}` : "",
+      `我的答案：${userAnswer}`,
+      `正确答案：${correctAnswer}`,
+      question.explanation ? `页面解析：${question.explanation}` : "",
+      `请按“考点 -> 解题思路 -> 为什么其他选项不对 -> 易错点 -> 下一步练习”的结构回答。`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
   const handleSubmit = async () => {
     if (!activePaper || !numericCourseId || !activeCourse) {
       showToast("请先生成试卷。");
@@ -654,6 +1282,18 @@ export default function Evaluation() {
     setSubmitting(true);
     setError("");
     try {
+      if ((activePaper.source || activePaper.questions[0]?.source) === "fallback") {
+        const fallback = buildFallbackEvaluationResult(activePaper, answers);
+        setLatestResult(fallback.result);
+        setWrongQuestions(fallback.wrongQuestions);
+        setFeedbackApplied(null);
+        setRefreshedPlan(null);
+        setGeneratedResources([]);
+        setTutorFollowup(null);
+        showToast("测评结果已生成。");
+        return;
+      }
+
       const profilePayload = profileSummary
         ? {
             completeness: profileSummary.completeness,
@@ -692,13 +1332,14 @@ export default function Evaluation() {
 
       setLatestResult(result);
 
+      const localWrongQuestions = buildWrongQuestionsFromPaper(activePaper, answers);
       if (result.record_id) {
         const wrongQuestionResult = await studentApi
           .getWrongQuestions(result.record_id)
           .catch(() => ({ items: [], total: 0 }));
-        setWrongQuestions(wrongQuestionResult.items);
+        setWrongQuestions(wrongQuestionResult.items.length ? wrongQuestionResult.items : localWrongQuestions);
       } else {
-        setWrongQuestions([]);
+        setWrongQuestions(localWrongQuestions);
       }
 
       const nextKnowledgePoints = result.knowledge_points.length ? result.knowledge_points : [];
@@ -769,17 +1410,17 @@ export default function Evaluation() {
     const isCorrect = isSubmitted && selectedAnswerKey === correctAnswerKey;
 
     return (
-      <div key={question.question_id} className="rounded-[24px] border border-[#e8edf2] bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.04)]">
-        <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-[#f2f4f7]">
+      <div key={question.question_id} className="eval-question-card rounded-[26px] border border-[#f2d9e3] bg-white/92 p-5 shadow-[0_18px_42px_rgba(251,114,153,0.08)]">
+        <div className="eval-status-rail mb-4 h-1.5 overflow-hidden rounded-full bg-[#ffe3ec]">
           <div
-            className="h-full rounded-full bg-[#111827] transition-all"
+            className="h-full rounded-full bg-[linear-gradient(90deg,#fb7299,#ff9db8,#0ea5e9)] transition-all"
             style={{ width: `${((index + 1) / Math.max(activePaper?.questions.length || 1, 1)) * 100}%` }}
           />
         </div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#111827] px-2.5 py-1 text-[11px] font-bold text-white">第 {index + 1} 题</span>
+              <span className="rounded-full bg-[#fb7299] px-2.5 py-1 text-[11px] font-bold text-white shadow-[0_8px_18px_rgba(251,114,153,0.24)]">第 {index + 1} 题</span>
               <span className="rounded-full bg-[#f7f7f5] px-2 py-0.5 text-[10px] font-bold text-[#667085]">
                 {resolveQuestionTypeLabel(question.question_type)}
               </span>
@@ -824,8 +1465,8 @@ export default function Evaluation() {
                     : optionWrong
                       ? "border-red-400 bg-red-50 text-red-950"
                       : isSelected
-                        ? "border-[#111827] bg-[#111827] text-white shadow-[0_10px_24px_rgba(17,24,39,0.14)]"
-                        : "border-[#e2e8f0] bg-[#fcfcfd] text-[#344054] hover:border-[#cfd8df] hover:bg-white"
+                        ? "eval-option-selected border-[#fb7299] bg-[linear-gradient(135deg,#fb7299,#d64d7b)] text-white"
+                        : "border-[#f0d6df] bg-[#fffafb] text-[#344054] hover:-translate-y-0.5 hover:border-[#fb7299] hover:bg-white hover:shadow-[0_12px_26px_rgba(251,114,153,0.10)]"
                 }`}
               >
                 <span
@@ -868,7 +1509,7 @@ export default function Evaluation() {
     onSelect: (index: number) => void,
     disabled = false,
   ) => (
-    <div className="grid grid-cols-5 gap-2 sm:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-5 gap-2 sm:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6">
       {questionIds.map((questionId, index) => {
         const answered = Boolean(answeredMap[questionId]) && (!Array.isArray(answeredMap[questionId]) || (answeredMap[questionId] as unknown[]).length > 0);
         const active = currentIndex === index;
@@ -880,10 +1521,10 @@ export default function Evaluation() {
             onClick={() => onSelect(index)}
             className={`flex h-10 items-center justify-center rounded-2xl border text-sm font-bold transition ${
               active
-                ? "border-[#111827] bg-[#111827] text-white"
+                ? "border-[#fb7299] bg-[#fb7299] text-white shadow-[0_10px_20px_rgba(251,114,153,0.24)]"
                 : answered
                   ? "border-[#fbcfe8] bg-[#fff1f6] text-[#d6336c]"
-                  : "border-[#e5e7eb] bg-white text-[#667085] hover:border-[#cfd8df] hover:text-[#111827]"
+                  : "border-[#e5e7eb] bg-white text-[#667085] hover:border-[#fb7299] hover:text-[#d64d7b]"
             }`}
           >
             {index + 1}
@@ -959,7 +1600,7 @@ export default function Evaluation() {
                       : optionWrong
                         ? "border-red-400 bg-red-50 text-red-950"
                         : active
-                          ? "border-[#111827] bg-[#111827] text-white shadow-[0_10px_24px_rgba(17,24,39,0.14)]"
+                            ? "eval-option-selected border-[#fb7299] bg-[linear-gradient(135deg,#fb7299,#d64d7b)] text-white"
                           : "border-[#e8edf2] bg-[#fcfcfd] text-[#344054] hover:border-[#cfd8df] hover:bg-white"
                   }`}
                 >
@@ -991,148 +1632,397 @@ export default function Evaluation() {
               isCorrect ? "bg-[#ecfdf3] text-[#065f46]" : "bg-[#fff4f4] text-[#9f1239]"
             }`}
           >
-            <p>
-              你的答案：
-              {selectedList.length ? selectedList.join(" / ") : typeof selected === "string" && selected.trim() ? selected : "未作答"}
-            </p>
-            {question.questionType !== "short" ? <p>正确答案：{question.answer.join(" / ") || "暂无"}</p> : null}
-            {question.explanation ? <p className="mt-1">解析：{question.explanation}</p> : null}
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <p className="font-black">{isCorrect ? "本题答对了" : "本题需要复盘"}</p>
+                <p className="mt-1">你的答案：{formatQuizAnswer(question, selected)}</p>
+                {question.questionType !== "short" ? <p>正确答案：{formatQuizAnswer(question, question.answer) || "暂无"}</p> : null}
+                {question.explanation ? <p className="mt-1">完整解析：{question.explanation}</p> : null}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  openTutorPanel({
+                    courseId: activeCourse?.routeCourseId,
+                    query: buildCustomQuizTutorQuestion(question, index),
+                  })
+                }
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-white/85 px-4 py-2.5 text-xs font-black text-[#344054] ring-1 ring-black/8 transition hover:bg-white"
+              >
+                <Bot className="h-4 w-4" />
+                追问 AI 讲解本题
+              </button>
+            </div>
           </div>
         ) : null}
       </div>
     );
   };
 
+  const evaluationCount = trend?.total || historyItems.length || 0;
+  const hasEvaluationSnapshot = Boolean(evaluationCount || trend || profileSummary || latestPlan);
+  const latestScoreLabel = trend?.latest_score ? `${Math.round(trend.latest_score)}%` : "暂无";
+  const focusPointLabel = trend?.focus_knowledge_points?.[0] || latestResult?.weak_points?.[0] || "完成短测后自动识别";
+  const evaluationStageLabel = activePaper
+    ? latestResult
+      ? "结果已生成，可回写报告与画像"
+      : "正在作答本轮短测"
+    : activeCourse
+      ? "可开始本轮阶段诊断"
+      : "请选择课程";
+  const nextEvaluationAction = latestResult
+    ? "查看报告或追问 AI 导师"
+    : activePaper
+      ? "完成剩余题目并提交"
+      : "开始 5 题短测";
+  const weakPointList = latestResult?.weak_points?.length
+    ? latestResult.weak_points
+    : trend?.focus_knowledge_points?.length
+      ? trend.focus_knowledge_points
+      : wrongQuestions.map((item) => item.knowledge_point).filter(Boolean);
+  const diagnosisSteps: EvaluationFlowStep[] = [
+    {
+      title: "读取画像",
+      description: profileSummary ? `${profileSummary.current_stage || "当前阶段"}，画像完整度 ${Math.round(profileSummary.completeness || 0)}%` : "加载学生画像和学习偏好",
+      status: profileSummary ? "done" : activeCourse ? "active" : "pending",
+    },
+    {
+      title: "完成短测",
+      description: activePaper ? `已生成 ${activePaper.questions.length} 道题，已作答 ${selectedAnswerCount} 道` : "生成 5 题阶段诊断",
+      status: latestResult ? "done" : activePaper ? "active" : "pending",
+    },
+    {
+      title: "生成诊断",
+      description: latestResult ? `${Math.round(latestResult.overall_score)}%，${latestResult.mastery_level || "已完成诊断"}` : "提交后识别得分、掌握度和薄弱点",
+      status: latestResult ? "done" : submitting ? "active" : "pending",
+    },
+    {
+      title: "回写闭环",
+      description: feedbackApplied || refreshedPlan || generatedResources.length ? "画像、路径、资源和导师建议已联动" : "把结果同步给后续学习动作",
+      status: feedbackApplied || refreshedPlan || generatedResources.length || tutorFollowup ? "done" : latestResult ? "active" : "pending",
+    },
+  ];
+  const profileSyncDetail = feedbackApplied?.summary || profileSummary?.recommended_learning_style || profileSummary?.current_stage || "测评结果会作为画像更新证据";
+  const planSyncDetail = refreshedPlan?.next_action || latestPlan?.next_action || "提交后会按薄弱点刷新下一阶段学习路径";
+  const resourceSyncDetail = generatedResources.length
+    ? `已补充 ${generatedResources.length} 份讲义、练习或导图`
+    : "提交后会按薄弱点补齐讲义、练习和导图";
+  const tutorSyncDetail = tutorFollowup?.answer || "提交后可直接带着测评结果继续追问 AI 导师";
+
   return (
-    <div className="mx-auto max-w-[1320px] select-none space-y-6 px-1" id="evaluation-workspace">
-      <section className="rounded-[30px] border border-[#e8edf2] bg-[linear-gradient(135deg,#ffffff_0%,#faf9f5_100%)] p-6 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-7">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">Evaluation</p>
-            <h1 className="mt-3 text-3xl font-extrabold ui-tracking-tight text-[#171c22]">开始一次测评</h1>
-            <p className="mt-2 text-sm leading-7 text-[#5b6770]">先选课程，再直接进入出题或短测，不做多余停留。</p>
-          </div>
-          <div className="rounded-full bg-[#f7fafb] px-4 py-2 text-sm font-semibold text-[#5b6770]">
-            {activeCourse ? `当前：${activeCourse.title}` : "请选择课程"}
-          </div>
-        </div>
-
-        <div className="mt-6 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {AVAILABLE_COURSES.map((course) => {
-            const isActive = activeCourse?.key === course.key;
-
-            return (
-              <button
-                key={course.key}
-                type="button"
-                onClick={() => handleChooseCourse(course)}
-                className={`flex min-h-[148px] flex-col justify-between rounded-[24px] border px-4 py-4 text-left transition ${
-                  isActive
-                    ? "border-[#171c22] bg-[#171c22] text-white shadow-[0_16px_32px_rgba(23,28,34,0.12)]"
-                    : "border-[#e8edf2] bg-white hover:border-[#cfd8df] hover:bg-[#fcfcfb]"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-base font-extrabold">{course.title}</p>
-                    <p className={`mt-1 text-xs ${isActive ? "text-white/72" : "text-[#5b6770]"}`}>{course.subtitle}</p>
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                      isActive ? "bg-white/14 text-white" : "bg-[#f7fafb] text-[#667085]"
-                    }`}
-                  >
-                    可开始
-                  </span>
-                </div>
-                <p className={`mt-3 text-xs leading-6 ${isActive ? "text-white/72" : "text-[#5b6770]"}`}>{course.description}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        {UPCOMING_COURSES.length ? (
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#8a96a3]">
-            <span className="font-bold uppercase tracking-[0.18em]">即将接入</span>
-            {UPCOMING_COURSES.map((course) => (
-              <span key={course.key} className="rounded-full border border-[#e8edf2] bg-white px-3 py-1.5">
-                {course.title}
+    <div className="eval-product mx-auto max-w-[1320px] select-none space-y-6 px-1" id="evaluation-workspace">
+      <section className="eval-hero rounded-[24px] border border-[#e8edf2] bg-white/94 p-4 shadow-[0_16px_44px_rgba(15,23,42,0.06)] md:p-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#e8edf2] bg-[#f7fafb] px-3 py-1 text-xs font-bold text-[#475467]">
+                <CheckCircle className="h-3.5 w-3.5 text-[#e4002b]" />
+                学习评估
               </span>
-            ))}
-          </div>
-        ) : null}
+              <span className="rounded-full border border-[#ffd6de] bg-[#fff7fa] px-3 py-1 text-xs font-bold text-[#e4002b]">
+                软件工程诊断
+              </span>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_310px]">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-black tracking-[-0.03em] text-[#171c22] md:text-3xl">
+                  阶段短测与学习闭环
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5b6770]">
+                  完成 5 题短测后，系统会同步更新画像、路径、资源和 AI 导师上下文。
+                </p>
+              </div>
+              <div className="grid grid-cols-3 overflow-hidden rounded-[18px] border border-[#e8edf2] bg-[#fbfcfd]">
+                {[
+                  { label: "最近得分", value: latestScoreLabel },
+                  { label: "测评次数", value: evaluationCount },
+                  { label: "当前重点", value: focusPointLabel },
+                ].map((item) => (
+                  <div key={item.label} className="min-w-0 border-r border-[#e8edf2] px-3 py-3 last:border-r-0">
+                    <div className="text-[11px] font-bold text-[#8a96a3]">{item.label}</div>
+                    <div className="mt-1 truncate text-sm font-black text-[#171c22]">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-        <div className="mt-6 grid items-stretch gap-4 md:grid-cols-3">
-          <div className="min-h-[112px] rounded-[22px] border border-[#e8edf2] bg-white px-4 py-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">最近得分</p>
-            <p className="mt-2 text-2xl font-extrabold text-[#171c22]">
-              {trend?.latest_score ? `${Math.round(trend.latest_score)}%` : "暂无"}
-            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+              {diagnosisSteps.map((step, index) => (
+                <div
+                  key={step.title}
+                  className={`rounded-[16px] border px-3 py-2.5 ${
+                    step.status === "done"
+                      ? "border-[#bbf7d0] bg-[#f0fdf4]"
+                      : step.status === "active"
+                        ? "border-[#ffd6de] bg-[#fff7fa]"
+                        : "border-[#e8edf2] bg-white"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black text-[#98a2b3]">{String(index + 1).padStart(2, "0")}</span>
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        step.status === "done" ? "bg-emerald-500" : step.status === "active" ? "bg-[#e4002b]" : "bg-[#cbd5e1]"
+                      }`}
+                    />
+                  </div>
+                  <div className="mt-2 text-sm font-black text-[#171c22]">{step.title}</div>
+                  <div className="mt-1 line-clamp-1 text-xs leading-5 text-[#667085] md:line-clamp-2">{step.description}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="min-h-[112px] rounded-[22px] border border-[#e8edf2] bg-white px-4 py-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">测评次数</p>
-            <p className="mt-2 text-2xl font-extrabold text-[#171c22]">{trend?.total || historyItems.length || 0}</p>
-          </div>
-          <div className="min-h-[112px] rounded-[22px] border border-[#e8edf2] bg-white px-4 py-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">当前重点</p>
-            <p className="mt-2 text-sm font-bold leading-6 text-[#171c22]">
-              {trend?.focus_knowledge_points?.[0] || latestResult?.weak_points?.[0] || "完成后自动更新"}
-            </p>
-          </div>
+
+          <aside className="rounded-[22px] border border-[#e8edf2] bg-[#fbfcfd] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-[#8a96a3]">本轮任务</div>
+                <div className="mt-1 text-xl font-black text-[#171c22]">5 题短测</div>
+              </div>
+              <span className="rounded-full bg-[#ecfdf3] px-2.5 py-1 text-[11px] font-bold text-emerald-700">可开始</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleStartPaper()}
+              disabled={paperLoading || !activeCourse}
+              className="eval-primary-button mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-[#e4002b] px-4 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(228,0,43,0.18)] transition hover:bg-[#c90025] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {paperLoading ? (
+                <>
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  正在生成试卷
+                </>
+              ) : (
+                <>
+                  开始短测
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-[16px] border border-[#e8edf2] bg-white px-3 py-2">
+                <div className="text-[11px] font-bold text-[#8a96a3]">预计用时</div>
+                <div className="mt-1 text-sm font-black text-[#171c22]">约 2 分钟</div>
+              </div>
+              <div className="rounded-[16px] border border-[#e8edf2] bg-white px-3 py-2">
+                <div className="text-[11px] font-bold text-[#8a96a3]">最近记录</div>
+                <div className="mt-1 truncate text-sm font-black text-[#171c22]">
+                  {latestHistory?.created_at ? formatDate(latestHistory.created_at) : "暂无"}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 rounded-[16px] border border-[#ffd6de] bg-white px-3 py-3 text-xs leading-5 text-[#5b6770]">
+              下一步：{nextEvaluationAction}
+            </div>
+          </aside>
         </div>
       </section>
 
-      <section className="rounded-[30px] border border-[#f0dfe6] bg-white p-6 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-7">
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">AI Question Set</p>
-            <h2 className="mt-2 text-2xl font-extrabold text-[#171c22]">默认先做短测，需要时再按章节单独出题</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-[#5b6770]">
-              快速评估就直接开始短测；只有你想围绕某个具体章节反复练习时，再用下面这张卡片生成专题题库。
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <div className="rounded-[26px] border border-[#f3d6e2] bg-[linear-gradient(180deg,#fff9fb_0%,#ffffff_100%)] p-5 shadow-[0_12px_24px_rgba(251,114,153,0.08)] md:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="inline-flex items-center rounded-full bg-[#fff1f6] px-3 py-1 text-[11px] font-bold tracking-[0.16em] text-[#d64d7b]">
-                  章节专题题库
+      {activeCourse ? (
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+          <div className="rounded-[30px] border border-[#e8edf2] bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-[#f7fafb] px-3 py-1 text-[10px] font-black text-[#667085]">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  评估趋势
                 </div>
-                <h3 className="mt-3 text-xl font-extrabold text-[#171c22]">输入一段真实章节内容，直接生成可作答题目</h3>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5b6770]">
-                  粘贴讲义、课堂摘要、老师要求或知识点清单即可，不需要额外补第二个输入框，系统会自动抽取考点并组织成题。
+                <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[#171c22]">最近测评表现</h2>
+                <p className="mt-1 text-sm leading-6 text-[#5b6770]">
+                  趋势用于判断当前阶段是继续推进，还是先回到薄弱点复习。
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleGenerateQuestionBank()}
-                disabled={questionGenerationLoading}
-                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-[#fb7299] px-5 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(251,114,153,0.24)] transition hover:bg-[#f95c89] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {questionGenerationLoading ? "正在生成 3 道题..." : "生成章节题库"}
-              </button>
+              <span className="rounded-full bg-[#fff4f8] px-3 py-1.5 text-xs font-bold text-[#d64d7b]">
+                {courseCode}
+              </span>
             </div>
+            <Suspense fallback={<div className="mt-4 h-[260px] rounded-[24px] bg-[#f7fafb]" />}>
+              <LineBarChartPanel option={trendChartOption} height={280} className="mt-4" />
+            </Suspense>
+          </div>
 
-            <div className="mt-4 rounded-[22px] border border-[#f6d9e4] bg-white p-3">
-              <textarea
-                value={questionSourceText}
-                onChange={(event) => setQuestionSourceText(event.target.value)}
-                placeholder="贴入本节讲义、课堂摘要、知识点列表或老师要求，例如：软件生命周期包括需求分析、概要设计、详细设计、编码、测试和维护，请围绕系统设计阶段的核心产出生成 3 道单选题。"
-                className="min-h-[160px] w-full resize-none rounded-[18px] border border-[#f3d5e1] bg-[#fffdfd] px-4 py-4 text-sm leading-7 text-[#344054] outline-none transition placeholder:text-[#98a2b3] focus:border-[#fb7299] focus:bg-white"
-              />
-              <div className="mt-3 flex flex-col gap-2 text-xs leading-6 text-[#7b6670] sm:flex-row sm:items-center sm:justify-between">
-                <p>建议直接贴 1 段完整章节内容或 3 到 5 条知识点，生成结果会更稳定。</p>
-                <p className="font-semibold text-[#d64d7b]">{questionSourceText.trim().length} 字</p>
-              </div>
+          <div className="rounded-[30px] border border-[#e8edf2] bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-6">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#fff4f8] px-3 py-1 text-[10px] font-black text-[#d64d7b]">
+              <Network className="h-3.5 w-3.5" />
+              薄弱点诊断
             </div>
+            <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[#171c22]">理解、应用、迁移三个维度一起看</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(weakPointList.length ? weakPointList.slice(0, 5) : ["完成短测后更新"]).map((point) => (
+                <span key={point} className="rounded-full bg-[#f7fafb] px-3 py-1 text-xs font-bold text-[#5b6770]">
+                  {normalizeKnowledgePointLabel(point)}
+                </span>
+              ))}
+            </div>
+            <Suspense fallback={<div className="mt-4 h-[260px] rounded-[24px] bg-[#f7fafb]" />}>
+              <HeatmapChartPanel option={weaknessHeatmapOption} height={280} className="mt-4" />
+            </Suspense>
+          </div>
+        </section>
+      ) : null}
 
-            {questionGenerationLoading ? (
-              <div className="mt-3 rounded-2xl bg-[#fff1f6] px-4 py-3 text-xs leading-6 text-[#d64d7b]">
-                正在生成章节题库，系统会优先查数据库缓存，只有命中不到时才会继续调用 AI。
+      {activeCourse ? (
+        <section className="rounded-[30px] border border-[#e8edf2] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_100%)] p-5 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[10px] font-black text-[#006689] ring-1 ring-[#dce7f4]">
+                <Sparkles className="h-3.5 w-3.5" />
+                测评闭环
               </div>
+              <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[#171c22]">测评结果会回写到后续学习动作</h2>
+              <p className="mt-1 text-sm leading-6 text-[#5b6770]">提交本轮短测后，页面会同步生成画像更新、路径调整、补充资源和 AI 导师建议。</p>
+            </div>
+            {latestResult ? (
+              <span className="rounded-full bg-[#ecfdf3] px-3 py-1.5 text-xs font-bold text-emerald-700">
+                本轮闭环已触发
+              </span>
             ) : null}
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <EvaluationSyncItem icon={CheckCircle} title="画像更新" detail={profileSyncDetail} ready={Boolean(feedbackApplied || profileSummary)} />
+            <EvaluationSyncItem icon={Network} title="路径调整" detail={planSyncDetail} ready={Boolean(refreshedPlan || latestPlan)} />
+            <EvaluationSyncItem icon={FileText} title="资源补给" detail={resourceSyncDetail} ready={generatedResources.length > 0} />
+            <EvaluationSyncItem icon={Bot} title="导师接续" detail={tutorSyncDetail} ready={Boolean(tutorFollowup)} />
+          </div>
+        </section>
+      ) : null}
+
+      <section className="rounded-[30px] border border-[#e8edf2] bg-white p-6 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-7">
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="rounded-[24px] border border-[#e8edf2] bg-[#fbfcfd] p-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8a96a3]">题库分类</p>
+            <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[#171c22]">按知识点直接刷题</h2>
+            <p className="mt-2 text-sm leading-6 text-[#5b6770]">
+              主流程用上方 5 题短测快速诊断；这里直接进入计算机核心题库，适合反复练习薄弱点。
+            </p>
+            <div className="mt-4 space-y-2">
+              {SEEDED_QUESTION_BANKS.map((bank) => (
+                <button
+                  key={bank.label}
+                  type="button"
+                  onClick={() => void openSeededQuestionBank(bank.label)}
+                  disabled={questionGenerationLoading}
+                  className="flex w-full items-center justify-between rounded-[14px] border border-[#e8edf2] bg-white px-3 py-2 text-left text-xs font-bold text-[#344054] transition hover:border-[#e4002b] hover:text-[#e4002b] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span>{bank.label}</span>
+                  <span className="text-[#8a96a3]">{bank.count}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <div className="rounded-[24px] border border-[#e8edf2] bg-white p-5 md:p-6">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8a96a3]">计算机专业题库</p>
+                <h3 className="mt-2 text-2xl font-black tracking-[-0.03em] text-[#171c22]">已预置 25 道核心知识短测</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5b6770]">
+                  题库覆盖数据结构、Java 基础、算法复杂度、数据库索引和操作系统。点击分类即可从数据库题库取题作答。
+                </p>
+              </div>
+              <div className="grid grid-cols-2 overflow-hidden rounded-[16px] border border-[#e8edf2] bg-[#f7f7f8] lg:grid-cols-1">
+                <div className="border-r border-[#e8edf2] px-4 py-3 lg:border-b lg:border-r-0">
+                  <div className="text-[11px] font-bold text-[#8a96a3]">题库总量</div>
+                  <div className="mt-1 text-2xl font-black text-[#171c22]">25</div>
+                </div>
+                <div className="px-4 py-3">
+                  <div className="text-[11px] font-bold text-[#8a96a3]">分类数量</div>
+                  <div className="mt-1 text-2xl font-black text-[#171c22]">{SEEDED_QUESTION_BANKS.length}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-5">
+              {SEEDED_QUESTION_BANKS.map((bank) => (
+                <button
+                  key={bank.label}
+                  type="button"
+                  onClick={() => void openSeededQuestionBank(bank.label)}
+                  disabled={questionGenerationLoading}
+                  className="group rounded-[14px] border border-[#d6dee8] bg-white px-3 py-3 text-left transition hover:border-[#e4002b] hover:bg-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-black text-[#171c22] group-hover:text-[#e4002b]">{bank.label}</span>
+                    <span className="rounded-full bg-[#f7f7f8] px-2 py-0.5 text-[10px] font-bold text-[#667085]">{bank.count} 题</span>
+                  </div>
+                  <div className="mt-2 text-[11px] font-bold text-[#8a96a3]">刷这组题</div>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 rounded-[18px] border border-[#e8edf2] bg-[#f7f7f8] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-black text-[#171c22]">快速开始</div>
+                <p className="mt-1 text-xs leading-5 text-[#667085]">默认打开“数据结构：栈与队列”题库；需要新题时再使用下方 AI 补题。</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void openSeededQuestionBank()}
+                  disabled={questionGenerationLoading}
+                  className="eval-primary-button inline-flex items-center justify-center rounded-[14px] bg-[#e4002b] px-5 py-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(228,0,43,0.18)] transition hover:bg-[#c90025] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {questionGenerationLoading ? `读取中 ${questionGenerationElapsed}s` : "开始刷题库"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyStableQuestionBank("已打开稳定练习。")}
+                  className="rounded-[14px] border border-[#d6dee8] bg-white px-4 py-3 text-sm font-bold text-[#344054] transition hover:border-[#171c22]"
+                >
+                  本地稳定题
+                </button>
+              </div>
+            </div>
+
+            <details className="mt-3 rounded-[18px] border border-[#e8edf2] bg-white px-4 py-3">
+              <summary className="cursor-pointer text-sm font-black text-[#171c22]">AI 补题</summary>
+              <div className="mt-3 rounded-[14px] border border-[#e8edf2] bg-[#fbfcfd] p-3">
+                <textarea
+                  value={questionSourceText}
+                  onChange={(event) => setQuestionSourceText(event.target.value)}
+                  placeholder="例如：请围绕 Java 数组、栈和队列、时间复杂度、HashMap 或数据库索引生成 5 道计算机专业短测题，题目要有明确代码/数据结构场景。"
+                  className="min-h-[108px] w-full resize-none rounded-[12px] border border-[#d6dee8] bg-white px-4 py-3 text-sm leading-7 text-[#344054] outline-none transition placeholder:text-[#98a2b3] focus:border-[#e4002b]"
+                />
+                <div className="mt-3 flex flex-col gap-2 text-xs leading-6 text-[#667085] sm:flex-row sm:items-center sm:justify-between">
+                  <p>AI 补题会优先生成代码、数据结构和复杂度类题目；超过 5 秒自动切到稳定练习。</p>
+                  <p className="font-semibold text-[#e4002b]">{questionSourceText.trim().length} 字</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateQuestionBank()}
+                  disabled={questionGenerationLoading}
+                  className="mt-3 inline-flex items-center justify-center rounded-[12px] bg-[#171c22] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#2b323b] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {questionGenerationLoading ? `补题中 ${questionGenerationElapsed}s` : "生成新题"}
+                </button>
+              </div>
+            </details>
+
+            <div className="mt-3 flex flex-col gap-2 rounded-[18px] border border-[#e8edf2] bg-[#f7f7f8] px-4 py-3 text-xs leading-6 text-[#5b6770] sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {questionGenerationLoading ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 font-bold text-[#e4002b]">
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  <span>正在读取专业题库或生成新题，已等待 {questionGenerationElapsed}s；超过 5 秒会先给稳定练习</span>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {[
+                        { label: "查题库缓存", active: true },
+                        { label: "AI 生成专业题", active: questionGenerationElapsed >= 2 },
+                        { label: "稳定练习兜底", active: questionGenerationElapsed >= 5 },
+                      ].map((step) => (
+                        <div key={step.label} className={`rounded-xl border px-3 py-2 ${step.active ? "border-[#e4002b] bg-white text-[#171c22]" : "border-[#edf1f5] bg-white/70"}`}>
+                          {step.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <span>题库会优先复用数据库缓存；AI 响应慢时自动切到本地计算机专业稳定题，保证可以马上开始做题。</span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1171,14 +2061,16 @@ export default function Evaluation() {
           <div className="mt-6 rounded-[28px] border border-[#e8edf2] bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.04)] md:p-6">
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">Step 2</p>
-                <h3 className="mt-2 text-lg font-extrabold text-[#171c22]">{customQuizPaper.title || "导入题库测验"}</h3>
+                <p className="text-[11px] font-bold text-[#8a96a3]">章节题库测验</p>
+                <h3 className="mt-2 text-lg font-extrabold text-[#171c22]">{customQuizPaper.title || "章节题库测验"}</h3>
                 <p className="mt-1 text-sm text-[#5b6770]">
                   {customQuizSource === "ai"
                     ? "这套题库由真实 AI 根据课程内容生成，可直接按单题模式开始作答。"
                     : customQuizSource === "fallback"
-                      ? "当前题库已生成，但其中部分题目来自本地兜底模板，建议作答后再结合课程内容核验。"
-                      : `已导入 ${customQuizPaper.questions.length} 道题，可直接按单题模式在线作答。`}
+                      ? "当前为稳定专项练习，题目围绕真实项目场景组织，可直接作答。"
+                      : customQuizSource === "cache"
+                        ? `已从题库复用 ${customQuizPaper.questions.length} 道题，没有再次消耗 AI。`
+                        : `已导入 ${customQuizPaper.questions.length} 道题，可直接按单题模式在线作答。`}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1186,7 +2078,7 @@ export default function Evaluation() {
                   已作答 {customSelectedAnswerCount}/{customQuizPaper.questions.length}
                 </div>
                 <div className="rounded-full bg-[#fff2f7] px-3 py-1.5 text-xs font-bold text-[#d64d7b]">
-                  {customQuizSource === "ai" ? "真实 AI 生成" : customQuizSource === "fallback" ? "AI + 兜底题库" : "手动导入"}
+                  {customQuizSource === "ai" ? "真实 AI 生成" : customQuizSource === "fallback" ? "稳定题库" : customQuizSource === "cache" ? "题库复用" : "手动导入"}
                 </div>
               </div>
             </div>
@@ -1242,7 +2134,7 @@ export default function Evaluation() {
                       type="button"
                       onClick={handleSubmitCustomQuiz}
                       disabled={Boolean(customQuizSummary)}
-                      className="rounded-2xl bg-[#111827] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60"
+                       className="eval-primary-button rounded-2xl bg-[#fb7299] px-5 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(251,114,153,0.22)] transition hover:bg-[#f95c89] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       提交判分
                     </button>
@@ -1252,16 +2144,108 @@ export default function Evaluation() {
             </div>
 
             {customQuizSummary ? (
-              <div className="mt-5 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[#5b6770] ring-1 ring-[#e8edf2]">
-                得分 {customQuizSummary.correct}/{customQuizSummary.total}，正确率 {customQuizSummary.percent}%
-                {customQuizSummary.weakKnowledgeTags.length ? `，重点回看 ${customQuizSummary.weakKnowledgeTags.join(" / ")}` : ""}
+              <div className="mt-5 space-y-4">
+                <div className="rounded-[24px] border border-[#f3d1dc] bg-[linear-gradient(135deg,#fff7fa,#ffffff)] px-5 py-4 text-sm font-semibold text-[#5b6770]">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-[11px] font-black text-[#d64d7b]">判题完成</div>
+                      <div className="mt-1 text-2xl font-black text-[#171c22]">
+                        {customQuizSummary.correct}/{customQuizSummary.total}，正确率 {customQuizSummary.percent}%
+                      </div>
+                      {customQuizSummary.weakKnowledgeTags.length ? (
+                        <p className="mt-1 text-xs leading-5 text-[#667085]">重点回看：{customQuizSummary.weakKnowledgeTags.join(" / ")}</p>
+                      ) : (
+                        <p className="mt-1 text-xs leading-5 text-[#667085]">本轮表现稳定，可以继续挑战更高难度题。</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openTutorPanel({
+                          courseId: activeCourse?.routeCourseId,
+                          query: `我刚完成「${customQuizPaper.title || "章节题库测验"}」，得分 ${customQuizSummary.correct}/${customQuizSummary.total}。请根据错题和知识点给我一份下一步刷题建议。`,
+                        })
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#171c22] px-4 py-3 text-sm font-black text-white transition hover:bg-[#2b323b]"
+                    >
+                      <Bot className="h-4 w-4" />
+                      问 AI 制定巩固计划
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[24px] border border-[#e8edf2] bg-[#fcfcfd] p-4">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-[11px] font-black text-[#8a96a3]">完整解答</p>
+                      <h4 className="mt-1 text-lg font-black text-[#171c22]">逐题答案、解析与 AI 追问</h4>
+                    </div>
+                    <p className="text-xs font-semibold text-[#667085]">点击任意题可继续让 AI 拆解考点</p>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {customQuizPaper.questions.map((question, index) => {
+                      const scoreItem = customQuizSummary.wrongQuestions.find((item) => item.questionId === question.id);
+                      const solved = !scoreItem;
+                      return (
+                        <article key={`solution-${question.id}`} className="rounded-[20px] border border-[#e8edf2] bg-white p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${solved ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                                  {solved ? "正确" : "需复盘"}
+                                </span>
+                                <span className="rounded-full bg-[#f8fafc] px-2.5 py-1 text-[11px] font-bold text-[#667085]">
+                                  第 {index + 1} 题
+                                </span>
+                                {question.knowledgeTag ? (
+                                  <span className="rounded-full bg-[#fff2f7] px-2.5 py-1 text-[11px] font-bold text-[#d64d7b]">
+                                    {normalizeKnowledgePointLabel(question.knowledgeTag)}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <h5 className="mt-3 text-sm font-black leading-7 text-[#171c22]">{question.question}</h5>
+                              <div className="mt-3 grid gap-2 text-xs leading-6 text-[#5b6770] md:grid-cols-2">
+                                <div className="rounded-2xl bg-[#f8fafc] px-3 py-2">
+                                  <span className="font-black text-[#344054]">你的答案：</span>
+                                  {formatQuizAnswer(question, customQuizAnswers[question.id])}
+                                </div>
+                                <div className="rounded-2xl bg-[#ecfdf3] px-3 py-2 text-emerald-800">
+                                  <span className="font-black">正确答案：</span>
+                                  {formatQuizAnswer(question, question.answer)}
+                                </div>
+                              </div>
+                              {question.explanation ? (
+                                <p className="mt-3 rounded-2xl bg-[#fff7fa] px-3 py-2 text-xs font-semibold leading-6 text-[#8a405d]">
+                                  解析：{question.explanation}
+                                </p>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openTutorPanel({
+                                  courseId: activeCourse?.routeCourseId,
+                                  query: buildCustomQuizTutorQuestion(question, index),
+                                })
+                              }
+                              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-[#e8edf2] bg-white px-4 py-3 text-sm font-black text-[#344054] transition hover:border-[#fb7299] hover:text-[#d64d7b]"
+                            >
+                              <Bot className="h-4 w-4" />
+                              追问 AI
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>
         ) : null}
       </section>
 
-      {activeCourse && loading ? (
+      {activeCourse && loading && !hasEvaluationSnapshot ? (
         <div className="rounded-[24px] bg-white px-5 py-5 text-sm text-[#564145] shadow-[0_10px_24px_rgba(23,28,34,0.04)]">
           <div className="flex items-center gap-3">
             <LoaderCircle className="h-5 w-5 animate-spin text-[#111827]" />
@@ -1279,44 +2263,8 @@ export default function Evaluation() {
         </div>
       ) : null}
 
-      {activeCourse ? (
-        <section className="rounded-[30px] border border-[#e8edf2] bg-white p-6 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-7">
-          {!activePaper ? (
-            <div className="rounded-[28px] border border-[#e8edf2] bg-[#fcfcfd] p-5 shadow-[0_12px_28px_rgba(15,23,42,0.04)] md:p-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8a96a3]">Quick Start</p>
-                    <span className="rounded-full bg-[#111827] px-2.5 py-1 text-[10px] font-bold text-white">下一步</span>
-                  </div>
-                  <h2 className="mt-2 text-2xl font-extrabold text-[#171c22]">{activeCourse.title}</h2>
-                  {latestHistory?.created_at ? (
-                    <p className="mt-2 text-sm text-[#5b6770]">最近一次记录：{formatDate(latestHistory.created_at)}</p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void loadEvaluationState()}
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-[#5b6770] hover:text-[#111827]"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  刷新
-                </button>
-              </div>
-
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  onClick={() => void handleStartPaper()}
-                  disabled={paperLoading}
-                  className="rounded-2xl bg-[#111827] px-5 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(17,24,39,0.18)] transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {paperLoading ? "正在生成试卷..." : "开始一次新测评"}
-                </button>
-                <div className="rounded-2xl bg-[#f7fafb] px-4 py-3 text-sm font-semibold text-[#5b6770]">5 题短测，预计 2 分钟。</div>
-              </div>
-            </div>
-          ) : (
+      {activeCourse && activePaper ? (
+        <section ref={paperWorkspaceRef} className="rounded-[30px] border border-[#e8edf2] bg-white p-6 shadow-[0_16px_42px_rgba(15,23,42,0.05)] md:p-7">
             <div className="space-y-6">
               <div className="flex flex-col gap-4 border-b border-black/8 pb-5 md:flex-row md:items-end md:justify-between">
                 <div>
@@ -1368,7 +2316,7 @@ export default function Evaluation() {
                                   : "bg-[#ecfdf3] text-[#027a48]"
                               }`}
                             >
-                              {(activePaper.source || activePaper.questions[0]?.source) === "fallback" ? "兜底题库" : "真实 AI 生成"}
+                              {(activePaper.source || activePaper.questions[0]?.source) === "fallback" ? "稳定短测" : "真实 AI 生成"}
                             </div>
                           </div>
                         </div>
@@ -1388,7 +2336,7 @@ export default function Evaluation() {
                           </button>
                           <button
                             type="button"
-                            disabled={currentPaperQuestionIndex >= activePaper.questions.length - 1}
+                          disabled={currentPaperQuestionIndex >= activePaper.questions.length - 1}
                             onClick={() => setCurrentPaperQuestionIndex((value) => Math.min(activePaper.questions.length - 1, value + 1))}
                             className="inline-flex items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm font-semibold text-[#344054] transition hover:border-[#cfd8df] disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -1400,7 +2348,7 @@ export default function Evaluation() {
                           type="button"
                           onClick={() => void handleSubmit()}
                           disabled={submitting || selectedAnswerCount < activePaper.questions.length}
-                          className="rounded-2xl bg-[#111827] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-70"
+                          className="eval-primary-button rounded-2xl bg-[#fb7299] px-5 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(251,114,153,0.22)] transition hover:bg-[#f95c89] disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           {submitting
                             ? "正在提交测评..."
@@ -1414,36 +2362,215 @@ export default function Evaluation() {
                 </>
               ) : (
                 <div className="space-y-6">
-                  <div className="rounded-[28px] border border-emerald-200 bg-[linear-gradient(135deg,#f3fff8,#ffffff)] px-5 py-5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Result</p>
-                    <h3 className="mt-2 text-3xl font-extrabold text-[#171c22]">{formatPercent(latestResult.overall_score)}</h3>
-                    <p className="mt-2 text-sm font-semibold text-[#5b6770]">当前状态：{latestResult.mastery_level || "已完成本轮测评"}</p>
-                    <p className="mt-3 text-sm leading-6 text-[#5b6770]">
-                      {latestResult.report_summary || "本轮结果已生成，可以继续看报告或追问 AI 导师。"}
-                    </p>
+                  <div className="rounded-[28px] border border-emerald-200 bg-[linear-gradient(135deg,#f3fff8,#ffffff)] px-5 py-5 shadow-[0_14px_34px_rgba(16,185,129,0.08)]">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-emerald-700">本轮诊断结果</p>
+                        <h3 className="mt-2 text-4xl font-black tracking-[-0.04em] text-[#171c22]">{formatPercent(latestResult.overall_score)}</h3>
+                        <p className="mt-2 text-sm font-semibold text-[#5b6770]">当前状态：{latestResult.mastery_level || "已完成本轮测评"}</p>
+                        <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5b6770]">
+                          {latestResult.report_summary || "本轮结果已生成，可以继续看报告或追问 AI 导师。"}
+                        </p>
+                      </div>
+                      <div className="grid min-w-[260px] grid-cols-3 gap-2">
+                        <div className="rounded-2xl bg-white px-3 py-3 text-center ring-1 ring-emerald-100">
+                          <div className="text-[10px] font-bold text-[#667085]">错题</div>
+                          <div className="mt-1 text-xl font-black text-[#171c22]">{wrongQuestions.length}</div>
+                        </div>
+                        <div className="rounded-2xl bg-white px-3 py-3 text-center ring-1 ring-emerald-100">
+                          <div className="text-[10px] font-bold text-[#667085]">补资源</div>
+                          <div className="mt-1 text-xl font-black text-[#171c22]">{generatedResources.length}</div>
+                        </div>
+                        <div className="rounded-2xl bg-white px-3 py-3 text-center ring-1 ring-emerald-100">
+                          <div className="text-[10px] font-bold text-[#667085]">薄弱点</div>
+                          <div className="mt-1 text-xl font-black text-[#171c22]">{latestResult.weak_points?.length || 0}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {wrongQuestions.length ? (
-                    <section className="border-t border-black/8 pt-5">
-                      <h4 className="text-lg font-extrabold text-[#171c22]">错题复盘</h4>
-                      <div className="mt-4 space-y-4">
-                        {wrongQuestions.map((item) => (
-                          <div key={`${item.question_id}-${item.knowledge_point}`} className="border-b border-black/6 pb-4 last:border-b-0">
-                            <p className="text-sm font-bold text-[#171c22]">{item.prompt}</p>
-                            <p className="mt-2 text-xs leading-6 text-[#564145]">你的答案：{item.user_answer || "未作答"}</p>
-                            <p className="text-xs leading-6 text-[#564145]">正确答案：{item.correct_answer}</p>
-                            <p className="mt-1 text-xs leading-6 text-[#564145]">{item.explanation}</p>
-                          </div>
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <div className="rounded-[24px] border border-[#e8edf2] bg-white p-4">
+                      <div className="text-[11px] font-black text-[#8a96a3]">建议优先补</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(latestResult.weak_points?.length ? latestResult.weak_points : ["继续保持当前节奏"]).slice(0, 4).map((point) => (
+                          <span key={point} className="rounded-full bg-[#fff4f8] px-3 py-1 text-xs font-bold text-[#d64d7b]">
+                            {normalizeKnowledgePointLabel(point)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-[24px] border border-[#e8edf2] bg-white p-4">
+                      <div className="text-[11px] font-black text-[#8a96a3]">路径下一步</div>
+                      <p className="mt-2 line-clamp-3 text-sm font-semibold leading-6 text-[#344054]">
+                        {refreshedPlan?.next_action || latestPlan?.next_action || latestResult.recommended_actions?.[0] || "查看报告后继续推进下一阶段任务。"}
+                      </p>
+                    </div>
+                    <div className="rounded-[24px] border border-[#e8edf2] bg-white p-4">
+                      <div className="text-[11px] font-black text-[#8a96a3]">AI 导师摘要</div>
+                      <p className="mt-2 line-clamp-3 text-sm font-semibold leading-6 text-[#344054]">
+                        {tutorFollowup?.answer || "点击“问 AI 导师”后，会带着本轮得分和薄弱点继续追问。"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {mistakeDiagnoses.length ? (
+                    <section className="rounded-[28px] border border-[#ffd5e3] bg-[linear-gradient(135deg,#fff7fa,#ffffff_48%,#f5fbff)] p-5 shadow-[0_16px_36px_rgba(251,114,153,0.09)]">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                          <p className="text-[11px] font-black text-[#d64d7b]">错题智能诊断</p>
+                          <h4 className="mt-1 text-xl font-black text-[#171c22]">不只判对错，直接定位错因并补 3 道同类变式题</h4>
+                        </div>
+                        <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-black text-[#d64d7b] ring-1 ring-[#ffd5e3]">
+                          {mistakeDiagnoses.length} 个错因待修复
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-4">
+                        {mistakeDiagnoses.map((diagnosis, diagnosisIndex) => (
+                          <article
+                            key={`mistake-diagnosis-${diagnosis.wrongQuestion.question_id}-${diagnosisIndex}`}
+                            className="rounded-[24px] border border-[#eef2f6] bg-white p-4 shadow-[0_10px_26px_rgba(15,23,42,0.04)]"
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span
+                                    className={`rounded-full px-3 py-1 text-[11px] font-black ${
+                                      diagnosis.causeId === "concept"
+                                        ? "bg-[#eff6ff] text-[#1d4ed8]"
+                                        : diagnosis.causeId === "step"
+                                          ? "bg-[#fff7ed] text-[#c2410c]"
+                                          : diagnosis.causeId === "reading"
+                                            ? "bg-[#fff1f2] text-[#be123c]"
+                                            : "bg-[#ecfdf3] text-[#047857]"
+                                    }`}
+                                  >
+                                    {diagnosis.causeLabel}
+                                  </span>
+                                  <span className="rounded-full bg-[#f8fafc] px-3 py-1 text-[11px] font-bold text-[#667085]">
+                                    {normalizeKnowledgePointLabel(diagnosis.wrongQuestion.knowledge_point)}
+                                  </span>
+                                  <span className="rounded-full bg-[#f8fafc] px-3 py-1 text-[11px] font-bold text-[#667085]">
+                                    第 {diagnosisIndex + 1} 个错题
+                                  </span>
+                                </div>
+                                <h5 className="mt-3 text-sm font-black leading-7 text-[#171c22]">{diagnosis.wrongQuestion.prompt}</h5>
+                                <div className="mt-3 grid gap-2 text-xs leading-6 text-[#5b6770] md:grid-cols-2">
+                                  <div className="rounded-2xl bg-[#fff7fa] px-3 py-2">
+                                    <span className="font-black text-[#8a405d]">错因判断：</span>
+                                    {diagnosis.causeDetail}
+                                  </div>
+                                  <div className="rounded-2xl bg-[#f8fafc] px-3 py-2">
+                                    <span className="font-black text-[#344054]">诊断依据：</span>
+                                    {diagnosis.evidence}
+                                  </div>
+                                </div>
+                                <p className="mt-2 rounded-2xl bg-[#ecfdf3] px-3 py-2 text-xs font-semibold leading-6 text-emerald-800">
+                                  原题解析：{diagnosis.wrongQuestion.explanation || "建议重新梳理题干条件和选项排除过程。"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 rounded-[20px] border border-[#e8edf2] bg-[#fbfdff] p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="text-sm font-black text-[#171c22]">同类变式题</div>
+                                <div className="text-[11px] font-bold text-[#667085]">做完这 3 题，验证是否真正修复错因</div>
+                              </div>
+                              <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                                {diagnosis.variantQuestions.map((variant) => (
+                                  <div key={`${diagnosis.wrongQuestion.question_id}-${variant.title}`} className="rounded-[18px] border border-[#e8edf2] bg-white p-3">
+                                    <div className="text-[11px] font-black text-[#d64d7b]">{variant.title}</div>
+                                    <p className="mt-2 text-xs font-black leading-6 text-[#171c22]">{variant.prompt}</p>
+                                    <div className="mt-2 space-y-1">
+                                      {variant.options.map((option) => (
+                                        <div key={option} className="rounded-xl bg-[#f8fafc] px-2.5 py-1.5 text-[11px] font-semibold leading-5 text-[#5b6770]">
+                                          {option}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="mt-2 rounded-xl bg-[#ecfdf3] px-2.5 py-1.5 text-[11px] font-bold leading-5 text-emerald-800">
+                                      答案：{variant.answer}。{variant.explanation}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </article>
                         ))}
                       </div>
                     </section>
                   ) : null}
 
+                  <section className="rounded-[28px] border border-[#e8edf2] bg-[#fcfcfd] p-5">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-[11px] font-black text-[#8a96a3]">完整解答</p>
+                        <h4 className="mt-1 text-lg font-black text-[#171c22]">本轮 5 题逐题复盘</h4>
+                      </div>
+                      <p className="text-xs font-semibold text-[#667085]">每题都可以继续追问 AI 导师</p>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      {activePaper.questions.map((question, index) => {
+                        const userAnswer = normalizeAnswerToken(answers[question.question_id] || "");
+                        const correctAnswer = normalizeAnswerToken(question.correct_answer);
+                        const solved = userAnswer === correctAnswer;
+                        const matchedWrong = wrongQuestions.find((item) => item.question_id === question.question_id);
+                        return (
+                          <article key={`paper-solution-${question.question_id}`} className="rounded-[20px] border border-[#e8edf2] bg-white p-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${solved ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                                    {solved ? "正确" : "需复盘"}
+                                  </span>
+                                  <span className="rounded-full bg-[#f8fafc] px-2.5 py-1 text-[11px] font-bold text-[#667085]">
+                                    第 {index + 1} 题
+                                  </span>
+                                  <span className="rounded-full bg-[#fff2f7] px-2.5 py-1 text-[11px] font-bold text-[#d64d7b]">
+                                    {normalizeKnowledgePointLabel(question.knowledge_point)}
+                                  </span>
+                                </div>
+                                <h5 className="mt-3 text-sm font-black leading-7 text-[#171c22]">{question.prompt}</h5>
+                                <div className="mt-3 grid gap-2 text-xs leading-6 text-[#5b6770] md:grid-cols-2">
+                                  <div className="rounded-2xl bg-[#f8fafc] px-3 py-2">
+                                    <span className="font-black text-[#344054]">你的答案：</span>
+                                    {userAnswer || "未作答"}
+                                  </div>
+                                  <div className="rounded-2xl bg-[#ecfdf3] px-3 py-2 text-emerald-800">
+                                    <span className="font-black">正确答案：</span>
+                                    {correctAnswer || question.correct_answer}
+                                  </div>
+                                </div>
+                                <p className="mt-3 rounded-2xl bg-[#fff7fa] px-3 py-2 text-xs font-semibold leading-6 text-[#8a405d]">
+                                  解析：{matchedWrong?.explanation || question.explanation || "这道题建议结合课程知识点重新梳理解题过程。"}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openTutorPanel({
+                                    courseId: activeCourse.routeCourseId,
+                                    query: buildPaperTutorQuestion(question, index),
+                                  })
+                                }
+                                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-[#e8edf2] bg-white px-4 py-3 text-sm font-black text-[#344054] transition hover:border-[#fb7299] hover:text-[#d64d7b]"
+                              >
+                                <Bot className="h-4 w-4" />
+                                追问 AI
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <button
                       type="button"
                       onClick={() => navigate(`/report?courseId=${activeCourse.routeCourseId}`)}
-                      className="flex items-center justify-center gap-2 rounded-2xl bg-[#111827] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1f2937]"
+                      className="eval-primary-button flex items-center justify-center gap-2 rounded-2xl bg-[#fb7299] px-4 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(251,114,153,0.22)] transition hover:bg-[#f95c89]"
                     >
                       查看报告
                       <ArrowRight className="h-4 w-4" />
@@ -1472,7 +2599,6 @@ export default function Evaluation() {
                 </div>
               )}
             </div>
-          )}
         </section>
       ) : null}
 

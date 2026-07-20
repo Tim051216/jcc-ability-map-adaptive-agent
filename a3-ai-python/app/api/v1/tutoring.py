@@ -2,6 +2,7 @@
 智能辅导 API
 """
 import asyncio
+import base64
 import json
 from datetime import datetime
 from urllib.parse import urlparse
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user_id, get_db_session, get_websocket_user_id
 from app.agents.tutoring_coordinator import TutoringCoordinator
 from app.core.config import settings
+from app.core.logging import logger
 from app.db.session import get_db
 from app.schemas.tutoring import (
     AnswerEvaluationRequest,
@@ -33,7 +35,10 @@ from app.schemas.tutoring import (
     TutoringQuestionCreate,
     TutoringQuestionResponse,
 )
-from app.services.tutoring_image_storage import upload_tutoring_attachment
+from app.services.tutoring_image_storage import (
+    extract_tutoring_attachment_text,
+    upload_tutoring_attachment,
+)
 from app.services.tutoring_memory_store import memory_tutoring_store
 from app.services.tutoring_ocr_service import extract_text_from_base64_image
 from app.services.tutoring_service import TutoringBillingError, TutoringService
@@ -274,9 +279,10 @@ async def upload_tutoring_image(
     user_id: int = Depends(get_current_user_id),
 ) -> TutoringImageUploadResponse:
     """
-    将辅导配图上传到 MinIO，返回 URL 供 question_images 使用。
-    未配置公网前缀时返回短期预签名 URL。失败时前端可回退为 Base64。
+    将辅导配图上传到对象存储，返回 URL 供 question_images 使用。
+    如果对象存储不可用，则直接回退为 data URL，确保前端仍可正常使用。
     """
+    data = b""
     try:
         data = await file.read()
         result = upload_tutoring_attachment(
@@ -290,7 +296,12 @@ async def upload_tutoring_image(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"对象存储不可用: {str(e)}")
+        logger.warning("tutoring.upload_image_fallback", user_id=user_id, error=str(e))
+        mime_type = (file.content_type or "application/octet-stream").split(";")[0].strip().lower() or "application/octet-stream"
+        fallback_data = base64.b64encode(data).decode("ascii")
+        fallback_url = f"data:{mime_type};base64,{fallback_data}"
+        extracted_text = extract_tutoring_attachment_text(data, file.content_type or "application/octet-stream") or None
+        return TutoringImageUploadResponse(url=fallback_url, extracted_text=extracted_text)
 
 
 @router.post("/question", response_model=dict)
@@ -388,6 +399,28 @@ async def get_answer(
                     **(await service.build_answer_payload(question=question, answer=answer)),
                 }
 
+        if int(getattr(question, "question_status", 0) or 0) == 3:
+            return {
+                "status": "failed",
+                "question_id": question.id,
+                "session_id": question.session_id,
+                "answer_id": None,
+                "answer_text": "",
+                "diagrams": [],
+                "videos": [],
+                "reference_sources": [],
+                "confidence_score": 0,
+                "generation_time": None,
+                "should_escalate": False,
+                "question_type": getattr(question, "question_type", None),
+                "knowledge_points": getattr(question, "knowledge_points", []) or [],
+                "safety_review": None,
+                "hallucination_review": None,
+                "source": "ai",
+                "fallback_reason": None,
+                "error_message": "AI 导师生成失败，请重新提问或稍后再试。",
+            }
+
         asyncio.create_task(_generate_db_answer(question_id, user_id))
         return {
             "status": "processing",
@@ -461,8 +494,14 @@ async def get_history(
         return TutoringHistoryResponse(**result)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"历史查询失败: {str(e)}")
+    except Exception:
+        logger.exception("tutoring.history_query_failed", user_id=user_id)
+        return TutoringHistoryResponse(
+            total=0,
+            page=page,
+            page_size=page_size,
+            items=[],
+        )
 
 
 @router.post("/evaluate", response_model=dict)

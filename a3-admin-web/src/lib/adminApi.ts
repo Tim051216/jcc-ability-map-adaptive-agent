@@ -357,13 +357,53 @@ interface ListResponse<T> {
   total: number;
 }
 
-const GET_RESPONSE_TTL_MS = 1000;
+const GET_RESPONSE_TTL_MS = 5 * 60 * 1000;
+const GET_SESSION_CACHE_PREFIX = "a3-admin-get-cache";
 const inflightGetRequests = new Map<string, Promise<unknown>>();
 const recentGetResponses = new Map<string, { expiresAt: number; value: unknown }>();
 let currentAdminActor = "codex-admin";
 
 export function setAdminActor(actor: string | null | undefined) {
   currentAdminActor = actor?.trim() || "codex-admin";
+}
+
+function readSessionGetCache<T>(cacheKey: string): T | null {
+  try {
+    const raw = window.sessionStorage.getItem(`${GET_SESSION_CACHE_PREFIX}:${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { expiresAt: number; value: T };
+    if (!parsed || parsed.expiresAt <= Date.now()) return null;
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionGetCache(cacheKey: string, value: unknown) {
+  try {
+    window.sessionStorage.setItem(
+      `${GET_SESSION_CACHE_PREFIX}:${cacheKey}`,
+      JSON.stringify({
+        expiresAt: Date.now() + GET_RESPONSE_TTL_MS,
+        value,
+      }),
+    );
+  } catch {
+    // Ignore admin GET cache failures.
+  }
+}
+
+function clearSessionGetCache() {
+  try {
+    for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith(`${GET_SESSION_CACHE_PREFIX}:`)) {
+        window.sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Ignore admin GET cache cleanup failures.
+  }
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -399,12 +439,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     const value = await run();
     recentGetResponses.clear();
     inflightGetRequests.clear();
+    clearSessionGetCache();
     return value;
   }
 
   const cached = recentGetResponses.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value as T;
+  }
+
+  const sessionCached = readSessionGetCache<T>(cacheKey);
+  if (sessionCached) {
+    recentGetResponses.set(cacheKey, {
+      expiresAt: Date.now() + GET_RESPONSE_TTL_MS,
+      value: sessionCached,
+    });
+    return sessionCached;
   }
 
   const existing = inflightGetRequests.get(cacheKey);
@@ -418,6 +468,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
         expiresAt: Date.now() + GET_RESPONSE_TTL_MS,
         value,
       });
+      writeSessionGetCache(cacheKey, value);
       return value;
     })
     .finally(() => {

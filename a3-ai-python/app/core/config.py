@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=18080, alias="APP_PORT")
     app_debug: bool = Field(default=False, alias="APP_DEBUG")
     local_demo_sqlite_only: bool = Field(default=True, alias="LOCAL_DEMO_SQLITE_ONLY")
-    rag_local_markdown_first: bool = Field(default=False, alias="RAG_LOCAL_MARKDOWN_FIRST")
+    rag_local_markdown_first: bool = Field(default=True, alias="RAG_LOCAL_MARKDOWN_FIRST")
     auth_bearer_tokens: str = Field(default="student-demo:1001,admin-demo:9001", alias="AUTH_BEARER_TOKENS")
 
     postgres_dsn: str = Field(alias="POSTGRES_DSN")

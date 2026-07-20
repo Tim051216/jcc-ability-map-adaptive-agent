@@ -55,6 +55,7 @@ class ResourceService:
     _favorite_history_cache: ClassVar[list[dict[str, str | int | None]]] = []
     _archived_cache: ClassVar[dict[int, dict[str, str | int | None]]] = {}
     _resource_index_warmed: ClassVar[bool] = False
+    _seed_resources_ensured: ClassVar[set[tuple[int, str]]] = set()
     _next_resource_id: ClassVar[int] = 1
     _local_seed_resources: ClassVar[dict[int, object] | None] = None
     _builtin_video_resources: ClassVar[dict[int, ResourceCard]] = {
@@ -209,10 +210,6 @@ class ResourceService:
             update={
                 "course_id": course_context.course_id,
                 "course_code": course_context.course_code,
-                "knowledge_points": self._normalize_knowledge_points(
-                    request.knowledge_points,
-                    course_context.course_code,
-                ),
             }
         )
         try:
@@ -382,6 +379,9 @@ class ResourceService:
         normalized_course_code = self._normalize_seed_course_code(course_code)
         if normalized_course_code not in self._local_seed_course_codes():
             return
+        ensure_key = (user_id, normalized_course_code)
+        if ensure_key in self._seed_resources_ensured:
+            return
 
         await self._ensure_resource_tables()
 
@@ -391,6 +391,7 @@ class ResourceService:
         ).limit(1)
         existing = await session.execute(existing_stmt)
         if existing.scalar_one_or_none() is not None:
+            self._seed_resources_ensured.add(ensure_key)
             return
 
         from scripts.init_real_local_data import (
@@ -490,6 +491,7 @@ class ResourceService:
             ]
         )
         await session.commit()
+        self._seed_resources_ensured.add(ensure_key)
 
     async def _ensure_resource_tables(self) -> None:
         async with ai_data_engine.begin() as conn:
@@ -644,11 +646,22 @@ class ResourceService:
                             "knowledge_points": request.knowledge_points,
                             "resource_types": request.resource_types,
                             "course_code": request.course_code,
+                            "source_scene": "learnai_classroom_workspace",
+                            "quality_version": "courseware_v2",
+                            "persisted_to_library": True,
+                            **(item.generation_context or {}),
                         },
                         created_at=now,
                         updated_at=now,
                     )
-                    persisted_item = item.model_copy(update={"resource_id": record.id})
+                    persisted_item = item.model_copy(
+                        update={
+                            "resource_id": record.id,
+                            "generated_at": record.created_at or now,
+                            "updated_at": record.updated_at or now,
+                            "generation_context": record.generation_context,
+                        }
+                    )
                     persisted.append(persisted_item)
                     self.__class__._resource_cache[record.id] = persisted_item
                     self.__class__._next_resource_id = max(self.__class__._next_resource_id, record.id + 1)
@@ -657,7 +670,7 @@ class ResourceService:
             for item in resources:
                 resource_id = self.__class__._next_resource_id
                 self.__class__._next_resource_id += 1
-                persisted_item = item.model_copy(update={"resource_id": resource_id})
+                persisted_item = item.model_copy(update={"resource_id": resource_id, "generated_at": now, "updated_at": now})
                 persisted.append(persisted_item)
                 self.__class__._resource_cache[resource_id] = persisted_item
         return persisted
@@ -684,23 +697,90 @@ class ResourceService:
         for resource_type in resource_types:
             existing = generated_map.get(resource_type)
             if existing is not None:
-                cards.append(
-                    self._sanitize_card(
-                        existing,
-                        course_code=request.course_code,
-                        source_titles=source_titles,
-                    )
-                )
-                continue
-            cards.append(
-                self._build_fallback_card(
-                    resource_type=resource_type,
+                sanitized = self._sanitize_card(
+                    existing,
                     course_code=request.course_code,
                     source_titles=source_titles,
-                    source_text=source_text,
                 )
+                cards.append(self._upgrade_classroom_resource_card(sanitized, request=request))
+                continue
+            fallback_card = self._build_fallback_card(
+                resource_type=resource_type,
+                course_code=request.course_code,
+                source_titles=source_titles,
+                source_text=source_text,
             )
+            cards.append(self._upgrade_classroom_resource_card(fallback_card, request=request))
         return cards
+
+    @staticmethod
+    def _upgrade_classroom_resource_card(
+        card: ResourceCard,
+        *,
+        request: ResourceGenerationRequest,
+    ) -> ResourceCard:
+        if card.resource_type not in {"lecture_note", "lecture_notes", "mindmap", "mind_map", "practice_set", "quiz_set", "ppt"}:
+            return card
+
+        source_titles = [
+            str(item or "").strip()
+            for item in request.knowledge_points
+            if str(item or "").strip()
+        ]
+        if not source_titles:
+            source_titles = ResourceService._normalize_knowledge_points(
+                request.knowledge_points,
+                request.course_code or "",
+            )
+        if len(source_titles) < 2:
+            return card
+
+        course_title = source_titles[0]
+        section_title = source_titles[1]
+        content_markdown = ResourceService._build_quality_recovery_content(
+            resource_type=card.resource_type,
+            course_code=request.course_code or "",
+            source_titles=source_titles,
+            draft_content=card.content_markdown,
+        )
+        kind_label = {
+            "lecture_note": "讲义",
+            "lecture_notes": "讲义",
+            "mindmap": "导图",
+            "mind_map": "导图",
+            "practice_set": "练习",
+            "quiz_set": "练习",
+            "ppt": "PPT 草案",
+        }.get(card.resource_type, "资料")
+        summary_suffix = {
+            "lecture_note": "包含学习目标、核心概念、任务拆解、易错点和课后自测。",
+            "lecture_notes": "包含学习目标、核心概念、任务拆解、易错点和课后自测。",
+            "mindmap": "包含中心主题、结构分支、上下游依赖、课堂场景和复习路线。",
+            "mind_map": "包含中心主题、结构分支、上下游依赖、课堂场景和复习路线。",
+            "practice_set": "包含单选、多选、判断和开放题，并附答案解析。",
+            "quiz_set": "包含单选、多选、判断和开放题，并附答案解析。",
+            "ppt": "包含 8 页课件结构、逐页讲稿、视觉建议和课堂互动设计。",
+        }.get(card.resource_type, "已整理为可复用资料。")
+        generation_context = dict(card.generation_context or {})
+        generation_context.update(
+            {
+                "source_scene": "learnai_classroom_workspace",
+                "quality_version": "courseware_v2",
+                "course_title": course_title,
+                "section_title": section_title,
+                "persisted_to_library": True,
+            }
+        )
+        return card.model_copy(
+            update={
+                "title": f"{course_title} · {section_title} {kind_label}",
+                "summary": f"已按当前课堂章节生成高密度{kind_label}，{summary_suffix}",
+                "content_markdown": content_markdown,
+                "source_titles": source_titles,
+                "study_suggestion": ResourceService._build_study_suggestion(card.resource_type),
+                "generation_context": generation_context,
+            }
+        )
 
     async def _build_web_reference_block(self, request: ResourceGenerationRequest) -> str:
         query_seed = " ".join((request.knowledge_points or [])[:3]).strip()
@@ -810,6 +890,9 @@ class ResourceService:
                 content_markdown=resource.content_markdown,
                 source_titles=list(resource.source_titles or []),
                 study_suggestion=resource.study_suggestion,
+                generated_at=getattr(resource, "created_at", None),
+                updated_at=getattr(resource, "updated_at", None),
+                generation_context=getattr(resource, "generation_context", None),
             ),
             course_code=str(resource.course_code or ""),
             source_titles=list(resource.source_titles or []),
@@ -867,6 +950,9 @@ class ResourceService:
             study_suggestion=card.study_suggestion,
             source_file_count=source_file_count,
             source_files=source_files,
+            generated_at=card.generated_at,
+            updated_at=card.updated_at,
+            generation_context=card.generation_context,
         )
 
     async def _hydrate_cards(self, resources, preview_limit: int | None = None) -> list[ResourceCard]:
@@ -933,6 +1019,9 @@ class ResourceService:
                     study_suggestion=card.study_suggestion,
                     source_file_count=source_file_count,
                     source_files=source_files,
+                    generated_at=card.generated_at,
+                    updated_at=card.updated_at,
+                    generation_context=card.generation_context,
                 )
             )
         return cards
@@ -1235,7 +1324,7 @@ class ResourceService:
         if resource_type in {"quiz_set", "practice_set"}:
             questions = ResourceService._build_high_quality_practice_questions(course_code, source_titles)
             return json.dumps({"questions": questions}, ensure_ascii=False, indent=2)
-        if resource_type == "teaching_plan":
+        if resource_type in {"ppt", "teaching_plan"}:
             return ResourceService._build_high_quality_teaching_plan_markdown(course_code, source_titles, draft_content)
         if resource_type == "ocr_notes":
             fallback_request = ResourceGenerationRequest(
@@ -1281,9 +1370,6 @@ class ResourceService:
         structure = list(se_profile["structure"]) if se_profile else (source_titles[:4] or [focus_title])
         pitfalls = list(se_profile["pitfalls"]) if se_profile else ["概念边界不清", "忽略上下游关系", "缺少真实场景"]
         scene = str(se_profile["scene"]) if se_profile else f"结合 {course_label} 的课堂案例与项目任务理解"
-        draft_excerpt = ResourceService._normalize_text(draft_content)
-        if len(draft_excerpt) > 360:
-            draft_excerpt = draft_excerpt[:360].rstrip() + "..."
         return (
             f"# {course_label} · {focus_title} 学习讲义\n\n"
             "## 本节定位\n"
@@ -1305,18 +1391,38 @@ class ResourceService:
             "如果这些前置点没有厘清，就容易在本节出现“知道名词但不会判断场景”的问题。\n\n"
             "## 课堂案例与项目落点\n"
             f"{scene}。讲述时建议先从“当前任务遇到了什么问题”切入，再说明 {theme} 在其中承担的职责，这样更容易把课堂知识转成答辩表达与项目分析能力。\n\n"
+            "## 真实任务拆解\n"
+            f"可以把 {theme} 放进一个小型任务里理解：先确认任务背景，再找出关键输入，接着画出处理过程，最后说明输出结果如何影响后续环节。这样学习时不会只停留在“会背定义”，而是能解释为什么这一步存在、如果省略它会带来什么风险。\n\n"
+            "### 任务推进建议\n"
+            f"1. 明确问题：当前章节为什么需要讨论 {theme}？\n"
+            "2. 标出输入：学习或项目任务中有哪些已知条件、约束、角色或文档。\n"
+            "3. 拆解过程：把关键结构拆成 3 到 5 个可解释节点。\n"
+            "4. 验证输出：检查最终结论是否能支持后续分析、设计、实现、测试或答辩。\n\n"
             "## 易错点辨析\n"
             + "\n".join(f"- {item}" for item in pitfalls)
             + "\n\n"
+            "## 对比记忆卡\n"
+            f"| 维度 | {theme} 应该关注什么 | 常见误区 |\n"
+            "| --- | --- | --- |\n"
+            f"| 目标 | {goal} | 只记名词，不解释用途 |\n"
+            "| 结构 | 说明模块、流程、输入输出和上下游关系 | 把所有概念并列罗列 |\n"
+            f"| 场景 | {scene} | 脱离真实任务空谈定义 |\n"
+            "| 评价 | 能讲清、能迁移、能做题 | 只看一遍觉得懂了 |\n\n"
+            "## 掌握度检查清单\n"
+            f"- 我能在 30 秒内说清 {theme} 解决什么问题。\n"
+            "- 我能画出至少 3 个关键节点及它们之间的关系。\n"
+            "- 我能举出一个课堂、实验、项目或答辩场景。\n"
+            "- 我能指出至少 2 个易错点，并说明如何避免。\n"
+            "- 我能基于这份讲义继续完成导图、练习和 PPT 表达。\n\n"
             "## 复习提纲\n"
             f"1. 先回答：{focus_title} 解决的核心问题是什么？\n"
             "2. 再画出关键结构、流程或角色之间的关系。\n"
-            "3. 最后举一个真实课堂、实验或比赛项目中的应用场景，说明为什么必须这样做。\n\n"
+            "3. 最后举一个真实课堂、实验或比赛项目中的应用场景，说明为什么必须这样做。\n"
+            "4. 用练习题检验自己是否能从概念、结构和场景三个角度回答问题。\n\n"
             "## 课后自测\n"
             f"1. 请比较 {theme} 与相邻知识点的区别与联系。\n"
             "2. 如果缺少本节这一环，后续分析、设计、测试或管理会出现什么后果？\n"
-            "3. 你会如何把本节内容用在自己的课程任务、系统设计或答辩表达中？\n\n"
-            f"## 生成补充\n{draft_excerpt or '当前讲义已按软件工程课程表达方式重建，可直接用于预览、导出与答辩展示。'}"
+            "3. 你会如何把本节内容用在自己的课程任务、系统设计或答辩表达中？"
         )
 
     @staticmethod
@@ -1338,9 +1444,6 @@ class ResourceService:
         structure = list(se_profile["structure"]) if se_profile else (source_titles[:4] or [focus_title])
         pitfalls = list(se_profile["pitfalls"]) if se_profile else ["概念边界不清", "忽略上下游关系", "缺少真实落点"]
         scene = str(se_profile["scene"]) if se_profile else f"结合 {course_label} 的课堂案例或项目任务"
-        draft_excerpt = ResourceService._normalize_text(draft_content)
-        if len(draft_excerpt) > 300:
-            draft_excerpt = draft_excerpt[:300].rstrip() + "..."
         return (
             f"# {course_label} · {focus_title} 章节知识导图\n\n"
             "```mermaid\n"
@@ -1361,12 +1464,23 @@ class ResourceService:
             + "      能复述主线\n"
             + "      能解释结构关系\n"
             + "      能迁移到项目情境\n"
+            + "    评价证据\n"
+            + "      讲义中能定位定义和边界\n"
+            + "      练习中能解释答案依据\n"
+            + "      PPT中能讲成完整故事\n"
             + "```\n\n"
             + "## 导图使用建议\n"
             + "1. 先看中心节点和一级分支，快速建立这一节的知识骨架。\n"
             + "2. 再顺着结构组成和上游依赖阅读，把知识点串成因果链。\n"
             + "3. 最后结合课堂场景和易错点，把导图转成答题与表达能力。\n\n"
-            + f"## 补充说明\n{draft_excerpt or '当前导图已按高质量结构重建，可直接用于页面渲染与导出。'}"
+            + "## 节点关系解读\n"
+            + f"- 概念定位回答“{theme} 是什么、解决什么问题”。\n"
+            + "- 结构组成回答“它由哪些关键部分构成、每部分承担什么职责”。\n"
+            + "- 上游依赖回答“学习它之前需要先理解哪些前置条件”。\n"
+            + "- 课堂场景回答“它在真实课程任务或项目里怎么落地”。\n"
+            + "- 易错点回答“哪些判断最容易让理解偏离主线”。\n\n"
+            + "## 推荐复习路线\n"
+            + f"中心主题 -> 概念定位 -> 结构组成 -> 上游依赖 -> 课堂场景 -> 易错点 -> 学习输出。按这条路线复盘，能把 {theme} 从静态名词变成可解释、可迁移的知识结构。"
         )
 
     @staticmethod
@@ -1387,16 +1501,15 @@ class ResourceService:
         structure = list(se_profile["structure"]) if se_profile else (source_titles[:4] or [focus_title])
         pitfalls = list(se_profile["pitfalls"]) if se_profile else ["概念边界不清", "结构关系混乱", "缺少实际落点"]
         scene = str(se_profile["scene"]) if se_profile else f"结合 {course_label} 的课堂案例或项目任务"
-        draft_excerpt = ResourceService._normalize_text(draft_content)
-        if len(draft_excerpt) > 320:
-            draft_excerpt = draft_excerpt[:320].rstrip() + "..."
         slide_titles = [
             "封面页：课程与章节定位",
             "目标页：本节要解决什么问题",
             "概念页：核心定义与边界",
             "结构页：模块关系与流程",
             "案例页：课堂示例或项目场景",
+            "互动页：课堂提问与即时检查",
             "复盘页：易错点与复习建议",
+            "行动页：课后任务与后续资源",
         ]
         return (
             f"# {course_label} · {focus_title} PPT 草案\n\n"
@@ -1424,19 +1537,33 @@ class ResourceService:
             + f"- 场景描述：{scene}。\n"
             + "- 互动问题：如果缺少这一环，后续设计、测试或交付会出现什么问题？\n"
             + "- 展示重点：从真实任务中说明该知识点为何必要。\n\n"
-            + "### 第 6 页 复盘页\n"
+            + "### 第 6 页 互动页\n"
+            + f"- 课堂提问：如果没有 {theme}，后续任务会在哪一步出现偏差？\n"
+            + "- 快速投票：学生选择最容易混淆的概念或流程节点。\n"
+            + "- 小组讨论：用 1 个真实任务解释本页结构图中的关键箭头。\n\n"
+            + "### 第 7 页 复盘页\n"
             + "".join(f"- 易错提醒：{item}\n" for item in pitfalls)
+            + "- 复盘问题：这节课的定义、结构、场景和输出分别是什么？\n"
             + "- 课后任务：用自己的话复述本节主线，并举一个真实使用场景。\n\n"
+            + "### 第 8 页 行动页\n"
+            + "- 先阅读讲义，补齐概念边界和关键结构。\n"
+            + "- 再查看导图，把节点关系转成复习路线。\n"
+            + "- 最后完成练习，用答案解析定位薄弱点。\n"
+            + "- 如果用于答辩，把本节讲成“问题 -> 结构 -> 场景 -> 价值”的完整故事。\n\n"
             + "## 讲解节奏\n"
             + "- 先抛出场景和问题，建立学生的学习动机。\n"
             + f"- 再围绕 {theme} 讲清概念、结构、流程与相互关系。\n"
             + "- 然后放入案例或项目片段，让学生看到真实落点。\n"
             + "- 最后用复盘页总结易错点，并衔接讲义和练习。\n\n"
+            + "## 视觉设计建议\n"
+            + "- 封面页使用一个强标题和课程标签，不堆正文。\n"
+            + "- 结构页用流程图或模块图，箭头必须表达因果、依赖或输入输出关系。\n"
+            + "- 案例页采用“场景截图占位 + 三条解释”的布局，避免纯文字。\n"
+            + "- 复盘页使用错误清单和正确判断并列，对比感更强。\n\n"
             + "## 每页内容要求\n"
             + "- 每页只保留一个主信息点，避免堆字。\n"
             + "- 优先使用关键结论、步骤、对比和案例截图占位。\n"
-            + "- 结尾页必须给出复习问题或课后任务，形成学习闭环。\n\n"
-            + f"## 补充说明\n{draft_excerpt or '当前课件草案已按逐页讲解脚本重建，可直接用于 PPT 导出。'}"
+            + "- 结尾页必须给出复习问题或课后任务，形成学习闭环。"
         )
 
     @staticmethod
@@ -1445,6 +1572,98 @@ class ResourceService:
         source_titles: list[str],
     ) -> list[dict[str, Any]]:
         focus_title = ResourceService._primary_focus_title(source_titles, course_code)
+        return [
+            {
+                "id": "practice-1",
+                "question": "使用数组实现栈时，`top` 表示栈顶元素下标，容量为 `capacity`。执行 `push(x)` 前应优先判断哪一项？",
+                "options": ["`top == capacity - 1`", "`top == -1`", "`x == 0`", "数组是否已经升序"],
+                "answer": ["A"],
+                "explanation": "数组栈容量固定，入栈前必须先判断栈满，否则 `top + 1` 后写入会造成数组越界。",
+                "question_type": "single",
+                "knowledge_tag": "数据结构：栈",
+            },
+            {
+                "id": "practice-2",
+                "question": "括号匹配、浏览器后退、函数调用栈这些场景共同依赖哪种访问规则？",
+                "options": ["FIFO", "LIFO", "随机访问", "按 key 哈希访问"],
+                "answer": ["B"],
+                "explanation": "这些场景都要求后进入的数据先被处理，符合栈的 LIFO（Last In First Out）规则。",
+                "question_type": "single",
+                "knowledge_tag": "数据结构：栈",
+            },
+            {
+                "id": "practice-3",
+                "question": "下面哪些结构或场景符合队列的 FIFO 特性？",
+                "options": ["打印任务排队", "消息队列消费", "广度优先搜索 BFS", "递归函数调用返回"],
+                "answer": ["A", "B", "C"],
+                "explanation": "队列强调先入先出，打印任务、消息消费和 BFS 都典型使用队列；递归调用返回更接近栈。",
+                "question_type": "multiple",
+                "knowledge_tag": "数据结构：队列",
+            },
+            {
+                "id": "practice-4",
+                "question": "对长度为 n 的无序数组进行线性查找，最坏情况下时间复杂度是多少？",
+                "options": ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
+                "answer": ["C"],
+                "explanation": "最坏情况下目标元素不存在或位于最后一个位置，需要检查 n 个元素，因此是 O(n)。",
+                "question_type": "single",
+                "knowledge_tag": "算法复杂度",
+            },
+            {
+                "id": "practice-5",
+                "question": "判断题：二分查找可以直接用于任意无序数组。",
+                "options": ["正确", "错误"],
+                "answer": ["B"],
+                "explanation": "二分查找依赖有序性，只有在数据有序或能按单调关系排除一半搜索空间时才适用。",
+                "question_type": "single",
+                "knowledge_tag": "算法：二分查找",
+            },
+            {
+                "id": "practice-6",
+                "question": "阅读 Java 代码：`int[] a = {2, 4, 6}; System.out.println(a[2]);` 输出结果是什么？",
+                "options": ["2", "4", "6", "数组越界"],
+                "answer": ["C"],
+                "explanation": "Java 数组下标从 0 开始，`a[2]` 访问第三个元素，输出 6。",
+                "question_type": "single",
+                "knowledge_tag": "Java 数组",
+            },
+            {
+                "id": "practice-7",
+                "question": "在 Java 中使用 `HashMap<String, Integer>` 统计单词出现次数时，最核心的操作是哪组？",
+                "options": ["按 key 查询旧次数", "将新次数写回 key", "每次都排序整个数组", "用下标直接访问字符串地址"],
+                "answer": ["A", "B"],
+                "explanation": "词频统计的关键是根据单词 key 读取旧值，再把 `old + 1` 写回；不需要每次整体排序。",
+                "question_type": "multiple",
+                "knowledge_tag": "Java 集合",
+            },
+            {
+                "id": "practice-8",
+                "question": "数据库用户表中 `email` 字段要求不能重复，并且经常按邮箱登录查询，应该优先考虑什么设计？",
+                "options": ["给 `email` 建唯一索引", "把邮箱字段改成更长的名字", "每次登录全表扫描", "删除主键"],
+                "answer": ["A"],
+                "explanation": "唯一索引既能约束邮箱不重复，也能提升按邮箱查询的效率。",
+                "question_type": "single",
+                "knowledge_tag": "数据库索引",
+            },
+            {
+                "id": "practice-9",
+                "question": "操作系统中，多个线程同时修改共享计数器，如果没有锁或原子操作，最可能出现什么问题？",
+                "options": ["竞态条件", "DNS 解析失败", "SQL 语法错误", "数组自动扩容"],
+                "answer": ["A"],
+                "explanation": "共享变量并发读写缺少同步时，执行顺序不确定，可能导致结果丢失或不一致。",
+                "question_type": "single",
+                "knowledge_tag": "操作系统：线程同步",
+            },
+            {
+                "id": "practice-10",
+                "question": f"结合《{focus_title}》，请设计一个“小型在线题库”的核心数据结构或表结构，并说明至少 2 个关键字段为什么这样设计。",
+                "options": [],
+                "answer": [],
+                "explanation": "参考思路：可从题目表、选项表、提交记录表展开，说明题目 id、知识点、题型、正确答案、用户答案、提交时间等字段的作用。",
+                "question_type": "short",
+                "knowledge_tag": "综合应用",
+            },
+        ]
         se_profile = (
             ResourceService._software_engineering_profile(source_titles)
             if course_code == "software_engineering_4th"
@@ -1535,6 +1754,24 @@ class ResourceService:
                 "question_type": "multiple",
                 "knowledge_tag": focus_title,
             },
+            {
+                "id": "practice-7",
+                "question": f"请判断：只要能背出 {theme} 的定义，就说明已经掌握了本节内容。",
+                "options": ["正确", "错误"],
+                "answer": ["B"],
+                "explanation": "掌握本节内容还需要能说明结构关系、使用边界、真实场景和常见误区，单纯背定义不足以支撑做题或答辩。",
+                "question_type": "single",
+                "knowledge_tag": "掌握标准",
+            },
+            {
+                "id": "practice-8",
+                "question": f"请用“问题 -> 结构 -> 场景 -> 价值”的顺序，为 {theme} 写一段 80 字以内的课堂总结。",
+                "options": [],
+                "answer": [],
+                "explanation": "这道题训练表达能力。好的答案应先说明问题背景，再概括结构，最后落到真实场景和学习价值。",
+                "question_type": "short",
+                "knowledge_tag": "综合表达",
+            },
         ]
 
     @staticmethod
@@ -1562,14 +1799,14 @@ class ResourceService:
     @staticmethod
     def _has_high_quality_questions(content: str) -> bool:
         questions = ResourceService._parse_question_payload(content)
-        if len(questions) < 5:
+        if len(questions) < 10:
             return False
         unique_stems = {
             str(item.get("question") or item.get("question_content") or "").strip()
             for item in questions
             if str(item.get("question") or item.get("question_content") or "").strip()
         }
-        if len(unique_stems) < 5:
+        if len(unique_stems) < 10:
             return False
         question_types = {
             str(item.get("question_type") or "").strip()
@@ -1627,7 +1864,7 @@ class ResourceService:
         if resource_type in {"quiz_set", "practice_set"}:
             return ResourceService._has_high_quality_questions(text)
 
-        if resource_type == "teaching_plan":
+        if resource_type in {"ppt", "teaching_plan"}:
             slide_markers = ("封面页", "目标页", "概念页", "结构页", "案例页", "复盘页")
             return (
                 len(text) >= 800
@@ -1678,6 +1915,9 @@ class ResourceService:
             study_suggestion=study_suggestion,
             source_file_count=card.source_file_count,
             source_files=card.source_files,
+            generated_at=card.generated_at,
+            updated_at=card.updated_at,
+            generation_context=card.generation_context,
         )
 
     @staticmethod
@@ -1798,8 +2038,13 @@ class ResourceService:
         if not cleaned:
             return ResourceService._course_label(course_code)
         course_label = ResourceService._course_label(course_code)
+        course_aliases = {
+            course_label,
+            course_label.replace("（第4版）", "").strip(),
+            course_label.replace("(第4版)", "").strip(),
+        }
         for item in cleaned:
-            if item == course_label:
+            if item in course_aliases:
                 continue
             if course_label in item and len(item) <= len(course_label) + 4:
                 continue
@@ -1902,6 +2147,7 @@ class ResourceService:
             "mindmap": f"{course_label} \u77e5\u8bc6\u5bfc\u56fe",
             "quiz_set": f"{course_label} \u968f\u5802\u7ec3\u4e60",
             "practice_set": f"{course_label} \u968f\u5802\u7ec3\u4e60",
+            "ppt": f"{course_label} PPT \u8349\u6848",
             "course_overview": f"{course_label} \u8bfe\u7a0b\u603b\u89c8",
             "teaching_plan": f"{course_label} \u8bfe\u4ef6\u8349\u6848",
             "extended_reading": f"{course_label} \u62d3\u5c55\u9605\u8bfb",
@@ -1924,6 +2170,7 @@ class ResourceService:
             "mindmap": f"\u63d0\u70bc {focus} \u7684\u6838\u5fc3\u8282\u70b9\u3001\u5c42\u7ea7\u5173\u7cfb\u4e0e\u5b66\u4e60\u8def\u5f84\uff0c\u9002\u5408\u5148\u603b\u89c8\u540e\u7cbe\u8bfb\u3002",
             "quiz_set": f"\u56f4\u7ed5 {focus} \u751f\u6210\u5206\u5c42\u7ec3\u4e60\u4e0e\u7b54\u6848\u89e3\u6790\uff0c\u5e2e\u52a9\u5b9a\u4f4d\u8584\u5f31\u70b9\u548c\u5e38\u89c1\u8bef\u533a\u3002",
             "practice_set": f"\u56f4\u7ed5 {focus} \u751f\u6210\u5206\u5c42\u7ec3\u4e60\u4e0e\u7b54\u6848\u89e3\u6790\uff0c\u5e2e\u52a9\u5b9a\u4f4d\u8584\u5f31\u70b9\u548c\u5e38\u89c1\u8bef\u533a\u3002",
+            "ppt": f"\u5df2\u6309\u6388\u8bfe\u8282\u594f\u62c6\u89e3 {focus} \u7684 PPT \u9875\u9762\u7ed3\u6784\uff0c\u5305\u542b\u76ee\u6807\u9875\u3001\u8bb2\u89e3\u9875\u3001\u6848\u4f8b\u9875\u4e0e\u590d\u76d8\u9875\u3002",
             "course_overview": f"\u4ece\u8bfe\u7a0b\u76ee\u6807\u3001\u6838\u5fc3\u6a21\u5757\u548c\u5e94\u7528\u573a\u666f\u4e09\u4e2a\u7ef4\u5ea6\u6982\u89c8 {focus}\u3002",
             "teaching_plan": f"\u5df2\u6309\u6388\u8bfe\u8282\u594f\u62c6\u89e3 {focus} \u7684 PPT \u9875\u9762\u7ed3\u6784\uff0c\u5305\u542b\u76ee\u6807\u9875\u3001\u8bb2\u89e3\u9875\u3001\u6848\u4f8b\u9875\u4e0e\u590d\u76d8\u9875\u3002",
             "extended_reading": f"\u8865\u5145 {focus} \u7684\u80cc\u666f\u3001\u5e94\u7528\u4e0e\u5ef6\u4f38\u601d\u8003\uff0c\u9002\u5408\u62d3\u5c55\u9605\u8bfb\u3002",
@@ -1968,7 +2215,7 @@ class ResourceService:
         if resource_type in {"mind_map", "mindmap"}:
             return ResourceService._build_high_quality_mindmap_markdown(course_code, source_titles, source_excerpt)
 
-        if resource_type == "teaching_plan":
+        if resource_type in {"ppt", "teaching_plan"}:
             return ResourceService._build_high_quality_teaching_plan_markdown(course_code, source_titles, source_excerpt)
 
         if resource_type in {"mind_map", "mindmap"}:
@@ -2055,7 +2302,7 @@ class ResourceService:
                 "- \u6700\u540e\u901a\u8fc7\u7ec3\u4e60\u4e0e\u8ba8\u8bba\u5b8c\u6210\u68c0\u9a8c\u548c\u8fc1\u79fb\u3002\n"
             )
 
-        if resource_type == "teaching_plan":
+        if resource_type in {"ppt", "teaching_plan"}:
             slide_titles = [
                 "\u5c01\u9762\u9875\uff1a\u8bfe\u7a0b\u4e0e\u7ae0\u8282\u5b9a\u4f4d",
                 "\u76ee\u6807\u9875\uff1a\u672c\u8282\u8981\u89e3\u51b3\u4ec0\u4e48\u95ee\u9898",
@@ -2272,6 +2519,7 @@ class ResourceService:
             "quiz_set": "\u5efa\u8bae\u5b66\u5b8c\u5f53\u524d\u7ae0\u8282\u7acb\u523b\u4f5c\u7b54\uff0c\u518d\u6839\u636e\u9519\u9898\u56de\u770b\u89c6\u9891\u6216\u8bb2\u4e49\u3002",
             "practice_set": "\u5efa\u8bae\u5b66\u5b8c\u5f53\u524d\u7ae0\u8282\u7acb\u523b\u4f5c\u7b54\uff0c\u518d\u6839\u636e\u9519\u9898\u56de\u770b\u89c6\u9891\u6216\u8bb2\u4e49\u3002",
             "course_overview": "\u5efa\u8bae\u5148\u8bfb\u8bfe\u7a0b\u603b\u89c8\uff0c\u518d\u8fdb\u5165\u8bb2\u4e49\u3001\u5bfc\u56fe\u548c\u7ec3\u4e60\u7ec6\u5316\u5b66\u4e60\u3002",
+            "ppt": "\u5efa\u8bae\u5148\u786e\u8ba4\u8bfe\u4ef6\u9875\u9762\u7ed3\u6784\uff0c\u518d\u6309\u9700\u5bfc\u51fa PPTX \u5e76\u8865\u5145\u6848\u4f8b\u622a\u56fe\u6216\u8bfe\u5802\u4e92\u52a8\u95ee\u9898\u3002",
             "teaching_plan": "\u5efa\u8bae\u5148\u786e\u8ba4\u9875\u9762\u7ed3\u6784\uff0c\u518d\u6309\u9700\u5bfc\u51fa\u5e76\u8865\u5145\u6848\u4f8b\u622a\u56fe\u6216\u8bfe\u5802\u4e92\u52a8\u95ee\u9898\u3002",
             "extended_reading": "\u5efa\u8bae\u5728\u6838\u5fc3\u77e5\u8bc6\u638c\u63e1\u540e\u9605\u8bfb\uff0c\u7528\u6765\u6269\u5c55\u7406\u89e3\u8fb9\u754c\u3002",
             "coding_lab": "\u5efa\u8bae\u8fb9\u5b9e\u8df5\u8fb9\u8bb0\u5f55\u9519\u8bef\u4e0e\u4fee\u6b63\u8fc7\u7a0b\uff0c\u5f3a\u5316\u8fc1\u79fb\u80fd\u529b\u3002",
@@ -2291,6 +2539,7 @@ class ResourceService:
             "mind_map": 2,
             "quiz_set": 3,
             "practice_set": 3,
+            "ppt": 1,
             "extended_reading": 1,
             "coding_lab": 5,
             "case_study": 5,
@@ -2315,6 +2564,7 @@ class ResourceService:
             "mindmap": "mindmap",
             "quiz_set": "question_bank",
             "practice_set": "question_bank",
+            "ppt": "document",
             "course_overview": "document",
             "teaching_plan": "document",
             "extended_reading": "document",

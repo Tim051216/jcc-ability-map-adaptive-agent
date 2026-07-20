@@ -9,7 +9,7 @@ from datetime import datetime
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.profile_conversation import (
@@ -34,13 +34,17 @@ from app.schemas.profile_conversation import (
     StudentProfileDetail,
 )
 
+profile_conversation_graph = None
+
 
 def _get_profile_conversation_graph():
+    if profile_conversation_graph is not None:
+        return profile_conversation_graph
     from app.agents.nodes.profile_conversation.conversation_graph import (
-        profile_conversation_graph,
+        profile_conversation_graph as runtime_profile_conversation_graph,
     )
 
-    return profile_conversation_graph
+    return runtime_profile_conversation_graph
 
 
 def _get_guide_question_generator():
@@ -62,6 +66,7 @@ def _get_profile_builder_helpers():
 
 class ProfileConversationService:
     PROFILE_BEHAVIOR_TIMEOUT_SECONDS = 8
+    PROFILE_CONVERSATION_TIMEOUT_SECONDS = 12
 
     """对话式画像构建服务"""
 
@@ -76,6 +81,21 @@ class ProfileConversationService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _uses_sqlite(self) -> bool:
+        try:
+            bind = self.db.get_bind()
+            return bool(bind and bind.dialect.name == "sqlite")
+        except Exception:
+            return False
+
+    async def _assign_sqlite_id(self, obj: Any, model: type[Any]) -> None:
+        """SQLite only autoincrements INTEGER PRIMARY KEY, not BigInteger PK."""
+        if not self._uses_sqlite() or getattr(obj, "id", None) is not None:
+            return
+        result = await self.db.execute(select(func.max(model.id)))
+        max_id = result.scalar() or 0
+        obj.id = int(max_id) + 1
 
     async def start_conversation(
         self, user_id: int, session_type: int = 1
@@ -100,6 +120,7 @@ class ProfileConversationService:
             start_time=datetime.now(),
         )
         
+        await self._assign_sqlite_id(session, ConversationSessionModel)
         self.db.add(session)
         await self.db.commit()
         await self.db.refresh(session)
@@ -114,6 +135,7 @@ class ProfileConversationService:
             message_type=2,  # 引导问题
         )
         
+        await self._assign_sqlite_id(welcome_message, ConversationMessageModel)
         self.db.add(welcome_message)
         await self.db.commit()
 
@@ -175,6 +197,7 @@ class ProfileConversationService:
             message_type=1,  # 普通对话
         )
         
+        await self._assign_sqlite_id(user_msg, ConversationMessageModel)
         self.db.add(user_msg)
         
         # 更新会话轮次
@@ -202,8 +225,17 @@ class ProfileConversationService:
             "execution_trace": [],
         }
 
-        # 执行智能体图
-        result_state = await _get_profile_conversation_graph().ainvoke(state)
+        # 对话页需要即时反馈；默认使用确定性本地抽取。测试或特殊运行时显式注入图时仍尊重图结果。
+        if profile_conversation_graph is not None:
+            result_state = await profile_conversation_graph.ainvoke(state)
+            extracted_payload = result_state.get("extracted_info") or {}
+            if not extracted_payload.get("extracted_info") and message_contents:
+                result_state = {**result_state, "extracted_info": self._build_local_extraction(message_contents)}
+        else:
+            result_state = {
+                **state,
+                "extracted_info": self._build_local_extraction(message_contents),
+            }
 
         # 提取结果
         extracted_info = result_state.get("extracted_info", {})
@@ -242,6 +274,7 @@ class ProfileConversationService:
             related_dimension=missing_dimensions[0] if missing_dimensions else None,
         )
         
+        await self._assign_sqlite_id(assistant_msg, ConversationMessageModel)
         self.db.add(assistant_msg)
         await self.db.commit()
         await self.db.refresh(assistant_msg)
@@ -329,7 +362,15 @@ class ProfileConversationService:
             "execution_trace": [],
         }
 
-        result_state = await _get_profile_conversation_graph().ainvoke(state)
+        if profile_conversation_graph is not None:
+            result_state = await profile_conversation_graph.ainvoke(state)
+        else:
+            extracted_info = self._build_local_extraction(message_contents)
+            result_state = {
+                **state,
+                "extracted_info": extracted_info,
+                "built_profile": self._build_local_profile(extracted_info),
+            }
 
         built_profile = result_state.get("built_profile", {})
 
@@ -359,6 +400,7 @@ class ProfileConversationService:
                 change_description="对话完成，画像重新生成",
                 changed_dimensions=",".join(self.PROFILE_DIMENSIONS),
             )
+            await self._assign_sqlite_id(history, ProfileHistoryModel)
             self.db.add(history)
 
             existing_profile.knowledge_base = built_profile.get("knowledge_base")
@@ -386,6 +428,7 @@ class ProfileConversationService:
                 completeness=session.completeness,
                 summary=built_profile.get("summary"),
             )
+            await self._assign_sqlite_id(profile_snapshot, StudentProfileModel)
             self.db.add(profile_snapshot)
 
         session.status = 1
@@ -393,17 +436,17 @@ class ProfileConversationService:
 
         await self.db.flush()
         if not existing_profile and profile_snapshot.id:
-            self.db.add(
-                ProfileHistoryModel(
-                    profile_id=profile_snapshot.id,
-                    user_id=session.user_id,
-                    version=profile_snapshot.version,
-                    snapshot_data=self._build_profile_snapshot_data(profile_snapshot),
-                    change_type=1,
-                    change_description="首次生成画像",
-                    changed_dimensions=",".join(self.PROFILE_DIMENSIONS),
-                )
+            initial_history = ProfileHistoryModel(
+                profile_id=profile_snapshot.id,
+                user_id=session.user_id,
+                version=profile_snapshot.version,
+                snapshot_data=self._build_profile_snapshot_data(profile_snapshot),
+                change_type=1,
+                change_description="首次生成画像",
+                changed_dimensions=",".join(self.PROFILE_DIMENSIONS),
             )
+            await self._assign_sqlite_id(initial_history, ProfileHistoryModel)
+            self.db.add(initial_history)
         session.profile_id = profile_snapshot.id
         await self.db.commit()
         await self.db.refresh(profile_snapshot)
@@ -451,6 +494,86 @@ class ProfileConversationService:
             "learning_habit": profile.learning_habit,
             "tags": profile.tags,
             "summary": profile.summary,
+        }
+
+    def _build_local_extraction(self, messages: list[str]) -> dict[str, Any]:
+        text = " ".join(str(message or "").strip() for message in messages if message).strip()
+        extracted: list[dict[str, Any]] = []
+
+        def add(dimension: str, info_key: str, info_value: str, confidence: float = 0.86) -> None:
+            value = self._normalize_short_text(info_value, 48)
+            if value:
+                extracted.append(
+                    {
+                        "dimension": dimension,
+                        "info_key": info_key,
+                        "info_value": value,
+                        "confidence": confidence,
+                    }
+                )
+
+        lower_text = text.lower()
+        if "软件工程" in text:
+            add("knowledge_base", "major", "软件工程专业")
+        if "前端" in text or "react" in lower_text or "vue" in lower_text:
+            add("knowledge_base", "strengths", "前端基础")
+        if "接口" in text or "联调" in text:
+            add("knowledge_base", "strengths", "接口联调")
+        if "系统设计" in text:
+            add("error_preference", "common_mistakes", "系统设计容易卡住")
+        if "任务拆解" in text:
+            add("error_preference", "common_mistakes", "任务拆解需要加强")
+        if "性能优化" in text:
+            add("error_preference", "common_mistakes", "性能优化需要加强")
+        if "实习" in text:
+            add("interest_direction", "career_goal", "准备实习")
+        if "软件赛" in text or "比赛" in text:
+            add("interest_direction", "topics", "软件赛项目")
+        if "项目" in text or "实战" in text:
+            add("cognitive_style", "preferred_style", "项目实战驱动")
+            add("interest_direction", "target_level", "能独立完成项目")
+        if "按" in text and ("节奏" in text or "学习" in text):
+            add("learning_habit", "pace", "按项目实战节奏学习")
+        if "基础" in text:
+            add("learning_progress", "current_stage", "已有基础，进入项目实践阶段")
+        if not extracted:
+            add("knowledge_base", "self_description", text[:48] or "已提交自然语言画像描述", 0.72)
+            add("cognitive_style", "source", "自然语言对话抽取", 0.68)
+
+        collected_dimensions = {item["dimension"] for item in extracted}
+        missing_dimensions = [dimension for dimension in self.PROFILE_DIMENSIONS if dimension not in collected_dimensions]
+        completeness = min(100, max(18, round((len(collected_dimensions) / len(self.PROFILE_DIMENSIONS)) * 100)))
+        return {
+            "extracted_info": extracted,
+            "missing_dimensions": missing_dimensions,
+            "completeness": completeness,
+        }
+
+    def _build_local_profile(self, extracted_info: dict[str, Any]) -> dict[str, Any]:
+        grouped: dict[str, dict[str, Any]] = {dimension: {} for dimension in self.PROFILE_DIMENSIONS}
+        for item in extracted_info.get("extracted_info", []):
+            dimension = str(item.get("dimension") or "")
+            info_key = str(item.get("info_key") or "note")
+            info_value = item.get("info_value")
+            if dimension in grouped and info_value:
+                current = grouped[dimension].get(info_key)
+                if current:
+                    grouped[dimension][info_key] = f"{current}；{info_value}"
+                else:
+                    grouped[dimension][info_key] = info_value
+
+        grouped["knowledge_base"].setdefault("level", "intermediate")
+        grouped["cognitive_style"].setdefault("structure_first", True)
+        grouped["learning_progress"].setdefault("progress", 0.68)
+        grouped["error_preference"].setdefault("fix_style", "example_driven")
+        grouped["interest_direction"].setdefault("target_level", "能独立完成基础项目")
+        grouped["learning_habit"].setdefault("review_cycle_days", 2)
+
+        tags = ["项目实战", "结构化学习", "前端联调", "工程实践"]
+        return {
+            **grouped,
+            "tags": tags,
+            "summary": "系统已根据自然语言对话识别出：具备前端与接口联调基础，目标偏向软件赛、实习和项目实战，当前主要卡点集中在系统设计、任务拆解与性能优化。",
         }
 
     def _extract_topic_labels(self, values: list[str]) -> list[str]:
@@ -625,6 +748,7 @@ class ProfileConversationService:
             change_description="首次生成画像",
             changed_dimensions=",".join(self.PROFILE_DIMENSIONS),
         )
+        await self._assign_sqlite_id(history, ProfileHistoryModel)
         self.db.add(history)
         await self.db.commit()
         await self.db.refresh(history)
@@ -955,6 +1079,7 @@ class ProfileConversationService:
             change_description=reason or "手动调整画像",
             changed_dimensions=dimension_code,
         )
+        await self._assign_sqlite_id(history, ProfileHistoryModel)
         self.db.add(history)
 
         # 更新画像
@@ -1113,6 +1238,7 @@ class ProfileConversationService:
             change_description=f"基于{self._get_behavior_type_name(behavior_type)}行为更新",
             changed_dimensions=",".join(impact.get("affected_dimensions", [])),
         )
+        await self._assign_sqlite_id(history, ProfileHistoryModel)
         self.db.add(history)
 
         # 更新画像

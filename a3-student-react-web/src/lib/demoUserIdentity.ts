@@ -10,6 +10,7 @@ export type DemoUserIdentity = {
 };
 
 const DEMO_USER_IDENTITIES: DemoUserIdentity[] = [
+  { id: "demo2024", name: "原始 Demo", subtitle: "演示账号 · 原始入口", avatar: assetAnimeClassroom },
   { id: "1001", name: "陈星遥", subtitle: "全栈方向 · 偏项目实战", avatar: assetHaibaraAcademic },
   { id: "1002", name: "林澈", subtitle: "前端方向 · 偏结构化复盘", avatar: assetUsagiStudy },
   { id: "1003", name: "林知夏", subtitle: "交互设计方向 · 偏资料整理", avatar: assetAnimeClassroom },

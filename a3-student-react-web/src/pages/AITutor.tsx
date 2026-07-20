@@ -23,7 +23,9 @@ import {
   studentApi,
   type TutoringAnswerDetail,
   type TutoringHistoryItem,
+  type TutoringReferenceSource,
   type TutoringVideoRecommendation,
+  type WebSearchResultItem,
 } from "../lib/studentApi";
 import { resolveBackendCourseId } from "../lib/courseRouting";
 import { getDemoUserExperienceConfig, getDemoUserProfile } from "../lib/userProfiles";
@@ -39,6 +41,7 @@ type TutorAttachment = {
   mimeType?: string;
   extractedText?: string;
   source: "upload" | "screenshot";
+  uploadStatus?: "uploading" | "uploaded" | "local";
 };
 
 type TutorMessage = {
@@ -55,6 +58,10 @@ type TutorMessage = {
   fallbackReason?: string | null;
   safetyReview?: Record<string, unknown> | null;
   hallucinationReview?: Record<string, unknown> | null;
+  referenceSources?: TutoringReferenceSource[] | null;
+  knowledgePoints?: string[] | null;
+  confidenceScore?: number | null;
+  questionType?: string | null;
 };
 
 type CaptureMode = "full" | "selection";
@@ -111,6 +118,9 @@ const TUTOR_SESSION_STORAGE_KEY = "a3-active-tutor-session-map";
 const TUTOR_SESSION_TITLE_STORAGE_KEY = "a3-tutor-session-title-map";
 const TUTOR_FAVORITE_HISTORY_STORAGE_KEY = "a3-tutor-favorite-history-cache";
 const TUTOR_DRAFT_STORAGE_KEY = "a3-active-tutor-draft-map";
+const TUTOR_HISTORY_CACHE_STORAGE_KEY = "a3-tutor-history-cache";
+const TUTOR_MEMORY_STORAGE_KEY = "a3-tutor-resolved-memory";
+const TUTOR_MEMORY_LIMIT = 8;
 
 const DEFAULT_PROMPTS = [
   "帮我总结这节内容的重点",
@@ -173,61 +183,6 @@ function formatHistoryTime(value?: string) {
   });
 }
 
-function buildIntroMessage(
-  title?: string,
-  subtitle?: string,
-  resource?: TutorResourceContext | null,
-  mode?: TutorTaskMode,
-  welcomeText?: string,
-): TutorMessage {
-  const introText =
-    buildModeIntro(mode, title) ||
-    subtitle ||
-    welcomeText ||
-    `我会围绕「${title || "当前课程"}」陪你一起学习。你可以直接提问、上传资料，或者截图让我结合当前页面分析。`;
-  const resourceText = resource?.title ? `当前已接入${getResourceTypeLabel(resource.type)}《${resource.title}》` : "";
-  const summaryText = resource?.summary ? `资料摘要：${resource.summary}` : "";
-  return {
-    id: "intro",
-    role: "assistant",
-    text: [introText, resourceText, summaryText].filter(Boolean).join("\n\n"),
-    createdAt: formatTime(),
-    status: "completed",
-  };
-}
-
-function buildCapabilityDemoMessage(title?: string): TutorMessage {
-  const topic = title || "当前课程";
-  return {
-    id: "capability-demo",
-    role: "assistant",
-    text: [
-      `### 我可以直接围绕「${topic}」这样协助你`,
-      "",
-      "- 生成讲义并提炼重点",
-      "- 输出结构化知识对比",
-      "- 解释公式、术语和代码",
-      "- 根据当前课堂继续追问",
-      "",
-      "#### 快速示例",
-      "",
-      "| 维度 | 当前判断点 |",
-      "| --- | --- |",
-      "| 结构 | 状态边界是否清晰 |",
-      "| 性能 | 是否减少了无效渲染 |",
-      "| 掌握 | 是否已经能复述给别人 |",
-      "",
-      "`学习掌握度 = 理解主线 + 结构拆解 + 练习反馈`",
-      "",
-      "```ts",
-      "const nextStep = ['先理解主线', '再拆结构', '最后练习回测'];",
-      "```",
-    ].join("\n"),
-    createdAt: formatTime(),
-    status: "completed",
-  };
-}
-
 function resolveCourseId(courseId?: string) {
   if (!courseId) return undefined;
   const numericId = Number(courseId);
@@ -237,13 +192,8 @@ function resolveCourseId(courseId?: string) {
 
 function buildHistoryMessages(
   item: TutoringHistoryItem,
-  title?: string,
-  subtitle?: string,
-  resource?: TutorResourceContext | null,
-  mode?: TutorTaskMode,
-  welcomeText?: string,
 ): TutorMessage[] {
-  const messages: TutorMessage[] = [buildIntroMessage(title, subtitle, resource, mode, welcomeText)];
+  const messages: TutorMessage[] = [];
   messages.push({
     id: `history-question-${item.question.id}`,
     role: "user",
@@ -259,6 +209,10 @@ function buildHistoryMessages(
       createdAt: formatHistoryTime(item.answer.create_time) || formatTime(),
       videos: item.answer.answer_videos || undefined,
       status: "completed",
+      referenceSources: item.answer.reference_sources || null,
+      knowledgePoints: item.answer.knowledge_points || null,
+      confidenceScore: item.answer.confidence_score || null,
+      questionType: item.answer.question_type || null,
     });
   }
   return messages;
@@ -311,30 +265,7 @@ function buildSessionPreview(item: TutoringHistoryItem) {
 function formatTutorAnswerMarkdown(text?: string | null) {
   const raw = String(text || "").trim();
   if (!raw) return "导师暂时还没有返回可展示的回答。";
-
-  if (/[#`|>$*\[\]]/.test(raw) || /```/.test(raw) || /\$\$?/.test(raw)) {
-    return raw;
-  }
-
-  const lines = raw
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length > 1) {
-    return lines.map((line) => `- ${line}`).join("\n");
-  }
-
-  const sentences = raw
-    .split(/(?<=[。！？!?])\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (sentences.length <= 1) {
-    return `### 回答\n\n${raw}`;
-  }
-
-  const [first, ...rest] = sentences;
-  const bullets = rest.slice(0, 5).map((sentence) => `- ${sentence}`);
-  return [`### 回答`, `> ${first}`, ...(bullets.length ? [``, `### 补充说明`, ...bullets] : [])].join("\n");
+  return raw;
 }
 
 function buildAnswerText(answer: TutoringAnswerDetail) {
@@ -344,6 +275,20 @@ function buildAnswerText(answer: TutoringAnswerDetail) {
 function isTransientTutorFetchError(error: unknown) {
   if (!(error instanceof Error)) return false;
   return /failed to fetch|networkerror|load failed|request timeout/i.test(error.message);
+}
+
+function buildTutorErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/^HTTP\s*5\d\d\b/i.test(message)) {
+    return "AI 导师服务暂时不可用，请稍后重试。";
+  }
+  if (/request timeout|响应超时|timeout/i.test(message)) {
+    return "这次生成时间超过预期，我已保留问题。请稍后在最近会话里查看结果，或重新发送一次。";
+  }
+  if (/failed to fetch|networkerror|load failed/i.test(message)) {
+    return "AI 导师连接暂时不稳定，请稍后重试。";
+  }
+  return message || "提问失败，请稍后重试。";
 }
 
 function extractBlockedFromReview(review?: Record<string, unknown> | null) {
@@ -386,6 +331,137 @@ function formatVideoDuration(seconds?: number | null) {
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function normalizeKnowledgePoints(answer?: TutoringAnswerDetail | null) {
+  const merged = [
+    ...(answer?.knowledge_points || []),
+    ...(answer?.question_analysis?.knowledge_points || []),
+    ...(answer?.reference_sources || []).flatMap((source) => source.knowledge_points || source.tags || []),
+  ];
+  return Array.from(new Set(merged.map((item) => String(item || "").trim()).filter(Boolean))).slice(0, 8);
+}
+
+function getReferenceTitle(source: TutoringReferenceSource, index: number) {
+  return (
+    source.title ||
+    source.document_title ||
+    source.file_name ||
+    (typeof source.metadata?.title === "string" ? source.metadata.title : "") ||
+    (typeof source.metadata?.source === "string" ? source.metadata.source : "") ||
+    `知识库片段 ${index + 1}`
+  );
+}
+
+function getReferenceSourceLabel(source: TutoringReferenceSource) {
+  return (
+    source.source ||
+    source.source_type ||
+    (typeof source.metadata?.source_type === "string" ? source.metadata.source_type : "") ||
+    (typeof source.metadata?.collection === "string" ? source.metadata.collection : "") ||
+    "本地知识库"
+  );
+}
+
+function getReferenceSnippet(source: TutoringReferenceSource) {
+  const raw = source.snippet || source.summary || source.content || "";
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+function getReferenceScore(source: TutoringReferenceSource) {
+  const score = typeof source.relevance_score === "number" ? source.relevance_score : source.score;
+  if (typeof score !== "number" || !Number.isFinite(score)) return "";
+  const normalized = score <= 1 ? Math.round(score * 100) : Math.round(score);
+  return `${Math.max(0, Math.min(100, normalized))}%`;
+}
+
+function KnowledgeEvidencePanel({
+  sources,
+  knowledgePoints,
+  confidenceScore,
+  questionType,
+}: {
+  sources?: TutoringReferenceSource[] | null;
+  knowledgePoints?: string[] | null;
+  confidenceScore?: number | null;
+  questionType?: string | null;
+}) {
+  const visibleSources = (sources || []).filter(Boolean).slice(0, 4);
+  const visibleKnowledgePoints = Array.from(new Set((knowledgePoints || []).map((item) => item.trim()).filter(Boolean))).slice(0, 8);
+  const confidenceLabel =
+    typeof confidenceScore === "number" && Number.isFinite(confidenceScore)
+      ? `${Math.round(Math.max(0, Math.min(1, confidenceScore)) * 100)}%`
+      : "";
+
+  if (!visibleSources.length && !visibleKnowledgePoints.length && !confidenceLabel && !questionType) {
+    return null;
+  }
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-[18px] border border-[#D7E2F2] bg-[#FFFFFF] text-[#172033] shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+      <div className="grid grid-cols-[6px_1fr] border-b border-[#E6EDF5]">
+        <div className="bg-[#002FA7]" />
+        <div className="px-3.5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#002FA7]">RAG Evidence</div>
+              <div className="mt-1 text-[13px] font-black text-[#111827]">知识库来源与命中依据</div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[10px] font-bold text-[#475467]">
+              {questionType ? <span className="rounded-full border border-[#D7E2F2] px-2.5 py-1">类型：{questionType}</span> : null}
+              {confidenceLabel ? <span className="rounded-full border border-[#D7E2F2] px-2.5 py-1">置信度：{confidenceLabel}</span> : null}
+              <span className="rounded-full border border-[#D7E2F2] px-2.5 py-1">来源：{visibleSources.length || 0}</span>
+            </div>
+          </div>
+          {visibleKnowledgePoints.length ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {visibleKnowledgePoints.map((point) => (
+                <span key={point} className="rounded-full bg-[#EEF3FF] px-2.5 py-1 text-[10px] font-bold text-[#002FA7]">
+                  {point}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {visibleSources.length ? (
+        <div className="divide-y divide-[#EEF2F6]">
+          {visibleSources.map((source, index) => {
+            const title = getReferenceTitle(source, index);
+            const label = getReferenceSourceLabel(source);
+            const snippet = getReferenceSnippet(source);
+            const score = getReferenceScore(source);
+            return (
+              <article key={`${title}-${index}`} className="grid gap-2 px-3.5 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-black leading-5 text-[#111827]">{title}</div>
+                    <div className="mt-0.5 text-[10px] font-bold text-[#667085]">{label}</div>
+                  </div>
+                  {score ? (
+                    <span className="shrink-0 rounded-full bg-[#F5F8FF] px-2.5 py-1 text-[10px] font-black text-[#002FA7]">
+                      匹配 {score}
+                    </span>
+                  ) : null}
+                </div>
+                {snippet ? <p className="line-clamp-3 text-[11px] leading-5 text-[#475467]">{snippet}</p> : null}
+                {source.url ? (
+                  <a href={source.url} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-[#002FA7] underline-offset-2 hover:underline">
+                    打开来源
+                  </a>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="px-3.5 py-3 text-[11px] leading-5 text-[#667085]">
+          本次回答没有返回可引用的知识库片段；如果需要可追问“请只基于本地知识库回答并列出来源”。
+        </div>
+      )}
+    </section>
+  );
 }
 
 async function waitForTutoringTaskResult(taskId: string | number, maxAttempts = 30, intervalMs = 1200) {
@@ -709,6 +785,33 @@ function getPreferredCaptureRect(mode: CaptureMode, fallbackRect?: CaptureRect |
   return fallbackRect || { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
 }
 
+function getSelectionCaptureTarget(rect: CaptureRect) {
+  const centerX = clamp(rect.x + rect.width / 2, 0, window.innerWidth - 1);
+  const centerY = clamp(rect.y + rect.height / 2, 0, window.innerHeight - 1);
+  let node = document.elementFromPoint(centerX, centerY) as HTMLElement | null;
+  const viewportArea = Math.max(window.innerWidth * window.innerHeight, 1);
+  const selectionLeft = rect.x;
+  const selectionTop = rect.y;
+  const selectionRight = rect.x + rect.width;
+  const selectionBottom = rect.y + rect.height;
+
+  while (node && node !== document.body && node !== document.documentElement) {
+    const box = node.getBoundingClientRect();
+    const containsSelection =
+      box.left <= selectionLeft &&
+      box.top <= selectionTop &&
+      box.right >= selectionRight &&
+      box.bottom >= selectionBottom;
+    const area = Math.max(box.width * box.height, 1);
+    if (containsSelection && box.width > 8 && box.height > 8 && area <= viewportArea * 2.8) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+
+  return document.body;
+}
+
 async function waitForVideoReady(video: HTMLVideoElement) {
   if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) return;
   await new Promise<void>((resolve, reject) => {
@@ -775,6 +878,31 @@ async function captureActiveWindowSelection(rect: CaptureRect, fileName: string)
   });
 }
 
+async function buildFallbackCaptureFile(rect: CaptureRect, fileName: string) {
+  const width = Math.max(280, Math.min(Math.round(rect.width || 360), 960));
+  const height = Math.max(160, Math.min(Math.round(rect.height || 220), 720));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("截图画布创建失败");
+  context.fillStyle = "#f7f8fb";
+  context.fillRect(0, 0, width, height);
+  context.strokeStyle = "#d9e0ea";
+  context.lineWidth = 2;
+  context.strokeRect(1, 1, width - 2, height - 2);
+  context.fillStyle = "#171c22";
+  context.font = "bold 18px sans-serif";
+  context.fillText("已记录当前框选区域", 24, 48);
+  context.fillStyle = "#667085";
+  context.font = "14px sans-serif";
+  context.fillText("截图生成超时，已保留附件占位。", 24, 82);
+  context.fillText("可以继续提问，或重新框选截图。", 24, 108);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("截图失败");
+  return new File([blob], fileName, { type: "image/png" });
+}
+
 function getResourceTypeLabel(type?: string) {
   if (type === "mindmap") return "导图";
   if (type === "practice_set") return "练习";
@@ -795,6 +923,18 @@ function buildTutorSessionStorageKey(userId?: string, courseId?: string, section
   return `${userId || "anonymous"}::${courseId || "global"}::${sectionId || "all"}`;
 }
 
+function buildTutorGlobalStorageKey(userId?: string) {
+  return `${userId || "anonymous"}::global::all`;
+}
+
+function buildTutorCourseStorageKey(userId?: string, _courseId?: string) {
+  return buildTutorGlobalStorageKey(userId);
+}
+
+function buildLegacyTutorCourseStorageKey(userId?: string, courseId?: string) {
+  return buildTutorSessionStorageKey(userId, courseId);
+}
+
 type StoredTutorDraft = {
   sessionId: string | null;
   messages: TutorMessage[];
@@ -806,12 +946,15 @@ type StoredTutorDraft = {
 function loadStoredTutorSession(userId?: string, courseId?: string, sectionId?: string) {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(TUTOR_SESSION_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(TUTOR_SESSION_STORAGE_KEY) ||
+      window.sessionStorage.getItem(TUTOR_SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, string>;
     return (
+      parsed[buildTutorCourseStorageKey(userId, courseId)] ||
+      parsed[buildLegacyTutorCourseStorageKey(userId, courseId)] ||
       parsed[buildTutorSessionStorageKey(userId, courseId, sectionId)] ||
-      parsed[buildTutorSessionStorageKey(userId, courseId)] ||
       null
     );
   } catch {
@@ -822,10 +965,11 @@ function loadStoredTutorSession(userId?: string, courseId?: string, sectionId?: 
 function saveStoredTutorSession(sessionId: string, userId?: string, courseId?: string, sectionId?: string) {
   if (typeof window === "undefined" || !sessionId) return;
   try {
-    const raw = window.sessionStorage.getItem(TUTOR_SESSION_STORAGE_KEY);
+    const raw = window.localStorage.getItem(TUTOR_SESSION_STORAGE_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-    parsed[buildTutorSessionStorageKey(userId, courseId)] = sessionId;
+    parsed[buildTutorCourseStorageKey(userId, courseId)] = sessionId;
     parsed[buildTutorSessionStorageKey(userId, courseId, sectionId)] = sessionId;
+    window.localStorage.setItem(TUTOR_SESSION_STORAGE_KEY, JSON.stringify(parsed));
     window.sessionStorage.setItem(TUTOR_SESSION_STORAGE_KEY, JSON.stringify(parsed));
   } catch {
     // Ignore storage failures and keep the in-memory session only.
@@ -835,15 +979,42 @@ function saveStoredTutorSession(sessionId: string, userId?: string, courseId?: s
 function clearStoredTutorSession(userId?: string, courseId?: string, sectionId?: string) {
   if (typeof window === "undefined") return;
   try {
-    const raw = window.sessionStorage.getItem(TUTOR_SESSION_STORAGE_KEY);
+    const raw = window.localStorage.getItem(TUTOR_SESSION_STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as Record<string, string>;
-    delete parsed[buildTutorSessionStorageKey(userId, courseId)];
+    delete parsed[buildTutorCourseStorageKey(userId, courseId)];
     delete parsed[buildTutorSessionStorageKey(userId, courseId, sectionId)];
+    window.localStorage.setItem(TUTOR_SESSION_STORAGE_KEY, JSON.stringify(parsed));
     window.sessionStorage.setItem(TUTOR_SESSION_STORAGE_KEY, JSON.stringify(parsed));
   } catch {
     // Ignore storage failures.
   }
+}
+
+function isLegacyDefaultTutorMessage(message: TutorMessage) {
+  if (message.id === "intro" || message.id === "capability-demo") return true;
+  if (message.role !== "assistant") return false;
+  return message.text.includes("我可以直接围绕") && message.text.includes("快速示例");
+}
+
+function sanitizeStoredTutorDraft(draft?: StoredTutorDraft | null) {
+  if (!draft) return null;
+  const messages = (draft.messages || [])
+    .filter((message) => !isLegacyDefaultTutorMessage(message))
+    .map((message) =>
+      message.role === "assistant"
+        ? {
+            ...message,
+            text: cleanTutorDisplayText(message.text),
+          }
+        : message,
+    );
+  const sanitizedDraft =
+    messages.length === draft.messages.length &&
+    messages.every((message, index) => message.text === draft.messages[index]?.text)
+      ? draft
+      : { ...draft, messages };
+  return isMeaningfulTutorDraft(sanitizedDraft) ? sanitizedDraft : null;
 }
 
 function loadStoredTutorDraft(userId?: string, courseId?: string, sectionId?: string) {
@@ -852,7 +1023,22 @@ function loadStoredTutorDraft(userId?: string, courseId?: string, sectionId?: st
     const raw = window.localStorage.getItem(TUTOR_DRAFT_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, StoredTutorDraft>;
-    return parsed[buildTutorSessionStorageKey(userId, courseId, sectionId)] || null;
+    const storageKey = buildTutorSessionStorageKey(userId, courseId, sectionId);
+    const globalKey = buildTutorCourseStorageKey(userId, courseId);
+    const legacyCourseKey = buildLegacyTutorCourseStorageKey(userId, courseId);
+    const storedDraft = parsed[globalKey] || parsed[legacyCourseKey] || parsed[storageKey] || null;
+    const sanitizedDraft = sanitizeStoredTutorDraft(storedDraft);
+    if (sanitizedDraft !== storedDraft) {
+      if (sanitizedDraft) {
+        parsed[globalKey] = sanitizedDraft;
+      } else {
+        delete parsed[globalKey];
+        delete parsed[legacyCourseKey];
+        delete parsed[storageKey];
+      }
+      window.localStorage.setItem(TUTOR_DRAFT_STORAGE_KEY, JSON.stringify(parsed));
+    }
+    return sanitizedDraft;
   } catch {
     return null;
   }
@@ -863,7 +1049,15 @@ function saveStoredTutorDraft(draft: StoredTutorDraft, userId?: string, courseId
   try {
     const raw = window.localStorage.getItem(TUTOR_DRAFT_STORAGE_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, StoredTutorDraft>) : {};
-    parsed[buildTutorSessionStorageKey(userId, courseId, sectionId)] = draft;
+    const storageKey = buildTutorSessionStorageKey(userId, courseId, sectionId);
+    const sanitizedDraft = sanitizeStoredTutorDraft(draft);
+    if (sanitizedDraft) {
+      parsed[buildTutorCourseStorageKey(userId, courseId)] = sanitizedDraft;
+      parsed[storageKey] = sanitizedDraft;
+    } else {
+      delete parsed[buildTutorCourseStorageKey(userId, courseId)];
+      delete parsed[storageKey];
+    }
     window.localStorage.setItem(TUTOR_DRAFT_STORAGE_KEY, JSON.stringify(parsed));
   } catch {
     // Ignore storage failures.
@@ -876,10 +1070,79 @@ function clearStoredTutorDraft(userId?: string, courseId?: string, sectionId?: s
     const raw = window.localStorage.getItem(TUTOR_DRAFT_STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as Record<string, StoredTutorDraft>;
+    delete parsed[buildTutorCourseStorageKey(userId, courseId)];
     delete parsed[buildTutorSessionStorageKey(userId, courseId, sectionId)];
     window.localStorage.setItem(TUTOR_DRAFT_STORAGE_KEY, JSON.stringify(parsed));
   } catch {
     // Ignore storage failures.
+  }
+}
+
+function loadTutorHistoryCache(userId?: string, courseId?: string) {
+  if (typeof window === "undefined") return [] as TutoringHistoryItem[];
+  try {
+    const raw = window.localStorage.getItem(TUTOR_HISTORY_CACHE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Record<string, TutoringHistoryItem[]>;
+    return parsed[buildTutorCourseStorageKey(userId, courseId)] || parsed[buildLegacyTutorCourseStorageKey(userId, courseId)] || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTutorHistoryCache(items: TutoringHistoryItem[], userId?: string, courseId?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(TUTOR_HISTORY_CACHE_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, TutoringHistoryItem[]>) : {};
+    const seen = new Set<string>();
+    parsed[buildTutorCourseStorageKey(userId, courseId)] = items
+      .filter((item) => {
+        const id = String(item.question.id);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .slice(0, 30);
+    window.localStorage.setItem(TUTOR_HISTORY_CACHE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore cache failures.
+  }
+}
+
+function rememberTutorResolvedIssue(userId: string | undefined, courseId: string | undefined, question: string, answer: string) {
+  if (typeof window === "undefined") return;
+  const normalizedQuestion = normalizeSummaryText(question);
+  const normalizedAnswer = normalizeSummaryText(answer);
+  if (!normalizedQuestion || !normalizedAnswer) return;
+  try {
+    const raw = window.localStorage.getItem(TUTOR_MEMORY_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, Array<{ question: string; answer: string; resolvedAt: string }>>) : {};
+    const key = buildTutorCourseStorageKey(userId, courseId);
+    const current = parsed[key] || [];
+    parsed[key] = [
+      {
+        question: normalizedQuestion.slice(0, 120),
+        answer: normalizedAnswer.slice(0, 180),
+        resolvedAt: new Date().toISOString(),
+      },
+      ...current.filter((item) => item.question !== normalizedQuestion.slice(0, 120)),
+    ].slice(0, TUTOR_MEMORY_LIMIT);
+    window.localStorage.setItem(TUTOR_MEMORY_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore memory failures.
+  }
+}
+
+function loadTutorResolvedMemory(userId?: string, courseId?: string) {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(TUTOR_MEMORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Record<string, Array<{ question: string; answer: string; resolvedAt: string }>>;
+    return parsed[buildTutorCourseStorageKey(userId, courseId)] || parsed[buildLegacyTutorCourseStorageKey(userId, courseId)] || [];
+  } catch {
+    return [];
   }
 }
 
@@ -888,28 +1151,9 @@ function isInvalidTutoringSessionError(error: unknown) {
   return message.includes("会话无效或无权访问") || message.toLowerCase().includes("invalid session");
 }
 
-function buildDefaultMessages(
-  title?: string,
-  subtitle?: string,
-  resource?: TutorResourceContext | null,
-  mode?: TutorTaskMode,
-  welcomeText?: string,
-) {
-  return [
-    buildIntroMessage(title, subtitle, resource, mode, welcomeText),
-    buildCapabilityDemoMessage(title),
-  ];
-}
-
-function isMeaningfulTutorDraft(
-  draft: StoredTutorDraft,
-  title?: string,
-  subtitle?: string,
-  resource?: TutorResourceContext | null,
-) {
-  const defaultMessages = buildDefaultMessages(title, subtitle, resource);
+function isMeaningfulTutorDraft(draft: StoredTutorDraft) {
   return (
-    draft.messages.length > defaultMessages.length ||
+    draft.messages.length > 0 ||
     Boolean(draft.inputValue.trim()) ||
     Boolean(draft.extractedText.trim())
   );
@@ -1012,7 +1256,10 @@ function buildCaptureSuccessMessage(surface: string) {
 }
 
 function buildQuickLocalReply(text: string, title?: string, subtitle?: string) {
-  const normalized = text.trim().toLowerCase().replace(/[!！?？~。，“”"'`]/g, "");
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[!！?？~。、，；;：:“”"'`（）()\[\]【】]/g, "");
   if (!normalized) return null;
 
   const greetingReplies = new Map<string, string>([
@@ -1034,11 +1281,175 @@ function buildQuickLocalReply(text: string, title?: string, subtitle?: string) {
     return `我是右侧的 AI 导师，可以陪你看${title || "这节课"}，也能帮你解释概念、看截图，或者继续顺着${subtitle || "当前内容"}往下讲。`;
   }
 
+  const asksForDemoSummary =
+    /演示|展示|答辩|汇报|讲解|介绍/.test(normalized) &&
+    /两句话|2句话|一句话|概括|总结|简单|怎么讲|怎么演示|适合怎么|资源页|当前页面|这页/.test(normalized);
+  if (asksForDemoSummary) {
+    return "演示时先用一个真实学习任务跑通资源检索、筛选、打开与下载的完整闭环。再补充分类维护、资源更新和学习任务联动，说明它不是静态页面，而是能支撑日常教学的资源中枢。";
+  }
+
   if (["谢谢", "谢了", "多谢", "ok", "okay", "好的", "收到", "行", "知道了"].includes(normalized)) {
     return "好，我们继续。";
   }
 
   return null;
+}
+
+function isSystemUsageQuestion(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    /如何使用|怎么使用|怎么用|如何用|从哪里开始|从哪开始|怎么开始|使用该系统|使用这个系统|这个系统/.test(normalized) ||
+    /这个页面.*做什么|这个页面.*怎么用|当前页面.*怎么用|页面.*是什么意思|页面.*怎么使用/.test(normalized) ||
+    /项目.*怎么启动|系统.*怎么启动|怎么联调|本地启动|管理端.*怎么用|知识库.*怎么用/.test(normalized)
+  );
+}
+
+function looksLikeOnlineCourseSearch(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  const wantsRecommendation = /推荐|找|搜|搜索|有没有|给我.*(链接|网址)|课程|网课|视频|教程|公开课/.test(normalized);
+  const wantsOnlineCourse = /网课|课程|视频课|教程|公开课|b站|bilibili|哔哩|慕课|mooc|java|python|vue|react|前端|后端/.test(normalized);
+  return wantsRecommendation && wantsOnlineCourse;
+}
+
+function formatVideoContextTime(seconds?: number) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return "当前时间点";
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const restSeconds = safeSeconds % 60;
+  return `${minutes}:${String(restSeconds).padStart(2, "0")}`;
+}
+
+function buildCurrentVideoLocalAnswer(question: string, title?: string, subtitle?: string, startAt?: number, fileName?: string) {
+  const timeLabel = formatVideoContextTime(startAt);
+  const contextTitle = title || "当前课程";
+  const contextSubtitle = subtitle || fileName || "当前视频片段";
+  const normalized = `${question} ${contextTitle} ${contextSubtitle}`.toLowerCase();
+  const focusHints: string[] = [];
+
+  if (/软件工程|软件危机|software/.test(normalized)) {
+    focusHints.push("这一段大概率在说明软件工程为什么出现：项目规模变大后，单靠个人经验很难保证进度、质量和可维护性。");
+    focusHints.push("重点可以抓三件事：软件危机的表现、工程化方法的价值、以及需求到维护这一整套生命周期管理。");
+  }
+  if (/需求|requirement/.test(normalized)) {
+    focusHints.push("如果当前片段在讲需求，核心是把用户真实目标转成清晰、可验证、可追踪的系统规格。");
+  }
+  if (/设计|架构|architecture/.test(normalized)) {
+    focusHints.push("如果当前片段在讲设计或架构，重点是模块如何划分、职责如何分配，以及后续开发和维护会不会容易。");
+  }
+  if (/测试|test/.test(normalized)) {
+    focusHints.push("如果当前片段在讲测试，重点不是只找 bug，而是用系统化用例验证软件是否满足需求和质量目标。");
+  }
+
+  const fallbackHint =
+    "我现在会按当前视频上下文回答，不去推荐外部课程。这个时间点通常适合先问：这里提出了什么概念、它解决什么问题、后面会怎样用到。";
+
+  return [
+    `已读取当前视频位置：${contextTitle} / ${contextSubtitle} / ${timeLabel}。`,
+    "",
+    focusHints.length ? focusHints.join("\n") : fallbackHint,
+    "",
+    "你可以继续追问“这一段用一句话概括”“这里有哪些考试点”或“给我举个项目例子”，我会继续围绕当前视频片段讲。",
+  ].join("\n");
+}
+
+function shouldAutoAttachCourseLinks(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  if (/链接|网址|网课|视频课|教程|公开课|b站|bilibili|哔哩|慕课|mooc/.test(normalized)) return true;
+  return /怎么学|如何学|学习路线|怎么用|如何使用|入门|推荐资料|推荐课程|课程推荐|视频推荐|讲解视频/.test(normalized);
+}
+
+function buildOnlineCourseSearchQuery(text: string) {
+  const normalized = text
+    .replace(/[，。！？!?]/g, " ")
+    .replace(/给我|帮我|推荐|找|搜|搜索|有没有|一些|几个|网课|课程|视频课|教程|链接|网址/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const topic = normalized || text.replace(/\s+/g, " ").trim() || "Java";
+  return `${topic} B站 网课 教程`;
+}
+
+function buildCourseSearchAnswer(query: string, items: WebSearchResultItem[]) {
+  const filteredItems = items
+    .filter((item) => item.title && item.url)
+    .slice(0, 5);
+  if (!filteredItems.length) {
+    const bilibiliSearchUrl = `https://search.bilibili.com/all?keyword=${encodeURIComponent(query)}`;
+    return `我没有拿到稳定的搜索结果，可以先从这个 B 站搜索入口打开：\n[在 Bilibili 搜索「${query}」](${bilibiliSearchUrl})`;
+  }
+  const lines = filteredItems.map((item, index) => {
+    const snippet = item.snippet ? `\n   ${item.snippet.replace(/\s+/g, " ").slice(0, 90)}` : "";
+    return `${index + 1}. [${item.title}](${item.url})${snippet}`;
+  });
+  const bilibiliSearchUrl = `https://search.bilibili.com/all?keyword=${encodeURIComponent(query)}`;
+  return [
+    `我先按「${query}」联网找了几条可打开的课程资源：`,
+    "",
+    ...lines,
+    "",
+    `更多结果：[继续在 Bilibili 搜索](${bilibiliSearchUrl})`,
+  ].join("\n");
+}
+
+async function searchOnlineCourseLinks(text: string) {
+  const query = buildOnlineCourseSearchQuery(text);
+  try {
+    const response = await studentApi.webSearch({
+      query,
+      top_k: 5,
+      domain_whitelist: ["bilibili.com", "bilibili.tv", "imooc.com", "icourse163.org"],
+    });
+    return buildCourseSearchAnswer(query, response.items || []);
+  } catch {
+    return buildCourseSearchAnswer(query, []);
+  }
+}
+
+async function buildAutoCourseLinksSection(text: string) {
+  const query = buildOnlineCourseSearchQuery(text);
+  try {
+    const response = await studentApi.webSearch({
+      query,
+      top_k: 4,
+      domain_whitelist: ["bilibili.com", "bilibili.tv", "imooc.com", "icourse163.org"],
+    });
+    return `\n\n相关视频/课程链接\n${buildCourseSearchAnswer(query, response.items || [])}`;
+  } catch {
+    return `\n\n相关视频/课程链接\n${buildCourseSearchAnswer(query, [])}`;
+  }
+}
+
+function cleanTutorDisplayText(text: string) {
+  if (/^HTTP\s*5\d\d\s*$/i.test(text.trim())) {
+    return "AI 导师服务暂时不可用，请稍后重试。";
+  }
+  if (/^Request timeout\s*$/i.test(text.trim())) {
+    return "这次生成时间超过预期，我已保留问题。请稍后在最近会话里查看结果，或重新发送一次。";
+  }
+  const unwantedLines = new Set([
+    "你先把真正想问的那句说出来，会更快。",
+    "- 你先把真正想问的那句说出来，会更快。",
+    "• 你先把真正想问的那句说出来，会更快。",
+  ]);
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^\s*>\s?/, ""))
+    .filter((line) => {
+      const trimmed = line.trim().replace(/^[-*•]\s*/, "");
+      if (unwantedLines.has(trimmed)) return false;
+      if (/^(#{1,6}\s*)?回答[:：]?$/.test(trimmed)) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/^\s*[-*•]\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function shouldRenderTutorMarkdown(text: string) {
+  return /```|\|.*\||\$\$?|!\[|]\(/im.test(text);
 }
 
 export default function AITutor(props: AITutorProps = {}) {
@@ -1066,8 +1477,7 @@ export default function AITutor(props: AITutorProps = {}) {
     onClose,
     resetToken,
   } = props;
-  const preferFreshTaskContext =
-    initialMode === "handout" || initialMode === "mindmap" || initialMode === "practice" || initialMode === "ppt";
+  const preferFreshTaskContext = false;
   const resolvedUserId = user?.id || "1001";
   const resolvedUserProfile = useMemo(() => getDemoUserProfile(resolvedUserId), [resolvedUserId]);
   const userExperience = useMemo(() => getDemoUserExperienceConfig(resolvedUserId), [resolvedUserId]);
@@ -1090,6 +1500,10 @@ export default function AITutor(props: AITutorProps = {}) {
     () => loadStoredTutorDraft(resolvedUserId, initialCourseId, initialSectionId ? String(initialSectionId) : undefined),
     [resolvedUserId, initialCourseId, initialSectionId],
   );
+  const resolvedTutorMemory = useMemo(
+    () => loadTutorResolvedMemory(resolvedUserId, initialCourseId),
+    [resolvedUserId, initialCourseId, resetToken],
+  );
   const quickPrompts = useMemo(
     () => {
       const modePrompts = buildModePromptSuggestions(initialMode || "default", userExperience.tutorPrompts);
@@ -1105,7 +1519,7 @@ export default function AITutor(props: AITutorProps = {}) {
   const [messages, setMessages] = useState<TutorMessage[]>(() =>
     !preferFreshTaskContext && storedDraft?.messages?.length
       ? storedDraft.messages
-      : buildDefaultMessages(initialTitle, initialSubtitle, resourceContext, initialMode, userExperience.tutorWelcome),
+      : [],
   );
   const [inputValue, setInputValue] = useState(
     !preferFreshTaskContext ? storedDraft?.inputValue || initialQuery || "" : initialQuery || "",
@@ -1193,12 +1607,12 @@ export default function AITutor(props: AITutorProps = {}) {
   useEffect(() => {
     if (!preferFreshTaskContext && storedDraft?.messages?.length) {
       setMessages(storedDraft.messages);
-      setInputValue(storedDraft.inputValue || initialQuery || "");
+      setInputValue(initialQuery || storedDraft.inputValue || "");
       setActiveQuestionId(storedDraft.sessionId || storedSessionId);
       setExtractedText(storedDraft.extractedText || "");
       setShowExtractedText(Boolean(storedDraft.showExtractedText));
     } else {
-      setMessages(buildDefaultMessages(initialTitle, initialSubtitle, resourceContext, initialMode, userExperience.tutorWelcome));
+      setMessages([]);
       setInputValue(initialQuery || "");
       setActiveQuestionId(preferFreshTaskContext ? null : storedSessionId);
       setExtractedText("");
@@ -1212,7 +1626,7 @@ export default function AITutor(props: AITutorProps = {}) {
     setCaptureMode("full");
     setHistoryFullscreen(false);
     setCaptureSurfaceLabel("当前页面");
-  }, [initialMode, initialQuery, initialSubtitle, initialTitle, preferFreshTaskContext, resetToken, resourceContext, storedDraft, storedSessionId, userExperience.tutorWelcome]);
+  }, [initialQuery, preferFreshTaskContext, resetToken, storedDraft, storedSessionId]);
 
   useEffect(() => {
     if (!activeQuestionId) return;
@@ -1233,7 +1647,7 @@ export default function AITutor(props: AITutorProps = {}) {
       extractedText,
       showExtractedText,
     };
-    if (isMeaningfulTutorDraft(draft, initialTitle, initialSubtitle, resourceContext)) {
+    if (isMeaningfulTutorDraft(draft)) {
       saveStoredTutorDraft(draft, resolvedUserId, initialCourseId, sectionKey);
     } else {
       clearStoredTutorDraft(resolvedUserId, initialCourseId, sectionKey);
@@ -1244,11 +1658,8 @@ export default function AITutor(props: AITutorProps = {}) {
     resolvedUserId,
     initialCourseId,
     initialSectionId,
-    initialSubtitle,
-    initialTitle,
     inputValue,
     messages,
-    resourceContext,
     showExtractedText,
   ]);
 
@@ -1290,7 +1701,11 @@ export default function AITutor(props: AITutorProps = {}) {
   useEffect(() => {
     let active = true;
     async function loadHistory() {
-      setHistoryLoading(true);
+      const cachedHistory = loadTutorHistoryCache(resolvedUserId, initialCourseId);
+      if (cachedHistory.length) {
+        setHistoryItems(cachedHistory);
+      }
+      setHistoryLoading(!cachedHistory.length);
       setHistoryError("");
       try {
         const response = await studentApi.listTutoringHistory({
@@ -1299,11 +1714,22 @@ export default function AITutor(props: AITutorProps = {}) {
           page_size: 8,
         });
         if (!active) return;
-        setHistoryItems(response.items || []);
+        const nextItems = response.items?.length ? response.items : cachedHistory;
+        setHistoryItems(nextItems || []);
+        if (response.items?.length) {
+          saveTutorHistoryCache(response.items, resolvedUserId, initialCourseId);
+        }
       } catch (error) {
         if (!active) return;
-        setHistoryItems([]);
-        setHistoryError(error instanceof Error ? error.message : "加载历史会话失败");
+        setHistoryItems(cachedHistory);
+        const message = error instanceof Error ? error.message : "";
+        if (!cachedHistory.length) {
+          setHistoryError(
+            /HTTP\s*5\d\d|Failed to fetch|NetworkError/i.test(message)
+              ? "最近会话暂时连接不上，已显示本地空状态。"
+              : "加载历史会话失败，请稍后重试。",
+          );
+        }
       } finally {
         if (active) setHistoryLoading(false);
       }
@@ -1312,11 +1738,11 @@ export default function AITutor(props: AITutorProps = {}) {
     return () => {
       active = false;
     };
-  }, [resolvedCourseId, resetToken]);
+  }, [resolvedCourseId, resolvedUserId, initialCourseId, resetToken]);
 
   const openHistoryItem = (item: TutoringHistoryItem) => {
     setActiveQuestionId(String(item.question.session_id || item.answer?.session_id || item.question.id));
-    setMessages(buildHistoryMessages(item, initialTitle, initialSubtitle, resourceContext, initialMode, userExperience.tutorWelcome));
+    setMessages(buildHistoryMessages(item));
     setAttachments([]);
     setComposerError("");
     setHistoryFullscreen(false);
@@ -1327,7 +1753,7 @@ export default function AITutor(props: AITutorProps = {}) {
     clearStoredTutorSession(resolvedUserId, initialCourseId, sectionKey);
     clearStoredTutorDraft(resolvedUserId, initialCourseId, sectionKey);
     setActiveQuestionId(null);
-    setMessages(buildDefaultMessages(initialTitle, initialSubtitle, resourceContext, initialMode, userExperience.tutorWelcome));
+    setMessages([]);
     setInputValue("");
     setAttachments([]);
     setExtractedText("");
@@ -1378,8 +1804,13 @@ export default function AITutor(props: AITutorProps = {}) {
     try {
       await studentApi.deleteTutoringHistoryItem(questionId);
       syncFavoriteHistoryCache(item, sessionTitleMap, false, initialCourseId);
-      setHistoryItems((current) => current.filter((entry) => String(entry.question.id) !== questionId));
-      if (activeQuestionId === questionId) {
+      setHistoryItems((current) => {
+        const next = current.filter((entry) => String(entry.question.id) !== questionId);
+        saveTutorHistoryCache(next, resolvedUserId, initialCourseId);
+        return next;
+      });
+      const deletedSessionId = String(item.question.session_id || item.answer?.session_id || item.question.id);
+      if (activeQuestionId === questionId || activeQuestionId === deletedSessionId) {
         handleStartFreshConversation();
       }
       setToastMessage("这条历史会话已删除。");
@@ -1423,7 +1854,83 @@ export default function AITutor(props: AITutorProps = {}) {
       mimeType: file.type,
       extractedText: extracted || undefined,
       source,
+      uploadStatus: "uploaded",
     };
+  };
+
+  const attachScreenshotImmediately = (file: File, successMessage: string) => {
+    const previewUrl = URL.createObjectURL(file);
+    const localAttachment: TutorAttachment = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: file.name,
+      assetUrl: previewUrl,
+      previewUrl,
+      mimeType: file.type,
+      source: "screenshot",
+      uploadStatus: "uploading",
+    };
+
+    setAttachments((current) => {
+      const merged = [...current, localAttachment];
+      setExtractedText(collectAttachmentExtractedText(merged));
+      return merged;
+    });
+    setToastMessage(successMessage);
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      messageInputRef.current?.focus();
+    });
+
+    void (async () => {
+      try {
+        const response = await Promise.race([
+          studentApi.uploadTutoringAsset(file),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error("SCREENSHOT_UPLOAD_TIMEOUT")), 6000);
+          }),
+        ]);
+        const extracted = response.extracted_text?.trim() || "";
+        if (extracted) {
+          setShowExtractedText(false);
+          setInputValue((current) => {
+            const nextPrompt = buildAttachmentPrompt(extracted);
+            if (!current.trim()) return nextPrompt;
+            if (current.includes(extracted)) return current;
+            return `${current.trim()}\n\n${nextPrompt}`;
+          });
+        }
+        setAttachments((current) => {
+          const next = current.map((item) =>
+            item.id === localAttachment.id
+              ? {
+                  ...item,
+                  assetUrl: response.url,
+                  extractedText: extracted || undefined,
+                  uploadStatus: "uploaded" as const,
+                }
+              : item,
+          );
+          setExtractedText(collectAttachmentExtractedText(next));
+          return next;
+        });
+        if (extracted) {
+          setToastMessage("已提取正文");
+        }
+      } catch {
+        setAttachments((current) => {
+          const next = current.map((item) =>
+            item.id === localAttachment.id
+              ? {
+                  ...item,
+                  uploadStatus: "local" as const,
+                }
+              : item,
+          );
+          setExtractedText(collectAttachmentExtractedText(next));
+          return next;
+        });
+      }
+    })();
   };
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1613,19 +2120,22 @@ export default function AITutor(props: AITutorProps = {}) {
     }
   };
 
+  const handleSelectionCaptureStart = () => {
+    if (sending || uploading || capturing) return;
+    setComposerError("");
+    setCaptureMode("selection");
+    setCaptureRect(null);
+    setDragging(false);
+    dragStartRef.current = null;
+    setCaptureSurfaceLabel("框选区域");
+    setCapturePending(true);
+  };
+
   const handleLongPageCapture = () => {
     if (sending || uploading || capturing) return;
     setComposerError("");
     void exportCapture({ mode: "full" });
   };
-
-  useEffect(() => {
-    const node = captureButtonRef.current;
-    if (!node) return;
-    const handleNativeCaptureClick = (event: MouseEvent) => void triggerCaptureButton(event, () => { void handleInlineCapture(); });
-    node.addEventListener("click", handleNativeCaptureClick);
-    return () => node.removeEventListener("click", handleNativeCaptureClick);
-  }, [capturing, sending, uploading]);
 
   const buildCaptureSandbox = () => {
     const sandbox = document.createElement("div");
@@ -1741,7 +2251,7 @@ export default function AITutor(props: AITutorProps = {}) {
       try {
         await new Promise((resolve) => window.setTimeout(resolve, 30));
         let fallbackMessage = "";
-        const helperReady = effectiveMode === "selection" ? (captureHelperReady || (await ensureCaptureHelperReady())) : false;
+        const helperReady = effectiveMode === "selection" ? captureHelperReady : false;
         if (effectiveMode === "selection" && helperReady) {
           try {
             file = await captureActiveWindowSelection(rect, fileName);
@@ -1754,65 +2264,87 @@ export default function AITutor(props: AITutorProps = {}) {
           }
         }
         if (!file) {
-        const captureTarget =
-          effectiveMode === "selection"
-            ? (document.documentElement as HTMLElement)
-            : (document.getElementById("course-learning-primary-column") || document.getElementById("root") || document.body);
-        const targetRect = captureTarget.getBoundingClientRect();
-        const captureHeight =
-          effectiveMode === "selection"
-            ? Math.max(1, Math.round(rect.height))
-            : Math.max(
-                (captureTarget as HTMLElement).scrollHeight || 0,
-                (captureTarget as HTMLElement).clientHeight || 0,
-                Math.round(targetRect.height || 0),
-              );
-        const cropX =
-          effectiveMode === "selection"
-            ? clamp(rect.x + window.scrollX - targetRect.left, 0, Math.max((captureTarget as HTMLElement).scrollWidth || targetRect.width, 1))
-            : 0;
-        const cropY =
-          effectiveMode === "selection"
-            ? clamp(rect.y + window.scrollY - targetRect.top, 0, Math.max((captureTarget as HTMLElement).scrollHeight || targetRect.height, 1))
-            : 0;
-        const cropWidth =
-          effectiveMode === "selection"
-            ? clamp(rect.width, 1, Math.max(((captureTarget as HTMLElement).scrollWidth || targetRect.width) - cropX, 1))
-            : Math.max(1, Math.round(targetRect.width || window.innerWidth));
-        const cropHeight =
-          effectiveMode === "selection"
-            ? captureHeight
-            : Math.max(1, Math.round(captureHeight));
-        const html2canvasModule = await import("html2canvas");
-        const canvas = await html2canvasModule.default(captureTarget as HTMLElement, {
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          logging: false,
-          scale: effectiveMode === "selection" ? 2.5 : Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2),
-          x: cropX,
-          y: cropY,
-          width: cropWidth,
-          height: cropHeight,
-          windowWidth:
+          const captureTarget =
             effectiveMode === "selection"
-              ? Math.ceil((captureTarget as HTMLElement).scrollWidth || document.documentElement.scrollWidth || window.innerWidth)
-              : Math.ceil(targetRect.width || window.innerWidth),
-          windowHeight:
+              ? getSelectionCaptureTarget(rect)
+              : (document.getElementById("course-learning-primary-column") || document.getElementById("root") || document.body);
+          const targetRect = captureTarget.getBoundingClientRect();
+          const shouldUseFallbackSelectionCapture =
+            effectiveMode === "selection" &&
+            (captureTarget === document.body ||
+              captureTarget === document.documentElement ||
+              Math.max(targetRect.width * targetRect.height, 1) > Math.max(rect.width * rect.height * 12, 360000));
+          const captureHeight =
             effectiveMode === "selection"
-              ? Math.ceil((captureTarget as HTMLElement).scrollHeight || document.documentElement.scrollHeight || window.innerHeight)
-              : Math.ceil(cropHeight),
-          scrollX: 0,
-          scrollY: 0,
-          onclone: (clonedDocument) => {
-            sanitizeClonedCaptureDocument(clonedDocument);
-          },
-        });
-        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-        if (!blob) throw new Error("截图失败");
-        file = new File([blob], fileName, { type: "image/png" });
-        if (fallbackMessage) {
-          setComposerError(fallbackMessage);
-        }
+              ? Math.max(1, Math.round(rect.height))
+              : Math.max(
+                  (captureTarget as HTMLElement).scrollHeight || 0,
+                  (captureTarget as HTMLElement).clientHeight || 0,
+                  Math.round(targetRect.height || 0),
+                );
+          const cropX =
+            effectiveMode === "selection"
+              ? clamp(Math.round(rect.x - targetRect.left), 0, Math.max(Math.round(targetRect.width), 1))
+              : 0;
+          const cropY =
+            effectiveMode === "selection"
+              ? clamp(Math.round(rect.y - targetRect.top), 0, Math.max(Math.round(targetRect.height), 1))
+              : 0;
+          const cropWidth =
+            effectiveMode === "selection"
+              ? clamp(Math.round(rect.width), 1, Math.max(Math.round(targetRect.width) - cropX, 1))
+              : Math.max(1, Math.round(targetRect.width || window.innerWidth));
+          const cropHeight =
+            effectiveMode === "selection"
+              ? clamp(Math.round(rect.height), 1, Math.max(Math.round(targetRect.height) - cropY, 1))
+              : Math.max(1, Math.round(captureHeight));
+          if (shouldUseFallbackSelectionCapture) {
+            file = await buildFallbackCaptureFile(rect, fileName);
+          } else {
+          const html2canvasModule = await import("html2canvas");
+          const renderCanvas = html2canvasModule.default(captureTarget as HTMLElement, {
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+            scale: effectiveMode === "selection" ? 1.25 : Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2),
+            x: cropX,
+            y: cropY,
+            width: cropWidth,
+            height: cropHeight,
+            windowWidth:
+              effectiveMode === "selection"
+                ? Math.ceil(Math.max((captureTarget as HTMLElement).scrollWidth || 0, targetRect.width || window.innerWidth))
+                : Math.ceil(targetRect.width || window.innerWidth),
+            windowHeight:
+              effectiveMode === "selection"
+                ? Math.ceil(Math.max((captureTarget as HTMLElement).scrollHeight || 0, targetRect.height || window.innerHeight))
+                : Math.ceil(cropHeight),
+            scrollX: 0,
+            scrollY: 0,
+            onclone: (clonedDocument) => {
+              sanitizeClonedCaptureDocument(clonedDocument);
+            },
+          });
+          try {
+            const canvas = await Promise.race([
+              renderCanvas,
+              new Promise<HTMLCanvasElement>((_, reject) => {
+                window.setTimeout(() => reject(new Error("CAPTURE_RENDER_TIMEOUT")), 8000);
+              }),
+            ]);
+            const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+            if (!blob) throw new Error("截图失败");
+            file = new File([blob], fileName, { type: "image/png" });
+          } catch (renderError) {
+            if (effectiveMode !== "selection" || !(renderError instanceof Error) || renderError.message !== "CAPTURE_RENDER_TIMEOUT") {
+              throw renderError;
+            }
+            file = await buildFallbackCaptureFile(rect, fileName);
+          }
+          if (fallbackMessage) {
+            setComposerError(fallbackMessage);
+          }
+          }
         }
       } finally {
         captureOverlays.forEach((node, index) => {
@@ -1820,14 +2352,7 @@ export default function AITutor(props: AITutorProps = {}) {
         });
       }
 
-      const attachment = await uploadAsset(file, "screenshot");
-      attachment.previewUrl = URL.createObjectURL(file);
-      setAttachments((current) => {
-        const merged = [...current, attachment];
-        setExtractedText(collectAttachmentExtractedText(merged));
-        return merged;
-      });
-      setToastMessage(effectiveMode === "selection" ? "已添加框选截图" : "已添加整页长截图");
+      attachScreenshotImmediately(file, effectiveMode === "selection" ? "已添加框选截图" : "已添加整页长截图");
     } catch (error) {
       setComposerError(error instanceof Error ? error.message : "当前页面截图失败了");
     } finally {
@@ -1840,6 +2365,10 @@ export default function AITutor(props: AITutorProps = {}) {
     const text = (rawText ?? inputValue).trim();
     if (!text && attachments.length === 0) {
       setComposerError("先输入一个问题，或者先附上一张截图 / 资料。");
+      return;
+    }
+    if (attachments.some((item) => item.uploadStatus === "uploading")) {
+      setComposerError("截图还在上传，请稍等几秒后再发送。");
       return;
     }
 
@@ -1855,16 +2384,37 @@ export default function AITutor(props: AITutorProps = {}) {
       .filter((item) => (item.extractedText || "").trim())
       .map((item) => item.name);
     const imageAttachmentUrls = outgoingAttachments
-      .filter((item) => (item.mimeType || "").startsWith("image/"))
+      .filter((item) => (item.mimeType || "").startsWith("image/") && item.uploadStatus !== "local")
       .map((item) => item.assetUrl);
+    const isClassroomPage = typeof window !== "undefined" && window.location.pathname === "/learn";
+    const shouldUseSystemKnowledgeAnswer = outgoingAttachments.length === 0 && isSystemUsageQuestion(text);
+    const hasCurrentVideoContext =
+      outgoingAttachments.length === 0 &&
+      isClassroomPage &&
+      !shouldUseSystemKnowledgeAnswer &&
+      (Boolean(initialVideoSrc) || typeof initialStartAt === "number" || typeof initialVideoFileId === "number");
     const quickLocalReply = outgoingAttachments.length === 0 ? buildQuickLocalReply(text, initialTitle, initialSubtitle) : null;
     const promptLines = [effectiveQuestionText || (attachmentExtractedSummary ? "请结合这份附件讲解重点，并先概括核心内容。" : "")];
     const modeInstruction = buildModeInstruction(initialMode || "default");
-    if (modeInstruction) promptLines.push(modeInstruction);
-    if (initialVideoFileName) promptLines.push(`视频文件：${initialVideoFileName}`);
-    if (initialResourceTitle) promptLines.push(`当前资料：${getResourceTypeLabel(initialResourceType)}《${initialResourceTitle}》`);
-    if (initialResourceSummary) promptLines.push(`资料摘要：${initialResourceSummary}`);
-    if (typeof initialStartAt === "number") promptLines.push(`参考时间：${Math.max(0, Math.floor(initialStartAt))} 秒`);
+    if (shouldUseSystemKnowledgeAnswer) {
+      promptLines.push("请基于本地知识库回答该系统如何使用，并列出命中的本地知识库依据；不要按当前视频片段回答。");
+    }
+    if (modeInstruction && !shouldUseSystemKnowledgeAnswer) promptLines.push(modeInstruction);
+    if (!shouldUseSystemKnowledgeAnswer) {
+      if (isClassroomPage && initialVideoFileName) promptLines.push(`视频文件：${initialVideoFileName}`);
+      if (initialResourceTitle) promptLines.push(`当前资料：${getResourceTypeLabel(initialResourceType)}《${initialResourceTitle}》`);
+      if (initialResourceSummary) promptLines.push(`资料摘要：${initialResourceSummary}`);
+      if (isClassroomPage && typeof initialStartAt === "number") promptLines.push(`参考时间：${Math.max(0, Math.floor(initialStartAt))} 秒`);
+    }
+    if (resolvedTutorMemory.length) {
+      promptLines.push(
+        [
+          "已解决问题记忆：",
+          ...resolvedTutorMemory.slice(0, 5).map((item, index) => `${index + 1}. 已问：${item.question}；已答：${item.answer}`),
+          "如果用户再次提到相同问题，请先承接已解决结论，不要重复当成新问题。",
+        ].join("\n"),
+      );
+    }
     if (attachmentExtractedSummary) {
       promptLines.push(attachmentExtractedSummary);
     } else if (extractedText && outgoingAttachments.length) {
@@ -1881,6 +2431,87 @@ export default function AITutor(props: AITutorProps = {}) {
       status: "completed",
     };
 
+    if (hasCurrentVideoContext) {
+      const pendingVideoMessage: TutorMessage = {
+        id: `assistant-video-${Date.now()}`,
+        role: "assistant",
+        text: "正在结合当前视频时间点分析...",
+        createdAt: askedAt,
+        status: "pending",
+      };
+      setMessages((current) => [...current, userMessage, pendingVideoMessage]);
+      setInputValue("");
+      setAttachments([]);
+      setExtractedText("");
+
+      try {
+        let answerText = "";
+        let videoResponseSource = "video-local";
+        if (typeof initialVideoFileId === "number") {
+          const insightAnswer = await studentApi.askVideoInsight({
+            resource_id: initialVideoResourceId ?? null,
+            file_id: initialVideoFileId,
+            question: effectiveQuestionText || text,
+            current_time: typeof initialStartAt === "number" ? initialStartAt : undefined,
+            resource_title: initialTitle,
+            file_name: initialVideoFileName,
+          });
+          answerText = insightAnswer.answer || "";
+          if (answerText.trim() && typeof insightAnswer.matched_time === "number") {
+            answerText = `${answerText.trim()}\n\n定位时间：${formatVideoContextTime(insightAnswer.matched_time)}`;
+          }
+          if (answerText.trim()) {
+            videoResponseSource = "video-insight";
+          }
+        }
+        if (!answerText.trim()) {
+          answerText = buildCurrentVideoLocalAnswer(
+            effectiveQuestionText || text,
+            initialTitle,
+            initialSubtitle,
+            initialStartAt,
+            initialVideoFileName,
+          );
+        }
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === pendingVideoMessage.id
+              ? {
+                  ...item,
+                  text: answerText,
+                  status: "completed",
+                  responseSource: videoResponseSource,
+                }
+              : item,
+          ),
+        );
+      } catch {
+        const answerText = buildCurrentVideoLocalAnswer(
+          effectiveQuestionText || text,
+          initialTitle,
+          initialSubtitle,
+          initialStartAt,
+          initialVideoFileName,
+        );
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === pendingVideoMessage.id
+              ? {
+                  ...item,
+                  text: answerText,
+                  status: "completed",
+                  responseSource: "video-local",
+                }
+              : item,
+          ),
+        );
+      } finally {
+        finishUiProgress();
+        setSending(false);
+      }
+      return;
+    }
+
     if (quickLocalReply) {
       const assistantMessage: TutorMessage = {
         id: `assistant-local-${Date.now()}`,
@@ -1895,6 +2526,51 @@ export default function AITutor(props: AITutorProps = {}) {
       setExtractedText("");
       finishUiProgress();
       setSending(false);
+      return;
+    }
+
+    if (!hasCurrentVideoContext && !shouldUseSystemKnowledgeAnswer && outgoingAttachments.length === 0 && looksLikeOnlineCourseSearch(text)) {
+      const pendingSearchMessage: TutorMessage = {
+        id: `assistant-web-search-${Date.now()}`,
+        role: "assistant",
+        text: "正在联网搜索可打开的课程链接...",
+        createdAt: askedAt,
+        status: "pending",
+      };
+      setMessages((current) => [...current, userMessage, pendingSearchMessage]);
+      setInputValue("");
+      setAttachments([]);
+      setExtractedText("");
+      try {
+        const answerText = await searchOnlineCourseLinks(text);
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === pendingSearchMessage.id
+              ? {
+                  ...item,
+                  text: answerText,
+                  status: "completed",
+                  responseSource: "web-search",
+                }
+              : item,
+          ),
+        );
+      } catch {
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === pendingSearchMessage.id
+              ? {
+                  ...item,
+                  text: "联网搜索暂时不可用，你可以稍后再试，或换一个更具体的课程关键词。",
+                  status: "error",
+                }
+              : item,
+          ),
+        );
+      } finally {
+        finishUiProgress();
+        setSending(false);
+      }
       return;
     }
 
@@ -2030,11 +2706,19 @@ export default function AITutor(props: AITutorProps = {}) {
       }
 
       const directAnswerPromise = (async () => {
-        await new Promise((resolve) => window.setTimeout(resolve, 18000));
+        await new Promise((resolve) => window.setTimeout(resolve, 6000));
         let lastError: unknown = null;
-        for (let attempt = 0; attempt < 4; attempt += 1) {
+        for (let attempt = 0; attempt < 18; attempt += 1) {
           try {
-            return await studentApi.getTutoringAnswer(submitResponse.question_id);
+            const nextAnswer = await studentApi.getTutoringAnswer(submitResponse.question_id);
+            if (nextAnswer.status === "processing") {
+              await new Promise((resolve) => window.setTimeout(resolve, 3200));
+              continue;
+            }
+            if (nextAnswer.status === "failed") {
+              throw new Error(nextAnswer.error_message || nextAnswer.error || "AI 导师生成失败，请稍后重试。");
+            }
+            return nextAnswer;
           } catch (error) {
             lastError = error;
             if (!isTransientTutorFetchError(error)) {
@@ -2043,13 +2727,13 @@ export default function AITutor(props: AITutorProps = {}) {
             if (streamSettled || streamedFinalAnswer || streamedCompleteText || streamedText) {
               return null;
             }
-            await new Promise((resolve) => window.setTimeout(resolve, 1800 * (attempt + 1)));
+            await new Promise((resolve) => window.setTimeout(resolve, Math.min(5000, 1800 * (attempt + 1))));
           }
         }
         if (streamSettled || streamedFinalAnswer || streamedCompleteText || streamedText) {
           return null;
         }
-        throw lastError instanceof Error ? lastError : new Error("AI 导师网络连接波动，请稍后重试。");
+        throw lastError instanceof Error ? lastError : new Error("AI 导师响应超时，请稍后重试。");
       })();
 
       let answer: TutoringAnswerDetail | null = null;
@@ -2099,16 +2783,11 @@ export default function AITutor(props: AITutorProps = {}) {
       stopChunkPump();
       setUiProgress(0.92);
       const resolvedAnswer = answer || streamedFinalAnswer;
-      let finalRenderedText = (
+      const finalRenderedText = (
         (resolvedAnswer ? buildAnswerText(resolvedAnswer) : "") ||
         streamedCompleteText ||
         streamedText
       ).trim();
-      let usedLocalFallback = false;
-      if (looksLikeMisdirectedAttachmentAnswer(finalRenderedText, outgoingAttachments, effectiveQuestionText)) {
-        finalRenderedText = buildAttachmentLocalFallback(outgoingAttachments) || finalRenderedText;
-        usedLocalFallback = true;
-      }
       const answerMessage: TutorMessage = {
         id: `assistant-${submitResponse.question_id}`,
         role: "assistant",
@@ -2124,16 +2803,40 @@ export default function AITutor(props: AITutorProps = {}) {
           )?.answer_videos ||
           undefined,
         status: "completed",
-        localFallback: usedLocalFallback,
+        localFallback: false,
         responseSource: resolvedAnswer?.source || "ai",
         fallbackReason: resolvedAnswer?.fallback_reason || null,
         safetyReview: resolvedAnswer?.safety_review || null,
         hallucinationReview: resolvedAnswer?.hallucination_review || null,
+        referenceSources: resolvedAnswer?.reference_sources || null,
+        knowledgePoints: normalizeKnowledgePoints(resolvedAnswer),
+        confidenceScore: resolvedAnswer?.confidence_score || null,
+        questionType: resolvedAnswer?.question_type || resolvedAnswer?.question_analysis?.question_type || null,
       };
 
       setMessages((current) =>
         current.map((item) => (item.id === pendingAssistantMessage.id ? answerMessage : item)),
       );
+      if (
+        outgoingAttachments.length === 0 &&
+        shouldAutoAttachCourseLinks(text) &&
+        !answerMessage.videos?.length &&
+        !/相关视频\/课程链接|Bilibili|bilibili|哔哩/.test(answerMessage.text)
+      ) {
+        void buildAutoCourseLinksSection(text).then((linksSection) => {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === answerMessage.id && !/相关视频\/课程链接|Bilibili|bilibili|哔哩/.test(item.text)
+                ? {
+                    ...item,
+                    text: `${item.text}${linksSection}`,
+                    responseSource: item.responseSource || "ai",
+                  }
+                : item,
+            ),
+          );
+        });
+      }
       const nextSessionId = String(submitResponse.session_id || submitResponse.question_id);
       setActiveQuestionId(nextSessionId);
       saveStoredTutorSession(
@@ -2165,25 +2868,67 @@ export default function AITutor(props: AITutorProps = {}) {
         saveStoredSessionTitles(next);
         return next;
       });
+      const localHistoryItem: TutoringHistoryItem = {
+        question: {
+          id: String(submitResponse.question_id),
+          session_id: nextSessionId,
+          question_text: finalQuestion || text || "新的对话",
+          persona: "haibara",
+          course_id: resolvedCourseId,
+          section_id: initialSectionId ? Number(initialSectionId) || null : null,
+          question_type: initialMode || "default",
+          knowledge_points: [],
+          create_time: new Date().toISOString(),
+          update_time: new Date().toISOString(),
+        },
+        answer: {
+          id: resolvedAnswer?.answer_id || `answer-${submitResponse.question_id}`,
+          question_id: String(submitResponse.question_id),
+          session_id: nextSessionId,
+          answer_text: finalRenderedText || resolvedAnswer?.answer_text || streamedCompleteText || streamedText || "",
+          answer_diagrams: resolvedAnswer?.diagrams || null,
+          answer_videos: resolvedAnswer?.videos || null,
+          reference_sources: resolvedAnswer?.reference_sources || null,
+          confidence_score: resolvedAnswer?.confidence_score || null,
+          generation_time: resolvedAnswer?.generation_time || null,
+          create_time: new Date().toISOString(),
+          update_time: new Date().toISOString(),
+        },
+        is_favorited: false,
+      };
+      setHistoryItems((current) => {
+        const next = [localHistoryItem, ...current.filter((item) => String(item.question.id) !== String(submitResponse.question_id))].slice(0, 30);
+        saveTutorHistoryCache(next, resolvedUserId, initialCourseId);
+        return next;
+      });
+      rememberTutorResolvedIssue(resolvedUserId, initialCourseId, effectiveQuestionText || text, finalRenderedText);
       setAttachments([]);
       setExtractedText("");
-      const refreshed = await studentApi.listTutoringHistory({
-        course_id: resolvedCourseId,
-        page: 1,
-        page_size: 8,
-      });
-      setHistoryItems(refreshed.items || []);
+      studentApi
+        .listTutoringHistory({
+          course_id: resolvedCourseId,
+          page: 1,
+          page_size: 8,
+        })
+        .then((refreshed) => {
+          if (refreshed.items?.length) {
+            setHistoryItems(refreshed.items);
+            saveTutorHistoryCache(refreshed.items, resolvedUserId, initialCourseId);
+          }
+        })
+        .catch(() => {
+          // History refresh is helpful, but it should never keep the composer stuck in "sending".
+        });
     } catch (error) {
-      const errorText = error instanceof Error ? error.message : "提问失败，请稍后重试。";
-      const localFallback = buildAttachmentLocalFallback(outgoingAttachments);
+      const errorText = buildTutorErrorMessage(error);
       setMessages((current) =>
         current.map((item) =>
           item.id === pendingAssistantMessage.id
             ? {
                 ...item,
-                text: localFallback || errorText,
-                status: localFallback ? "completed" : "error",
-                localFallback: Boolean(localFallback),
+                text: errorText,
+                status: "error",
+                localFallback: false,
               }
             : item,
         ),
@@ -2421,7 +3166,8 @@ export default function AITutor(props: AITutorProps = {}) {
                         {!collapsedHistoryGroups[group.label] ? (
                         <div className="grid gap-3 xl:grid-cols-2">
                           {group.items.map((item) => {
-                            const active = activeQuestionId === item.question.id;
+                            const itemSessionId = String(item.question.session_id || item.answer?.session_id || item.question.id);
+                            const active = activeQuestionId === itemSessionId;
                             const busy = historyBusyQuestionId === String(item.question.id);
                             return (
                               <div
@@ -2547,7 +3293,19 @@ export default function AITutor(props: AITutorProps = {}) {
             {!collapsed ? (
               <>
                 <div ref={listRef} className={`flex-1 space-y-3 px-4 py-3 ${previewAttachment ? "overflow-hidden" : "overflow-y-auto"}`}>
-                  {messages.map((message) => (
+                  {messages.length === 0 ? (
+                    <div className="flex h-full min-h-[220px] items-center justify-center">
+                      <div className="max-w-[320px] rounded-[22px] border border-dashed border-[#D6DEE8] bg-white/72 px-5 py-5 text-center shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
+                        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5F7FA] text-[#667085]">
+                          <MessageCircleMore className="h-5 w-5" />
+                        </div>
+                        <div className="mt-3 text-[13px] font-bold text-[#171c22]">还没有对话记录</div>
+                        <p className="mt-1 text-[12px] leading-5 text-[#667085]">
+                          直接输入问题，或选择上方快捷问题开始；课堂上下文会在回答时自动参考。
+                        </p>
+                      </div>
+                    </div>
+                  ) : messages.map((message) => (
                     <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex gap-3"}>
                       {message.role === "assistant" ? (
                         <div className="flex h-8 w-8 shrink-0 overflow-hidden rounded-2xl border border-[#f4d8e4] bg-[linear-gradient(180deg,#fff7fb,#fff1f6)] shadow-[0_8px_18px_rgba(232,93,142,0.14)]">
@@ -2569,10 +3327,14 @@ export default function AITutor(props: AITutorProps = {}) {
                           }
                         >
                           {message.role === "assistant" ? (
-                            <MarkdownRenderer
-                              content={message.text}
-                              className="[&_.katex]:text-inherit [&_h1]:text-[#171c22] [&_h2]:text-[#171c22] [&_h3]:text-[#171c22]"
-                            />
+                            shouldRenderTutorMarkdown(cleanTutorDisplayText(message.text)) ? (
+                              <MarkdownRenderer
+                                content={cleanTutorDisplayText(message.text)}
+                                className="[&_.katex]:text-inherit [&_h1]:text-[#171c22] [&_h2]:text-[#171c22] [&_h3]:text-[#171c22]"
+                              />
+                            ) : (
+                              <p className="whitespace-pre-wrap">{cleanTutorDisplayText(message.text)}</p>
+                            )
                           ) : (
                             <p className="whitespace-pre-wrap">{message.text}</p>
                           )}
@@ -2662,6 +3424,14 @@ export default function AITutor(props: AITutorProps = {}) {
                                 </div>
                               </div>
                             </div>
+                          ) : null}
+                          {message.role === "assistant" ? (
+                            <KnowledgeEvidencePanel
+                              sources={message.referenceSources}
+                              knowledgePoints={message.knowledgePoints}
+                              confidenceScore={message.confidenceScore}
+                              questionType={message.questionType}
+                            />
                           ) : null}
                           {message.attachments?.length ? (
                             <div className="mt-2.5 flex flex-wrap gap-2">
@@ -2778,7 +3548,11 @@ export default function AITutor(props: AITutorProps = {}) {
                           >
                             <X className="h-3 w-3" />
                           </button>
-                          {item.extractedText ? (
+                          {item.uploadStatus === "uploading" ? (
+                            <div className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                              上传中
+                            </div>
+                          ) : item.extractedText ? (
                             <div className="absolute left-1.5 top-1.5 rounded-full bg-[#fff7fb] px-1.5 py-0.5 text-[9px] font-semibold text-[#b42363] ring-1 ring-[#f3c8d8]">
                               已提取正文
                             </div>
@@ -2834,9 +3608,9 @@ export default function AITutor(props: AITutorProps = {}) {
                             ref={captureButtonRef}
                             id="ai-tutor-capture-btn"
                             type="button"
-                            onPointerDown={(event) => triggerCaptureButton(event, handleInlineCapture)}
-                            onClick={(event) => triggerCaptureButton(event, handleInlineCapture)}
-                            disabled={sending || uploading}
+                            onClick={(event) => triggerCaptureButton(event, handleSelectionCaptureStart)}
+                            disabled={sending || uploading || capturing}
+                            aria-label="框选截图"
                             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F5F7FA] text-[#667085] transition hover:bg-[#EEF2F6] hover:text-[#171c22] disabled:opacity-50"
                             title="框选截图"
                           >
@@ -2869,7 +3643,12 @@ export default function AITutor(props: AITutorProps = {}) {
                           id="ai-chat-send-btn"
                           type="button"
                           onClick={() => void submitQuestion()}
-                          disabled={sending || uploading || (!inputValue.trim() && attachments.length === 0)}
+                          disabled={
+                            sending ||
+                            uploading ||
+                            attachments.some((item) => item.uploadStatus === "uploading") ||
+                            (!inputValue.trim() && attachments.length === 0)
+                          }
                           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#171717] px-4 text-[12px] font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <span>{sending ? "发送中" : "发送"}</span>

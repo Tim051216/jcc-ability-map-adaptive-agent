@@ -11,6 +11,7 @@ interface SidebarProps {
   onOpenNotifications: () => void;
   onOpenHistory: () => void;
   onOpenProfile: () => void;
+  onPreloadView?: (view: ViewType) => void;
   navBadges?: Partial<Record<ViewType, number>>;
   notificationCount?: number;
   historyCount?: number;
@@ -34,6 +35,7 @@ export function Sidebar({
   onOpenNotifications,
   onOpenHistory,
   onOpenProfile,
+  onPreloadView,
   navBadges,
   notificationCount,
   historyCount,
@@ -61,6 +63,9 @@ export function Sidebar({
                 key={item.id}
                 type="button"
                 onClick={() => onViewChange(item.id)}
+                onMouseEnter={() => onPreloadView?.(item.id)}
+                onFocus={() => onPreloadView?.(item.id)}
+                onPointerDown={() => onPreloadView?.(item.id)}
                 className={cn(
                   'group flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-200 md:justify-start md:px-4',
                   isActive ? 'bg-blue-50 font-semibold text-accent' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',

@@ -19,7 +19,7 @@ const TARGET_URL = `${BASE_URL}/resources?courseId=series-2`;
 async function primeSession(page: import("playwright").Page) {
   await page.addInitScript(() => {
     sessionStorage.setItem(
-      "bililearn-user-session",
+      "a3-student-user-session",
       JSON.stringify({
         id: "demo2024",
         name: "联合研学画像已接入",
@@ -38,8 +38,11 @@ async function primeSession(page: import("playwright").Page) {
 }
 
 async function login(page: import("playwright").Page) {
-  await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await page.waitForTimeout(500);
+  if (!page.url().includes("/login")) {
+    return;
+  }
   const idInput = page.locator("#login-id-input");
   if (await idInput.count()) {
     await idInput.fill("demo2024");
@@ -61,7 +64,6 @@ async function main() {
 
   try {
     await primeSession(page);
-    await login(page);
     await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
     const getFirstCard = () => page.locator('[id^="resource-binder-grid-"]').first();

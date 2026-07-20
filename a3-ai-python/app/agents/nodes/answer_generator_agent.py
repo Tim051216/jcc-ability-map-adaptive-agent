@@ -32,8 +32,11 @@ def _zh(value: str) -> str:
 class AnswerGeneratorAgent:
     """Generate tutoring answers with retrieval and fallback support."""
 
-    LLM_STEP_TIMEOUT_SECONDS = 14.0
-    LIGHT_LLM_TIMEOUT_SECONDS = 12.0
+    # DashScope can take longer than the old 12-14s window before returning the
+    # first useful chunk. Keep the fallback for real failures, but do not turn
+    # normal slow model responses into local fallback answers.
+    LLM_STEP_TIMEOUT_SECONDS = 45.0
+    LIGHT_LLM_TIMEOUT_SECONDS = 30.0
     COURSE_RAG_TOP_K = 2
     SIMILAR_QA_LIMIT = 1
     LIGHT_TYPES = {
@@ -170,10 +173,9 @@ class AnswerGeneratorAgent:
             if self._is_billing_error(exc):
                 raise
             logger.warning("answer_generator.prompt_fallback_failed", error=repr(exc))
+            raise RuntimeError("answer generator LLM request failed") from exc
 
-        if fallback_text:
-            await self._emit_full_text_naturally(on_answer_chunk, fallback_text)
-        return fallback_text
+        return ""
 
     @classmethod
     def _build_weather_persona_answer(cls, tool_result: dict[str, Any], persona: str | None = None) -> str:
@@ -726,6 +728,18 @@ class AnswerGeneratorAgent:
             _zh("\\u8bb2\\u89e3") in normalized and any(token in normalized for token in structure_tokens)
         )
 
+    @classmethod
+    def _is_system_usage_question(cls, question_text: str) -> bool:
+        normalized = cls._normalize(cls._extract_primary_question_text_v2(question_text) or question_text)
+        usage_patterns = (
+            _zh("(\\u600e\\u4e48\\u7528|\\u5982\\u4f55\\u4f7f\\u7528|\\u4ece\\u54ea\\u91cc\\u5f00\\u59cb|\\u4ece\\u54ea\\u91cc\\u8fdb\\u5165)"),
+            _zh("(\\u9879\\u76ee\\u600e\\u4e48\\u7528|\\u7cfb\\u7edf\\u600e\\u4e48\\u7528|\\u8fd9\\u4e2a\\u7cfb\\u7edf\\u600e\\u4e48\\u7528)"),
+            _zh("(\\u9875\\u9762\\u662f\\u4ec0\\u4e48\\u610f\\u601d|\\u8fd9\\u9875\\u662f\\u505a\\u4ec0\\u4e48\\u7684|\\u8fd9\\u4e2a\\u9875\\u9762\\u662f\\u505a\\u4ec0\\u4e48\\u7684|\\u672c\\u9875\\u6709\\u4ec0\\u4e48\\u7528)"),
+            _zh("(\\u600e\\u4e48\\u542f\\u52a8|\\u600e\\u4e48\\u8054\\u8c03|\\u600e\\u4e48\\u6253\\u5f00|\\u600e\\u4e48\\u8bbf\\u95ee)"),
+            _zh("(\\u4e3b\\u9875|\\u4fbf\\u61d2\\u529f\\u80fd|\\u7ecf\\u5178\\u529f\\u80fd|\\u5b66\\u4e60\\u4f7f\\u7528)"),
+        )
+        return any(re.search(pattern, normalized) for pattern in usage_patterns)
+
     async def generate_answer(
         self,
         question_text: str,
@@ -773,6 +787,29 @@ class AnswerGeneratorAgent:
                 "answer_text": concept_compare_answer,
                 "reference_sources": [],
                 "confidence_score": 95.0,
+            }
+
+        if self._is_system_usage_question(question_text):
+            retrieved_knowledge = await self._retrieve_knowledge(question_text, question_analysis, course_id)
+            answer_text = await self._generate_system_usage_answer_text(
+                question_text,
+                question_analysis,
+                question_images,
+                retrieved_knowledge,
+                persona=persona,
+                on_answer_chunk=on_answer_chunk,
+            )
+            reference_sources = self._extract_reference_sources(retrieved_knowledge)
+            confidence_score = await self._evaluate_confidence(
+                question_text,
+                answer_text,
+                retrieved_knowledge,
+                question_analysis,
+            )
+            return {
+                "answer_text": answer_text,
+                "reference_sources": reference_sources,
+                "confidence_score": confidence_score,
             }
 
         if self._wants_full_handout(question_text):
@@ -976,7 +1013,8 @@ class AnswerGeneratorAgent:
             if self._is_billing_error(exc):
                 raise
             logger.warning("answer_generator.light_answer_failed", error=repr(exc))
-        return self._build_light_emergency_fallback(question_text, question_analysis, persona=persona)
+            raise RuntimeError("light answer generation failed") from exc
+        raise RuntimeError("light answer generation returned empty content")
 
     @classmethod
     def _build_direct_utility_answer(cls, question_text: str) -> str:
@@ -1138,6 +1176,21 @@ class AnswerGeneratorAgent:
                     "当前这段主要还是围绕《软件工程基础与软件危机》在展开，核心是在把后面需求分析、系统设计、编码实现、测试维护和项目管理串回同一条软件工程主线。"
                     "如果你愿意，我可以继续按“这段主线、关键词、答辩怎么讲”三句给你拆开。"
                 )
+
+        stack_tokens = ("栈", "stack", "顺序栈", "链栈", "push", "pop", "top", "capacity")
+        queue_tokens = ("队列", "queue", "enqueue", "dequeue", "front", "rear")
+        if any(token in normalized for token in stack_tokens) and any(token in normalized for token in ("push", "top", "入栈", "出栈", "满", "容量")):
+            return (
+                "先检查栈是否已满。"
+                "顺序栈里通常要先判断 `top == capacity - 1`，避免越界后再执行 push。"
+                "如果你要，我也可以顺手把顺序栈的 push / pop 代码给你一版。"
+            )
+        if any(token in normalized for token in queue_tokens) and any(token in normalized for token in ("enqueue", "dequeue", "入队", "出队", "满", "容量")):
+            return (
+                "先检查队列是否已满。"
+                "顺序队列里通常要先判断是否超过容量，避免入队越界后再执行 enqueue。"
+                "如果你要，我也可以把队列判断满/空的代码顺手写给你。"
+            )
 
         return ""
 
@@ -1457,7 +1510,7 @@ class AnswerGeneratorAgent:
                 timeout_seconds=self.LLM_STEP_TIMEOUT_SECONDS,
                 question_preview=question_text[:80],
             )
-            return self._build_fallback_answer(question_text, question_analysis, retrieved_knowledge, persona=persona)
+            raise RuntimeError("answer generation timed out")
         except Exception as exc:
             if self._is_billing_error(exc):
                 raise
@@ -1467,7 +1520,7 @@ class AnswerGeneratorAgent:
                 error_type=type(exc).__name__,
                 question_preview=question_text[:80],
             )
-            return self._build_fallback_answer(question_text, question_analysis, retrieved_knowledge, persona=persona)
+            raise RuntimeError("answer generation failed") from exc
 
     async def _generate_handout_answer_text(
         self,
@@ -1554,8 +1607,88 @@ class AnswerGeneratorAgent:
             if self._is_billing_error(exc):
                 raise
             logger.warning("answer_generator.handout_failed", error=repr(exc))
+            raise RuntimeError("handout answer generation failed") from exc
 
-        return self._build_fallback_answer(question_text, question_analysis, retrieved_knowledge, persona=persona)
+        raise RuntimeError("handout answer generation returned empty content")
+
+    async def _generate_system_usage_answer_text(
+        self,
+        question_text: str,
+        question_analysis: dict[str, Any],
+        question_images: list[str] | None,
+        retrieved_knowledge: dict[str, Any],
+        persona: str | None = None,
+        on_answer_chunk: Callable[[str], Awaitable[None]] | None = None,
+    ) -> str:
+        context_parts: list[str] = []
+        retrieved_chunks = retrieved_knowledge.get("retrieved_chunks", [])
+        if retrieved_chunks:
+            context_parts.append(_zh("\\u672c\\u5730\\u77e5\\u8bc6\\u5e93\\u53c2\\u8003\\uff1a"))
+            for idx, chunk in enumerate(retrieved_chunks[: max(self.COURSE_RAG_TOP_K, 4)], start=1):
+                context_parts.append(f"{idx}. {chunk['content'][:280]}")
+
+        similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
+        if similar_qa_pairs:
+            context_parts.append(_zh("\\u672c\\u5730\\u76f8\\u4f3c\\u95ee\\u7b54\\uff1a"))
+            for idx, pair in enumerate(similar_qa_pairs[:2], start=1):
+                context_parts.append(
+                    f"{idx}. {_zh('\\u95ee\\u9898\\uff1a')}{pair['question']}\n"
+                    f"   {_zh('\\u7b54\\u6848\\u6458\\u8981\\uff1a')}{pair['answer_excerpt'][:180]}"
+                )
+
+        context = "\n\n".join(context_parts) if context_parts else _zh("\\u672c\\u5730\\u77e5\\u8bc6\\u5e93\\u5f53\\u524d\\u6682\\u672a\\u547d\\u4e2d\\u8db3\\u591f\\u5185\\u5bb9\\uff0c\\u8bf7\\u6839\\u636e\\u7cfb\\u7edf\\u5e38\\u89c1\\u4f7f\\u7528\\u8981\\u70b9\\u56de\\u7b54\\u3002")
+        persona_meta = self._persona_meta(persona)
+        knowledge_points = ", ".join(question_analysis.get("knowledge_points", []) or []) or _zh("\\u672a\\u8bc6\\u522b")
+        prompt = (
+            f"{persona_meta['learning_prompt']}\n\n"
+            f"{_zh('\\u4f60\\u73b0\\u5728\\u8981\\u56de\\u7b54\\u7684\\u662f\\u201c\\u7cfb\\u7edf\\u600e\\u4e48\\u7528\\u201d\\u7c7b\\u95ee\\u9898\\uff0c\\u5fc5\\u987b\\u57fa\\u4e8e\\u4e0b\\u9762\\u7ed9\\u51fa\\u7684\\u672c\\u5730\\u77e5\\u8bc6\\u5e93\\u5185\\u5bb9\\u56de\\u7b54\\uff0c\\u4e0d\\u8981\\u7f16\\u9020\\u5e73\\u53f0\\u529f\\u80fd\\u3002')}\n"
+            f"{_zh('\\u8f93\\u51fa\\u8981\\u6c42\\uff1a')}\n"
+            f"1. {_zh('\\u5f00\\u5934\\u5fc5\\u987b\\u5199\\u201c\\u57fa\\u4e8e\\u672c\\u5730\\u77e5\\u8bc6\\u5e93\\u7684\\u56de\\u7b54\\uff1a\\u201d')}\n"
+            f"2. {_zh('\\u5148\\u7ed9\\u76f4\\u63a5\\u7ed3\\u8bba\\uff0c\\u518d\\u7ed9 2 \\u5230 4 \\u6b65\\u53ef\\u6267\\u884c\\u64cd\\u4f5c\\u3002')}\n"
+            f"3. {_zh('\\u5982\\u679c\\u53c2\\u8003\\u4fe1\\u606f\\u5f88\\u5c11\\uff0c\\u5c31\\u660e\\u786e\\u8bf4\\u662f\\u672c\\u5730\\u77e5\\u8bc6\\u5e93\\u6682\\u65f6\\u672a\\u547d\\u4e2d\\uff0c\\u4e0d\\u8981\\u5f00\\u59cb\\u7f16\\u9020\\u5916\\u90e8\\u5185\\u5bb9\\u3002')}\n"
+            f"4. {_zh('\\u9700\\u8981\\u65f6\\u53ef\\u4ee5\\u6307\\u5411\\u201c\\u9879\\u76ee\\u603b\\u89c8 / \\u672c\\u5730\\u542f\\u52a8\\u4e0e\\u8054\\u8c03 / \\u5b66\\u751f\\u7aef\\u9875\\u9762\\u4f7f\\u7528 / \\u7ba1\\u7406\\u7aef\\u4e0e RAG / \\u5e38\\u89c1\\u95ee\\u9898\\u4e0e\\u6392\\u969c\\u201d\\u8fd9\\u51e0\\u7c7b\\u672c\\u5730\\u6587\\u6863\\u3002')}\n\n"
+            f"{_zh('\\u95ee\\u9898\\uff1a')}{question_text}\n"
+            f"{_zh('\\u77e5\\u8bc6\\u70b9\\uff1a')}{knowledge_points}\n\n"
+            f"{_zh('\\u53c2\\u8003\\u4fe1\\u606f\\uff1a')}\n{context}\n\n"
+            f"{_zh('\\u73b0\\u5728\\u76f4\\u63a5\\u7ed9\\u51fa\\u56de\\u7b54\\u3002')}"
+        )
+        messages = self._build_learning_messages(prompt, question_images, question_analysis)
+        try:
+            chunks: list[str] = []
+            async for chunk in self.llm_client.chat_completion_stream(
+                messages=messages,
+                temperature=0.3,
+                max_tokens=900,
+            ):
+                chunks.append(chunk)
+                await self._emit_answer_chunk(on_answer_chunk, chunk)
+            answer_text = "".join(chunks).strip()
+            if answer_text:
+                return answer_text
+        except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
+            logger.warning("answer_generator.system_usage_stream_failed", error=repr(exc))
+
+        try:
+            response = await asyncio.wait_for(
+                self.llm_client.chat_completion(
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=900,
+                ),
+                timeout=self.LLM_STEP_TIMEOUT_SECONDS,
+            )
+            answer_text = (response.choices[0].message.content or "").strip()
+            if answer_text:
+                return answer_text
+        except Exception as exc:
+            if self._is_billing_error(exc):
+                raise
+            logger.warning("answer_generator.system_usage_failed", error=repr(exc))
+            raise RuntimeError("system usage answer generation failed") from exc
+
+        raise RuntimeError("system usage answer generation returned empty content")
 
     @staticmethod
     def _build_learning_messages(

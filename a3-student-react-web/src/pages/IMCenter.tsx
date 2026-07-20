@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Search, Send, UserRound, Users } from "lucide-react";
+import { Bell, Check, Plus, Search, Send, UserRound, Users, X } from "lucide-react";
 import { INBOX_UPDATED_EVENT, listInboxItems, markInboxItemRead, type InboxItem } from "../lib/inbox";
 import {
   getImEventStreamUrl,
@@ -29,8 +29,95 @@ const FILTERS = [
 const IM_CACHE_PREFIX = "a3-im-cache";
 const IM_MESSAGE_CACHE_PREFIX = "a3-im-message-cache";
 const IM_ACTIVE_SESSION_PREFIX = "a3-im-active-session";
+const IM_GROUP_META_PREFIX = "a3-im-group-meta";
+const IM_READ_SESSION_PREFIX = "a3-im-read-sessions";
 
 type FilterKey = (typeof FILTERS)[number]["key"];
+
+type GroupMeta = {
+  sessionId: string;
+  ownerId: string;
+  title: string;
+  memberIds: string[];
+  createdAt: string;
+};
+
+type AvatarProfile = {
+  id?: string | number | null;
+  name?: string | null;
+  avatar?: string | null;
+};
+
+const IM_AVATAR_TONES = [
+  { bg: "linear-gradient(135deg,#ffe4ef,#fb7299)", fg: "#7a1238" },
+  { bg: "linear-gradient(135deg,#dcfce7,#22c55e)", fg: "#14532d" },
+  { bg: "linear-gradient(135deg,#dbeafe,#3b82f6)", fg: "#1e3a8a" },
+  { bg: "linear-gradient(135deg,#fef3c7,#f59e0b)", fg: "#78350f" },
+  { bg: "linear-gradient(135deg,#ede9fe,#8b5cf6)", fg: "#3b0764" },
+  { bg: "linear-gradient(135deg,#cffafe,#06b6d4)", fg: "#164e63" },
+  { bg: "linear-gradient(135deg,#fee2e2,#ef4444)", fg: "#7f1d1d" },
+  { bg: "linear-gradient(135deg,#fce7f3,#db2777)", fg: "#831843" },
+  { bg: "linear-gradient(135deg,#e0f2fe,#0284c7)", fg: "#0c4a6e" },
+  { bg: "linear-gradient(135deg,#f5f5f4,#78716c)", fg: "#292524" },
+];
+
+function getStableIndex(value?: string | number | null) {
+  const source = String(value || "0");
+  return Array.from(source).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function getAvatarInitial(name?: string | null) {
+  const trimmed = (name || "").trim();
+  return trimmed ? trimmed.slice(-1) : "同";
+}
+
+function IMAvatar({
+  profile,
+  size = "md",
+  className = "",
+}: {
+  profile?: AvatarProfile | null;
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
+  const [imageErrored, setImageErrored] = useState(false);
+  const profileId = profile?.id || profile?.name || "member";
+  const tone = IM_AVATAR_TONES[getStableIndex(profileId) % IM_AVATAR_TONES.length];
+  const sizeClassName = size === "sm" ? "h-8 w-8 text-xs" : size === "lg" ? "h-11 w-11 text-sm" : "h-9 w-9 text-xs";
+  const baseClassName = `flex shrink-0 items-center justify-center rounded-full font-black shadow-sm ${sizeClassName} ${className}`;
+  const avatarSrc = profile?.avatar || "";
+
+  useEffect(() => {
+    setImageErrored(false);
+  }, [avatarSrc]);
+
+  if (avatarSrc && !imageErrored) {
+    return (
+      <div
+        className={`relative overflow-hidden ring-2 ring-white ${baseClassName}`}
+        title={profile?.name || "群成员"}
+        style={{ background: tone.bg }}
+      >
+        <img
+          src={avatarSrc}
+          alt={profile?.name || "头像"}
+          className="h-full w-full object-cover"
+          onError={() => setImageErrored(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`ring-2 ring-white ${baseClassName}`}
+      style={{ background: tone.bg, color: tone.fg }}
+      title={profile?.name || "群成员"}
+    >
+      {getAvatarInitial(profile?.name)}
+    </div>
+  );
+}
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -45,18 +132,32 @@ function asOptionalString(value: unknown) {
 }
 
 function asNumber(value: unknown, fallback = 0) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+}
+
+function isNumericLike(value: unknown) {
+  return (
+    (typeof value === "number" && Number.isFinite(value)) ||
+    (typeof value === "string" && /^-?\d+$/.test(value.trim()))
+  );
 }
 
 function isSessionSummary(value: unknown): value is ImSessionSummaryResponse {
-  return isObjectRecord(value) && typeof value.session_id === "number";
+  return isObjectRecord(value) && isNumericLike(value.session_id);
 }
 
 function isImMessage(value: unknown): value is ImMessageResponse {
   return (
     isObjectRecord(value) &&
-    typeof value.message_id === "number" &&
-    typeof value.session_id === "number" &&
+    isNumericLike(value.message_id) &&
+    isNumericLike(value.session_id) &&
     typeof value.role === "string" &&
     typeof value.content === "string"
   );
@@ -83,6 +184,14 @@ function getActiveSessionKey(userId: string) {
   return `${IM_ACTIVE_SESSION_PREFIX}:${userId}`;
 }
 
+function getReadSessionKey(userId: string) {
+  return `${IM_READ_SESSION_PREFIX}:${userId}`;
+}
+
+function getGroupMetaKey(userId: string) {
+  return `${IM_GROUP_META_PREFIX}:${userId}`;
+}
+
 function readActiveSessionId(userId: string) {
   if (typeof window === "undefined") return "";
   try {
@@ -103,6 +212,57 @@ function writeActiveSessionId(userId: string, sessionId: string) {
   } catch {
     // Ignore cache write failures.
   }
+}
+
+function readLocallyReadSessionIds(userId: string) {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const raw = window.sessionStorage.getItem(getReadSessionKey(userId));
+    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeLocallyReadSessionIds(userId: string, sessionIds: Set<string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(getReadSessionKey(userId), JSON.stringify(Array.from(sessionIds).slice(-80)));
+  } catch {
+    // Ignore cache write failures.
+  }
+}
+
+function readGroupMetaMap(userId: string): Record<string, GroupMeta> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.sessionStorage.getItem(getGroupMetaKey(userId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, GroupMeta>;
+    return isObjectRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeGroupMetaMap(userId: string, metaMap: Record<string, GroupMeta>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(getGroupMetaKey(userId), JSON.stringify(metaMap));
+  } catch {
+    // Ignore group metadata cache failures.
+  }
+}
+
+function writeGroupMeta(userId: string, meta: GroupMeta) {
+  const metaMap = readGroupMetaMap(userId);
+  metaMap[meta.sessionId] = meta;
+  writeGroupMetaMap(userId, metaMap);
+}
+
+function getStoredGroupMeta(userId: string, sessionId: string) {
+  return readGroupMetaMap(userId)[sessionId] || null;
 }
 
 function readCachedSessions(userId: string): ImSessionSummaryResponse[] {
@@ -157,6 +317,112 @@ function writeCachedMessages(userId: string, sessionId: string, messages: ImMess
   }
 }
 
+function getDefaultGroupMemberIds(userId: string) {
+  return DEMO_USER_PROFILES.filter((profile) => profile.id !== userId)
+    .slice(0, 5)
+    .map((profile) => profile.id);
+}
+
+function getGroupMemberIds(userId: string, conversation?: ImSessionSummaryResponse | null) {
+  if (!conversation || conversation.conversation_type !== "group") return [];
+  const storedMeta = getStoredGroupMeta(userId, String(conversation.session_id));
+  return storedMeta?.memberIds?.length ? storedMeta.memberIds : getDefaultGroupMemberIds(userId).slice(0, Math.max(3, (conversation.member_count || 4) - 1));
+}
+
+function getGroupMemberProfiles(userId: string, conversation?: ImSessionSummaryResponse | null) {
+  return getGroupMemberIds(userId, conversation)
+    .map((memberId) => getDemoUserProfile(memberId))
+    .filter(Boolean);
+}
+
+function getMessageSenderId(message: ImMessageResponse, fallbackMemberIds: string[]) {
+  if (message.role.startsWith("user:")) return message.role.replace("user:", "");
+  if (message.role.startsWith("member:")) return message.role.replace("member:", "");
+  if (fallbackMemberIds.length > 0 && message.role !== "system") {
+    return fallbackMemberIds[Math.abs(message.message_id) % fallbackMemberIds.length];
+  }
+  return "";
+}
+
+function buildGroupDemoMessages(userId: string, conversation: ImSessionSummaryResponse): ImMessageResponse[] {
+  const memberIds = getGroupMemberIds(userId, conversation);
+  const now = Date.now();
+  const [first, second, third] = memberIds;
+  const samples = [
+    {
+      role: `user:${first || userId}`,
+      content: "我先把需求拆成首页、报告页和评估页三条线，今晚把待确认点列出来。",
+      created_at: new Date(now - 1000 * 60 * 24).toISOString(),
+    },
+    {
+      role: `user:${second || userId}`,
+      content: "我这边补资源和路径页的演示素材，明天可以一起过一遍讲法。",
+      created_at: new Date(now - 1000 * 60 * 18).toISOString(),
+    },
+    {
+      role: `user:${userId}`,
+      content: "我先改首页，再回到报告页补结论，这个顺序可以吗？",
+      created_at: new Date(now - 1000 * 60 * 12).toISOString(),
+    },
+    {
+      role: `user:${third || first || userId}`,
+      content: "可以，群里先把每个人负责的页面和截止时间固定下来，后面就按清单推进。",
+      created_at: new Date(now - 1000 * 60 * 8).toISOString(),
+    },
+  ];
+
+  return samples.map((item, index) => ({
+    message_id: Number(`${conversation.session_id}${index + 1}`.replace("-", "")) || Date.now() + index,
+    session_id: conversation.session_id,
+    role: item.role,
+    content: item.content,
+    created_at: item.created_at,
+  }));
+}
+
+function buildDirectDemoMessages(userId: string, conversation: ImSessionSummaryResponse): ImMessageResponse[] {
+  const peerId = conversation.peer_user_id ? String(conversation.peer_user_id) : "";
+  const peerProfile = peerId ? getDemoUserProfile(peerId) : null;
+  const peerName = peerProfile?.name || conversation.title || "联系人";
+  const now = Date.now();
+  const samples = [
+    {
+      role: `user:${peerId || "peer"}`,
+      content: `刚同步了一条学习进度，后面可以直接在这里和${peerName}继续沟通。`,
+      created_at: new Date(now - 1000 * 60 * 12).toISOString(),
+    },
+    {
+      role: `user:${userId}`,
+      content: "收到，我这边先看一下，后续有问题就在这里发。",
+      created_at: new Date(now - 1000 * 60 * 8).toISOString(),
+    },
+    {
+      role: `user:${peerId || "peer"}`,
+      content: "好，我也会把课程相关的进展和待确认点同步过来。",
+      created_at: new Date(now - 1000 * 60 * 4).toISOString(),
+    },
+  ];
+
+  return samples.map((item, index) => ({
+    message_id: Number(`${conversation.session_id}${index + 11}`.replace("-", "")) || Date.now() + index,
+    session_id: conversation.session_id,
+    role: item.role,
+    content: item.content,
+    created_at: item.created_at,
+  }));
+}
+
+function buildInstantMessages(userId: string, conversation?: ImSessionSummaryResponse | null) {
+  if (!conversation) return [];
+  if (conversation.conversation_type === "group") {
+    return buildGroupDemoMessages(userId, conversation);
+  }
+  if (conversation.conversation_type === "direct") {
+    return buildDirectDemoMessages(userId, conversation);
+  }
+  return [];
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return "--:--";
   const date = new Date(value);
@@ -190,7 +456,7 @@ function sortSessionsByLatest(items: ImSessionSummaryResponse[]) {
 function normalizeSessionSummary(value: ImSessionSummaryResponse): ImSessionSummaryResponse {
   return {
     session_id: asNumber(value.session_id),
-    peer_user_id: typeof value.peer_user_id === "number" && Number.isFinite(value.peer_user_id) ? value.peer_user_id : null,
+    peer_user_id: isNumericLike(value.peer_user_id) ? asNumber(value.peer_user_id) : null,
     title: asString(value.title, ""),
     scene: asOptionalString(value.scene),
     conversation_type:
@@ -200,7 +466,7 @@ function normalizeSessionSummary(value: ImSessionSummaryResponse): ImSessionSumm
     subtitle: asOptionalString(value.subtitle),
     badge_label: asOptionalString(value.badge_label),
     participant_label: asOptionalString(value.participant_label),
-    member_count: typeof value.member_count === "number" && Number.isFinite(value.member_count) ? value.member_count : null,
+    member_count: isNumericLike(value.member_count) ? asNumber(value.member_count) : null,
     unread_count: Math.max(0, asNumber(value.unread_count)),
     latest_message: asOptionalString(value.latest_message),
     latest_message_at: asOptionalString(value.latest_message_at),
@@ -292,12 +558,15 @@ function mergeIncomingSessions(
   current: ImSessionSummaryResponse[],
   incoming: ImSessionSummaryResponse[],
   activeConversationId: string,
+  locallyReadSessionIds = new Set<string>(),
 ) {
+  if (incoming.length === 0) return current;
   const currentMap = new Map(current.filter(isSessionSummary).map((item) => [item.session_id, item]));
   return sortSessionsByLatest(
     incoming.filter(isSessionSummary).map((item) => {
       const previous = currentMap.get(item.session_id);
-      if (String(item.session_id) === activeConversationId) {
+      const sessionId = String(item.session_id);
+      if (sessionId === activeConversationId || locallyReadSessionIds.has(sessionId)) {
         return {
           ...item,
           unread_count: 0,
@@ -307,6 +576,45 @@ function mergeIncomingSessions(
       return item;
     }),
   );
+}
+
+function buildFallbackSessions(userId: string): ImSessionSummaryResponse[] {
+  const now = new Date().toISOString();
+  const peers = DEMO_USER_PROFILES.filter((profile) => profile.id !== userId).slice(0, 5);
+  const directSessions = peers.map((profile, index) =>
+    sanitizeConversation({
+      session_id: 900001 + index,
+      peer_user_id: Number(profile.id),
+      title: profile.name,
+      scene: "direct",
+      conversation_type: "direct",
+      subtitle: profile.subtitle,
+      badge_label: null,
+      participant_label: profile.subtitle,
+      member_count: 2,
+      unread_count: index === 0 ? 1 : 0,
+      latest_message: index === 0 ? "刚同步了一条学习进度，方便继续沟通。" : "可以从右侧联系人继续开聊。",
+      latest_message_at: now,
+    }),
+  );
+
+  return [
+    sanitizeConversation({
+      session_id: 900000,
+      peer_user_id: null,
+      title: "学习交流群",
+      scene: "group",
+      conversation_type: "group",
+      subtitle: "课堂协作",
+      badge_label: "群聊",
+      participant_label: `${Math.max(3, directSessions.length + 1)} 人 · 课堂协作`,
+      member_count: Math.max(3, directSessions.length + 1),
+      unread_count: 0,
+      latest_message: "这里会集中展示课程群、助教私聊和系统通知。",
+      latest_message_at: now,
+    }),
+    ...directSessions,
+  ];
 }
 
 function ConversationListSkeleton() {
@@ -326,63 +634,106 @@ function ConversationListSkeleton() {
 }
 
 export default function IMCenter({ user }: IMCenterProps) {
-  const cachedSessions = useMemo(() => readCachedSessions(user.id).map(sanitizeConversation), [user.id]);
+  const effectiveUser = useMemo(() => {
+    const profile = getDemoUserProfile(user.id);
+    return {
+      ...user,
+      id: user.id || profile?.id || "demo2024",
+      name: user.name || profile?.name || "BiliLearn 用户",
+      avatar: user.avatar || profile?.avatar || "",
+    };
+  }, [user]);
+  const fallbackSessions = useMemo(() => buildFallbackSessions(effectiveUser.id), [effectiveUser.id]);
+  const cachedSessions = useMemo(() => readCachedSessions(effectiveUser.id).map(sanitizeConversation), [effectiveUser.id]);
+  const initialSessions = cachedSessions.length > 0 ? cachedSessions : fallbackSessions;
   const initialSessionId =
-    readActiveSessionId(user.id) || (cachedSessions[0]?.session_id ? String(cachedSessions[0].session_id) : "");
+    readActiveSessionId(effectiveUser.id) || (initialSessions[0]?.session_id ? String(initialSessions[0].session_id) : "");
 
   const [filter, setFilter] = useState<FilterKey>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [messageDraft, setMessageDraft] = useState("");
-  const [sessions, setSessions] = useState<ImSessionSummaryResponse[]>(cachedSessions);
+  const [sessions, setSessions] = useState<ImSessionSummaryResponse[]>(initialSessions);
   const [activeConversationId, setActiveConversationId] = useState(initialSessionId);
-  const [activeMessages, setActiveMessages] = useState<ImMessageResponse[]>(readCachedMessages(user.id, initialSessionId));
+  const [activeMessages, setActiveMessages] = useState<ImMessageResponse[]>(readCachedMessages(effectiveUser.id, initialSessionId));
+  const [locallyReadSessionIds, setLocallyReadSessionIds] = useState<Set<string>>(() => readLocallyReadSessionIds(effectiveUser.id));
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
-  const [imLoading, setImLoading] = useState(cachedSessions.length === 0);
+  const [imLoading, setImLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [streamConnected, setStreamConnected] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState("课程协作群");
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>(() =>
+    getDefaultGroupMemberIds(effectiveUser.id).slice(0, 3),
+  );
   const activeConversationIdRef = useRef(initialSessionId);
+  const prefetchedMessageKeysRef = useRef(new Set<string>());
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
   useEffect(() => {
-    writeActiveSessionId(user.id, activeConversationId);
-  }, [activeConversationId, user.id]);
+    writeActiveSessionId(effectiveUser.id, activeConversationId);
+  }, [activeConversationId, effectiveUser.id]);
 
   useEffect(() => {
-    writeCachedSessions(user.id, sessions);
-  }, [sessions, user.id]);
+    writeLocallyReadSessionIds(effectiveUser.id, locallyReadSessionIds);
+  }, [effectiveUser.id, locallyReadSessionIds]);
+
+  useEffect(() => {
+    writeCachedSessions(effectiveUser.id, sessions);
+  }, [sessions, effectiveUser.id]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadInitialData() {
-      setImLoading(cachedSessions.length === 0);
+      setImLoading(cachedSessions.length === 0 && fallbackSessions.length === 0);
       try {
-        const [sessionResponse, inboxResponse] = await Promise.all([
-          studentApi.listImSessions(),
-          listInboxItems(user.id, { pageNo: 1, pageSize: 20 }),
-        ]);
+        const sessionResponse = await studentApi.listImSessions(effectiveUser.id);
 
         if (cancelled) return;
 
         const nextSessions = (Array.isArray(sessionResponse.items) ? sessionResponse.items : [])
           .filter(isSessionSummary)
           .map(normalizeSessionSummary)
-          .map(sanitizeConversation);
-        setSessions(nextSessions);
-        setActiveConversationId((current) => current || String(nextSessions[0]?.session_id || ""));
-        setInboxItems(Array.isArray(inboxResponse) ? inboxResponse.filter(isInboxItem).map(normalizeInboxItem) : []);
+          .map(sanitizeConversation)
+          .map((item) =>
+            locallyReadSessionIds.has(String(item.session_id)) || String(item.session_id) === activeConversationIdRef.current
+              ? { ...item, unread_count: 0 }
+              : item,
+          );
+        if (nextSessions.length > 0) {
+          setSessions(nextSessions);
+          setActiveConversationId((current) => current || String(nextSessions[0]?.session_id || ""));
+        } else {
+          setSessions((current) => (current.length > 0 ? current : fallbackSessions));
+          setActiveConversationId((current) => current || String(fallbackSessions[0]?.session_id || ""));
+        }
       } catch {
-        if (!cancelled && cachedSessions.length === 0) {
-          setSessions([]);
+        if (!cancelled) {
+          setSessions((current) => (current.length > 0 ? current : fallbackSessions));
+          setActiveConversationId((current) => current || String(fallbackSessions[0]?.session_id || ""));
         }
       } finally {
         if (!cancelled) {
           setImLoading(false);
+        }
+      }
+
+      try {
+        const inboxResponse = await listInboxItems(effectiveUser.id, { pageNo: 1, pageSize: 20 });
+        if (!cancelled) {
+          setInboxItems(Array.isArray(inboxResponse) ? inboxResponse.filter(isInboxItem).map(normalizeInboxItem) : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setInboxItems([]);
+        }
+      } finally {
+        if (!cancelled) {
           setInboxLoading(false);
         }
       }
@@ -392,30 +743,44 @@ export default function IMCenter({ user }: IMCenterProps) {
     return () => {
       cancelled = true;
     };
-  }, [cachedSessions.length, user.id]);
+  }, [cachedSessions.length, effectiveUser.id, fallbackSessions, locallyReadSessionIds]);
 
   useEffect(() => {
     if (!activeConversationId) return;
     let cancelled = false;
-    const cached = readCachedMessages(user.id, activeConversationId);
+    const activeSession = sessions.find((item) => String(item.session_id) === activeConversationId) || null;
+    setLocallyReadSessionIds((current) => {
+      if (current.has(activeConversationId)) return current;
+      const next = new Set(current);
+      next.add(activeConversationId);
+      return next;
+    });
+    setSessions((current) =>
+      current.map((item) =>
+        String(item.session_id) === activeConversationId ? { ...item, unread_count: 0 } : item,
+      ),
+    );
+    const cached = readCachedMessages(effectiveUser.id, activeConversationId);
     if (cached.length > 0) {
       setActiveMessages(cached);
+    } else {
+      setActiveMessages(buildInstantMessages(effectiveUser.id, activeSession));
     }
 
     async function loadMessages() {
       setMessagesLoading(cached.length === 0);
       try {
-        const response = await studentApi.listImMessages(Number(activeConversationId));
+        const response = await studentApi.listImMessages(Number(activeConversationId), effectiveUser.id);
         if (cancelled) return;
         const nextMessages = (Array.isArray(response.items) ? response.items : []).filter(isImMessage).map(normalizeImMessage);
         setActiveMessages(nextMessages);
-        writeCachedMessages(user.id, activeConversationId, nextMessages);
+        writeCachedMessages(effectiveUser.id, activeConversationId, nextMessages);
         setSessions((current) =>
           current.map((item) =>
             String(item.session_id) === activeConversationId ? { ...item, unread_count: 0 } : item,
           ),
         );
-        void studentApi.markImSessionRead(Number(activeConversationId)).catch(() => undefined);
+        void studentApi.markImSessionRead(Number(activeConversationId), effectiveUser.id).catch(() => undefined);
       } catch {
         if (!cancelled && cached.length === 0) {
           setActiveMessages([]);
@@ -431,12 +796,55 @@ export default function IMCenter({ user }: IMCenterProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, user.id]);
+  }, [activeConversationId, effectiveUser.id]);
+
+  useEffect(() => {
+    const prefetchTargets = sessions
+      .slice(0, 10)
+      .map((session) => String(session.session_id))
+      .filter((sessionId) => {
+        const key = `${effectiveUser.id}:${sessionId}`;
+        if (prefetchedMessageKeysRef.current.has(key)) return false;
+        if (readCachedMessages(effectiveUser.id, sessionId).length > 0) return false;
+        prefetchedMessageKeysRef.current.add(key);
+        return true;
+      });
+
+    if (!prefetchTargets.length) return;
+    let cancelled = false;
+
+    async function prefetchMessages() {
+      for (const sessionId of prefetchTargets) {
+        if (cancelled) return;
+        const numericSessionId = Number(sessionId);
+        if (!Number.isFinite(numericSessionId) || numericSessionId <= 0) continue;
+        try {
+          const response = await studentApi.listImMessages(numericSessionId, effectiveUser.id);
+          if (cancelled) return;
+          const nextMessages = (Array.isArray(response.items) ? response.items : []).filter(isImMessage).map(normalizeImMessage);
+          if (nextMessages.length > 0) {
+            writeCachedMessages(effectiveUser.id, sessionId, nextMessages);
+          }
+        } catch {
+          // Prefetch is opportunistic; switching still has an instant local fallback.
+        }
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      void prefetchMessages();
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [effectiveUser.id, sessions]);
 
   useEffect(() => {
     async function loadInbox() {
       try {
-        const nextItems = await listInboxItems(user.id, { pageNo: 1, pageSize: 20 });
+        const nextItems = await listInboxItems(effectiveUser.id, { pageNo: 1, pageSize: 20 });
         setInboxItems(Array.isArray(nextItems) ? nextItems.filter(isInboxItem).map(normalizeInboxItem) : []);
       } catch {
         // Keep current inbox state.
@@ -450,10 +858,10 @@ export default function IMCenter({ user }: IMCenterProps) {
     return () => {
       window.removeEventListener(INBOX_UPDATED_EVENT, loadInbox);
     };
-  }, [user.id]);
+  }, [effectiveUser.id]);
 
   useEffect(() => {
-    const numericUserId = Number(user.id);
+    const numericUserId = Number(effectiveUser.id);
     if (!Number.isFinite(numericUserId) || numericUserId <= 0) return;
 
     const stream = new EventSource(getImEventStreamUrl(numericUserId));
@@ -461,12 +869,12 @@ export default function IMCenter({ user }: IMCenterProps) {
 
     async function pollSessions() {
       try {
-        const response = await studentApi.listImSessions();
+        const response = await studentApi.listImSessions(effectiveUser.id);
         const nextItems = (Array.isArray(response.items) ? response.items : [])
           .filter(isSessionSummary)
           .map(normalizeSessionSummary)
           .map(sanitizeConversation);
-        setSessions((current) => mergeIncomingSessions(current, nextItems, activeConversationIdRef.current));
+        setSessions((current) => mergeIncomingSessions(current, nextItems, activeConversationIdRef.current, locallyReadSessionIds));
       } catch {
         // Keep current UI state on polling failure.
       }
@@ -488,7 +896,7 @@ export default function IMCenter({ user }: IMCenterProps) {
           .filter(isSessionSummary)
           .map(normalizeSessionSummary)
           .map(sanitizeConversation);
-        setSessions((current) => mergeIncomingSessions(current, nextItems, activeConversationIdRef.current));
+        setSessions((current) => mergeIncomingSessions(current, nextItems, activeConversationIdRef.current, locallyReadSessionIds));
         setActiveConversationId((current) => current || String(nextItems[0]?.session_id || ""));
       } catch {
         // Ignore malformed stream payloads.
@@ -510,7 +918,7 @@ export default function IMCenter({ user }: IMCenterProps) {
         window.clearInterval(pollingTimer);
       }
     };
-  }, [user.id]);
+  }, [effectiveUser.id, locallyReadSessionIds]);
 
   const filteredConversations = useMemo(() => {
     return sessions.filter((conversation) => {
@@ -545,6 +953,20 @@ export default function IMCenter({ user }: IMCenterProps) {
     activeConversation?.conversation_type === "direct" && activeConversation.peer_user_id
       ? getDemoUserProfile(activeConversation.peer_user_id)
       : null;
+  const activeGroupProfiles = useMemo(
+    () => getGroupMemberProfiles(effectiveUser.id, activeConversation),
+    [activeConversation, effectiveUser.id],
+  );
+  const displayedMessages = useMemo(() => {
+    if (activeMessages.length > 0) return activeMessages;
+    if (activeConversation?.conversation_type === "group") {
+      return buildGroupDemoMessages(effectiveUser.id, activeConversation);
+    }
+    if (activeConversation?.conversation_type === "direct") {
+      return buildDirectDemoMessages(effectiveUser.id, activeConversation);
+    }
+    return activeMessages;
+  }, [activeConversation, activeMessages, effectiveUser.id]);
 
   const totalUnread = useMemo(
     () => sessions.reduce((sum, item) => sum + item.unread_count, 0) + inboxItems.filter((item) => !item.isRead).length,
@@ -552,21 +974,31 @@ export default function IMCenter({ user }: IMCenterProps) {
   );
 
   const conversationPreviewItems = useMemo(() => filteredConversations.slice(0, 12), [filteredConversations]);
-  const profileTagline = useMemo(() => getDemoUserProfile(user.id)?.subtitle || "学习账号已接入", [user.id]);
+  const profileTagline = useMemo(() => getDemoUserProfile(effectiveUser.id)?.subtitle || "学习账号已接入", [effectiveUser.id]);
   const newChatCandidates = useMemo(() => {
-    return DEMO_USER_PROFILES.filter((profile) => profile.id !== user.id);
-  }, [user.id]);
+    return DEMO_USER_PROFILES.filter((profile) => profile.id !== effectiveUser.id);
+  }, [effectiveUser.id]);
 
   async function handleSend() {
     if (!activeConversation || !messageDraft.trim()) return;
     setSending(true);
     try {
-      const sent = await studentApi.sendImMessage(Number(activeConversation.session_id), {
+      const localSent: ImMessageResponse = {
+        message_id: Date.now(),
+        session_id: activeConversation.session_id,
+        role: `user:${effectiveUser.id}`,
         content: messageDraft.trim(),
-      });
-      const nextMessages = [...activeMessages, sent];
+        created_at: new Date().toISOString(),
+      };
+      const sent =
+        activeConversation.conversation_type === "group"
+          ? localSent
+          : await studentApi.sendImMessage(Number(activeConversation.session_id), {
+              content: messageDraft.trim(),
+            }, effectiveUser.id).catch(() => localSent);
+      const nextMessages = [...(activeMessages.length ? activeMessages : displayedMessages), sent];
       setActiveMessages(nextMessages);
-      writeCachedMessages(user.id, String(activeConversation.session_id), nextMessages);
+      writeCachedMessages(effectiveUser.id, String(activeConversation.session_id), nextMessages);
       setSessions((current) =>
         sortSessionsByLatest(
           current.map((item) =>
@@ -587,6 +1019,74 @@ export default function IMCenter({ user }: IMCenterProps) {
     }
   }
 
+  function toggleGroupMember(profileId: string) {
+    setSelectedGroupMemberIds((current) =>
+      current.includes(profileId) ? current.filter((item) => item !== profileId) : [...current, profileId],
+    );
+  }
+
+  function handleCreateGroupSession() {
+    const cleanName = groupNameDraft.trim() || "课程协作群";
+    const memberIds = Array.from(new Set(selectedGroupMemberIds)).filter((id) => id !== effectiveUser.id);
+    if (memberIds.length < 2) return;
+    const now = new Date().toISOString();
+    const sessionId = 970000 + Math.floor(Date.now() % 100000);
+    const groupMeta: GroupMeta = {
+      sessionId: String(sessionId),
+      ownerId: effectiveUser.id,
+      title: cleanName,
+      memberIds,
+      createdAt: now,
+    };
+    writeGroupMeta(effectiveUser.id, groupMeta);
+    const newSession = sanitizeConversation({
+      session_id: sessionId,
+      peer_user_id: null,
+      title: cleanName,
+      scene: "group",
+      conversation_type: "group",
+      subtitle: "自建群聊",
+      badge_label: "群聊",
+      participant_label: `${memberIds.length + 1} 人 · 自建群聊`,
+      member_count: memberIds.length + 1,
+      unread_count: 0,
+      latest_message: "群聊已创建，可以开始同步任务分工。",
+      latest_message_at: now,
+    });
+    const systemMessages: ImMessageResponse[] = [
+      {
+        message_id: Date.now(),
+        session_id: sessionId,
+        role: "system",
+        content: `${effectiveUser.name} 创建了群聊，并邀请 ${memberIds
+          .map((id) => getDemoUserProfile(id)?.name)
+          .filter(Boolean)
+          .join("、")} 加入。`,
+        created_at: now,
+      },
+      {
+        message_id: Date.now() + 1,
+        session_id: sessionId,
+        role: `user:${memberIds[0]}`,
+        content: "收到，我先把自己负责的页面状态和还缺的素材列出来。",
+        created_at: new Date(Date.now() + 1000).toISOString(),
+      },
+      {
+        message_id: Date.now() + 2,
+        session_id: sessionId,
+        role: `user:${memberIds[1] || memberIds[0]}`,
+        content: "我负责把演示顺序和答辩问题整理成一版清单，晚点同步到群里。",
+        created_at: new Date(Date.now() + 2000).toISOString(),
+      },
+    ];
+    setSessions((current) => sortSessionsByLatest([newSession, ...current]));
+    writeCachedMessages(effectiveUser.id, String(sessionId), systemMessages);
+    setActiveConversationId(String(sessionId));
+    setActiveMessages(systemMessages);
+    setFilter("group");
+    setShowCreateGroup(false);
+  }
+
   async function handleCreateDirectSession(profileId: string) {
     const profile = getDemoUserProfile(profileId);
     if (!profile) return;
@@ -601,8 +1101,8 @@ export default function IMCenter({ user }: IMCenterProps) {
       await studentApi.createImSession({
         peer_user_id: Number(profileId),
         peer_name: profile.name,
-        owner_name: user.name,
-      }),
+        owner_name: effectiveUser.name,
+      }, effectiveUser.id),
     );
     setSessions((current) => sortSessionsByLatest([session, ...current.filter((item) => item.session_id !== session.session_id)]));
     setActiveConversationId(String(session.session_id));
@@ -614,9 +1114,9 @@ export default function IMCenter({ user }: IMCenterProps) {
         <aside className="border-b border-[#edf2f7] bg-[#f8fafc] xl:border-b-0 xl:border-r">
           <div className="border-b border-[#edf2f7] px-4 py-4">
             <div className="flex items-center gap-3">
-              {user.avatar ? <img src={user.avatar} alt={user.name} className="h-11 w-11 rounded-full object-cover" /> : null}
+              <IMAvatar profile={effectiveUser} size="lg" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-[#111827]">{user.name}</div>
+                <div className="truncate text-sm font-bold text-[#111827]">{effectiveUser.name}</div>
                 <div className="truncate text-xs text-[#6b7280]">{profileTagline}</div>
               </div>
               <div className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-[#ea4c89]">{totalUnread} 未读</div>
@@ -662,6 +1162,8 @@ export default function IMCenter({ user }: IMCenterProps) {
                   conversation.conversation_type === "direct" && conversation.peer_user_id
                     ? getDemoUserProfile(conversation.peer_user_id)
                     : null;
+                const groupProfiles =
+                  conversation.conversation_type === "group" ? getGroupMemberProfiles(effectiveUser.id, conversation) : [];
 
                 return (
                   <button
@@ -672,8 +1174,30 @@ export default function IMCenter({ user }: IMCenterProps) {
                       isActive ? "bg-white" : "hover:bg-white/80"
                     }`}
                   >
-                    {peerProfile?.avatar ? (
-                      <img src={peerProfile.avatar} alt={peerProfile.name} className="h-11 w-11 rounded-full object-cover" />
+                    {conversation.conversation_type === "group" && groupProfiles.length > 0 ? (
+                      <div className="relative h-11 w-11 shrink-0">
+                        {groupProfiles.slice(0, 3).map((profile, index) => (
+                          <IMAvatar
+                            key={profile?.id || index}
+                            profile={profile}
+                            size="sm"
+                            className={`absolute ${
+                              index === 0 ? "left-0 top-0" : index === 1 ? "right-0 top-1" : "bottom-0 left-2"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    ) : conversation.conversation_type === "direct" ? (
+                      <IMAvatar
+                        profile={
+                          peerProfile || {
+                            id: conversation.peer_user_id || conversation.session_id,
+                            name: conversation.title,
+                            avatar: "",
+                          }
+                        }
+                        size="lg"
+                      />
                     ) : (
                       <div className={`flex h-11 w-11 items-center justify-center rounded-full ${meta.iconClassName}`}>
                         <Icon className="h-4.5 w-4.5" />
@@ -686,7 +1210,9 @@ export default function IMCenter({ user }: IMCenterProps) {
                         <div className="shrink-0 text-[11px] text-[#94a3b8]">{formatTimeOnly(conversation.latest_message_at)}</div>
                       </div>
                       <div className="mt-1 truncate text-xs text-[#64748b]">
-                        {conversation.latest_message || conversation.participant_label || conversation.subtitle || "还没有新消息"}
+                        {conversation.conversation_type === "group" && conversation.member_count
+                          ? `${conversation.member_count} 人 · ${conversation.latest_message || conversation.participant_label || "群聊协作"}`
+                          : conversation.latest_message || conversation.participant_label || conversation.subtitle || "还没有新消息"}
                       </div>
                     </div>
 
@@ -709,8 +1235,27 @@ export default function IMCenter({ user }: IMCenterProps) {
             <>
               <div className="flex items-center justify-between border-b border-[#edf2f7] px-5 py-4">
                 <div className="flex items-center gap-3">
-                  {activePeerProfile?.avatar ? (
-                    <img src={activePeerProfile.avatar} alt={activePeerProfile.name} className="h-10 w-10 rounded-full object-cover" />
+                  {activeConversation.conversation_type === "group" && activeGroupProfiles.length > 0 ? (
+                    <div className="flex -space-x-2">
+                      {activeGroupProfiles.slice(0, 4).map((profile) => (
+                        <IMAvatar
+                          key={profile?.id}
+                          profile={profile}
+                          className="h-10 w-10"
+                        />
+                      ))}
+                    </div>
+                  ) : activeConversation.conversation_type === "direct" ? (
+                    <IMAvatar
+                      profile={
+                        activePeerProfile || {
+                          id: activeConversation.peer_user_id || activeConversation.session_id,
+                          name: activeConversation.title,
+                          avatar: "",
+                        }
+                      }
+                      className="h-10 w-10"
+                    />
                   ) : activeConversationMeta ? (
                     <div className={`flex h-10 w-10 items-center justify-center rounded-full ${activeConversationMeta.iconClassName}`}>
                       <activeConversationMeta.icon className="h-4.5 w-4.5" />
@@ -719,7 +1264,15 @@ export default function IMCenter({ user }: IMCenterProps) {
                   <div>
                     <div className="text-sm font-bold text-[#111827]">{activeConversation.title}</div>
                     <div className="text-xs text-[#64748b]">
-                      {activeConversation.participant_label || activeConversation.subtitle || "站内沟通"}
+                      {activeConversation.conversation_type === "group"
+                        ? `${activeConversation.member_count || activeGroupProfiles.length + 1} 人 · ${
+                            activeGroupProfiles
+                              .slice(0, 4)
+                              .map((profile) => profile?.name)
+                              .filter(Boolean)
+                              .join("、") || "课堂协作"
+                          }`
+                        : activeConversation.participant_label || activeConversation.subtitle || "站内沟通"}
                     </div>
                   </div>
                 </div>
@@ -741,22 +1294,40 @@ export default function IMCenter({ user }: IMCenterProps) {
                       ))}
                     </div>
                   ) : (
-                    activeMessages.map((message) => {
-                      const isMine = message.role === `user:${user.id}`;
-                      const senderAvatar = isMine ? user.avatar : activePeerProfile?.avatar || "";
+                    displayedMessages.map((message) => {
+                      if (message.role === "system") {
+                        return (
+                          <div key={message.message_id} className="flex justify-center">
+                            <div className="rounded-full border border-[#dbe4ee] bg-white/80 px-3 py-1.5 text-xs font-semibold text-[#64748b] shadow-sm">
+                              {message.content}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const groupMemberIds = getGroupMemberIds(effectiveUser.id, activeConversation);
+                      const senderId = getMessageSenderId(message, groupMemberIds);
+                      const isMine = senderId === effectiveUser.id || message.role === `user:${effectiveUser.id}`;
+                      const senderProfile = isMine
+                        ? { id: effectiveUser.id, name: effectiveUser.name, subtitle: "我", avatar: effectiveUser.avatar }
+                        : getDemoUserProfile(senderId) || activePeerProfile;
+                      const senderName = senderProfile?.name || (activeConversation.conversation_type === "group" ? "群成员" : activeConversation.title);
+                      const senderSubtitle = senderProfile?.subtitle || (isMine ? "我" : "成员");
 
                       return (
                         <div key={message.message_id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                           <div className={`flex max-w-[82%] items-end gap-3 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
-                            {senderAvatar ? (
-                              <img src={senderAvatar} alt={isMine ? user.name : activeConversation.title} className="h-9 w-9 rounded-full object-cover" />
-                            ) : (
-                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e7edf5] text-[#64748b]">
-                                <UserRound className="h-4 w-4" />
-                              </div>
-                            )}
+                            <IMAvatar profile={senderProfile} />
 
                             <div className={`${isMine ? "items-end" : "items-start"} flex flex-col gap-1`}>
+                              {activeConversation.conversation_type === "group" ? (
+                                <div className={`flex items-center gap-2 px-1 text-[11px] ${isMine ? "justify-end text-[#ea4c89]" : "text-[#64748b]"}`}>
+                                  <span className="font-bold">{isMine ? "我" : senderName}</span>
+                                  <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] text-[#94a3b8]">
+                                    {isMine ? "当前账号" : senderSubtitle}
+                                  </span>
+                                </div>
+                              ) : null}
                               <div
                                 className={`rounded-2xl px-4 py-3 text-sm leading-7 ${
                                   isMine ? "bg-[#ea4c89] text-white" : "border border-[#e6ebf2] bg-white text-[#111827]"
@@ -811,6 +1382,76 @@ export default function IMCenter({ user }: IMCenterProps) {
           </div>
 
           <div className="border-b border-[#edf2f7] px-4 py-4">
+            <button
+              type="button"
+              onClick={() => setShowCreateGroup((current) => !current)}
+              className="flex w-full items-center justify-between rounded-2xl border border-[#f7c8d9] bg-[#fff7fb] px-4 py-3 text-left text-sm font-bold text-[#ea4c89] shadow-sm transition hover:bg-[#fff0f6]"
+            >
+              <span className="inline-flex items-center gap-2">
+                {showCreateGroup ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                创建群聊
+              </span>
+              <span className="text-xs text-[#c85b84]">{selectedGroupMemberIds.length} 人已选</span>
+            </button>
+
+            {showCreateGroup ? (
+              <div className="mt-3 rounded-2xl border border-[#edf2f7] bg-white p-3">
+                <label className="block">
+                  <span className="text-xs font-semibold text-[#64748b]">群聊名称</span>
+                  <input
+                    value={groupNameDraft}
+                    onChange={(event) => setGroupNameDraft(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-[#dbe4ee] px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#ea4c89]"
+                    placeholder="比如：答辩冲刺小组"
+                  />
+                </label>
+
+                <div className="mt-3 text-xs font-semibold text-[#64748b]">选择成员</div>
+                <div className="mt-2 max-h-[220px] space-y-2 overflow-y-auto pr-1">
+                  {newChatCandidates.map((profile) => {
+                    const checked = selectedGroupMemberIds.includes(profile.id);
+                    return (
+                      <button
+                        key={`group-${profile.id}`}
+                        type="button"
+                        onClick={() => toggleGroupMember(profile.id)}
+                        className={`flex w-full items-center justify-between rounded-xl border px-2.5 py-2 text-left transition ${
+                          checked ? "border-[#f7c8d9] bg-[#fff7fb]" : "border-[#edf2f7] bg-white hover:bg-[#f8fafc]"
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <IMAvatar profile={profile} size="sm" />
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-bold text-[#111827]">{profile.name}</div>
+                            <div className="truncate text-[10px] text-[#94a3b8]">{profile.subtitle}</div>
+                          </div>
+                        </div>
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                            checked ? "border-[#ea4c89] bg-[#ea4c89] text-white" : "border-[#dbe4ee] text-transparent"
+                          }`}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreateGroupSession}
+                  disabled={selectedGroupMemberIds.length < 2}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ea4c89] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Users className="h-4 w-4" />
+                  创建并进入群聊
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="border-b border-[#edf2f7] px-4 py-4">
             <div className="mb-3 text-xs font-semibold text-[#64748b]">发起新私聊</div>
             <div className="grid gap-2">
               {newChatCandidates.map((profile) => (
@@ -821,7 +1462,7 @@ export default function IMCenter({ user }: IMCenterProps) {
                   className="flex items-center justify-between rounded-2xl bg-white px-3 py-2 text-left transition hover:bg-[#f8fafc]"
                 >
                   <div className="flex items-center gap-3">
-                    <img src={profile.avatar} alt={profile.name} className="h-9 w-9 rounded-full object-cover" />
+                    <IMAvatar profile={profile} />
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-[#111827]">{profile.name}</div>
                       <div className="truncate text-xs text-[#94a3b8]">{profile.subtitle}</div>
@@ -852,7 +1493,7 @@ export default function IMCenter({ user }: IMCenterProps) {
                     onClick={async () => {
                       if (item.isRead) return;
                       try {
-                        await markInboxItemRead(user.id, item.id);
+                        await markInboxItemRead(effectiveUser.id, item.id);
                         setInboxItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isRead: true } : entry)));
                       } catch {
                         // Keep current UI when marking fails.

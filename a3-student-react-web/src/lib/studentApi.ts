@@ -1,6 +1,11 @@
 import { getCurrentLoggedInUserIdString } from "./currentUser";
 
-const AI_BASE_URL = (import.meta.env.VITE_AI_BASE_URL || "/ai/api/v1").replace(/\/$/, "");
+const configuredAiBaseUrl = (import.meta.env.VITE_AI_BASE_URL || "/ai/api/v1").replace(/\/$/, "");
+const shouldPreferProxyAiBase =
+  typeof window !== "undefined" &&
+  ["127.0.0.1", "localhost"].includes(window.location.hostname) &&
+  /^https?:\/\/(?:127\.0\.0\.1|localhost):18080\/api\/v1$/i.test(configuredAiBaseUrl);
+const AI_BASE_URL = (shouldPreferProxyAiBase ? "/ai/api/v1" : configuredAiBaseUrl).replace(/\/$/, "");
 const AI_ORIGIN = AI_BASE_URL.replace(/\/api\/v1$/, "");
 const LOCAL_AI_BASE_URL = (import.meta.env.VITE_LOCAL_AI_BASE_URL || "http://127.0.0.1:18080/api/v1").replace(/\/$/, "");
 const DEMO_AUTHORIZATION = "Bearer student-demo";
@@ -16,9 +21,14 @@ function getCurrentUserId() {
 
 function buildAuthHeaders() {
   const userId = getCurrentUserId();
+  return buildAuthHeadersForUser(userId);
+}
+
+function buildAuthHeadersForUser(userId?: string | number | null) {
+  const normalizedUserId = userId ? String(userId) : "";
   return {
     Authorization: DEMO_AUTHORIZATION,
-    ...(userId ? { "X-User-Id": userId, "user-info": userId } : {}),
+    ...(normalizedUserId ? { "X-User-Id": normalizedUserId, "user-info": normalizedUserId } : {}),
   };
 }
 
@@ -379,6 +389,9 @@ export interface ResourceCard {
   study_suggestion?: string | null;
   source_file_count?: number;
   source_files?: ResourceSourceFileRef[];
+  generated_at?: string | null;
+  updated_at?: string | null;
+  generation_context?: Record<string, unknown> | null;
 }
 
 export interface ResourceSourceFileRef {
@@ -728,6 +741,13 @@ export interface ProfileDimensionData {
   dimension_name: string;
   data: Record<string, unknown>;
   completeness: number;
+  sources?: string[];
+}
+
+export interface ProfileEvaluationDiffItem {
+  label?: string;
+  before?: unknown;
+  after?: unknown;
 }
 
 export interface StudentProfileDetailResponse {
@@ -737,6 +757,8 @@ export interface StudentProfileDetailResponse {
   dimensions: ProfileDimensionData[];
   tags: string[];
   completeness: number;
+  score_breakdown?: Record<string, number | string>;
+  latest_evaluation_diff?: Record<string, ProfileEvaluationDiffItem>;
   summary?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -867,6 +889,24 @@ export interface TutoringVideoRecommendation {
   }>;
 }
 
+export interface TutoringReferenceSource {
+  title?: string | null;
+  source?: string | null;
+  source_type?: string | null;
+  file_name?: string | null;
+  document_title?: string | null;
+  document_id?: string | number | null;
+  url?: string | null;
+  snippet?: string | null;
+  content?: string | null;
+  summary?: string | null;
+  score?: number | null;
+  relevance_score?: number | null;
+  knowledge_points?: string[] | null;
+  tags?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface TutoringAnswerDetail {
   status: string;
   question_id: string;
@@ -875,16 +915,24 @@ export interface TutoringAnswerDetail {
   answer_text: string;
   diagrams?: unknown[] | null;
   videos?: TutoringVideoRecommendation[] | null;
-  reference_sources?: Array<Record<string, unknown>> | null;
+  reference_sources?: TutoringReferenceSource[] | null;
   confidence_score?: number | null;
   generation_time?: number | null;
   should_escalate?: boolean;
   question_type?: string | null;
   knowledge_points?: string[] | null;
+  question_analysis?: {
+    question_type?: string | null;
+    knowledge_points?: string[] | null;
+    similar_questions?: unknown[] | null;
+    [key: string]: unknown;
+  } | null;
   safety_review?: Record<string, unknown> | null;
   hallucination_review?: Record<string, unknown> | null;
   source?: "ai" | "fallback" | "cache" | string;
   fallback_reason?: string | null;
+  error_message?: string | null;
+  error?: string | null;
 }
 
 export interface TutoringQuestionSubmitResponse {
@@ -929,8 +977,10 @@ export interface TutoringHistoryAnswer {
   answer_text: string;
   answer_diagrams?: unknown[] | null;
   answer_videos?: TutoringVideoRecommendation[] | null;
-  reference_sources?: Array<Record<string, unknown>> | null;
+  reference_sources?: TutoringReferenceSource[] | null;
   confidence_score?: number | null;
+  question_type?: string | null;
+  knowledge_points?: string[] | null;
   generation_time?: number | null;
   create_time: string;
   update_time: string;
@@ -1111,7 +1161,7 @@ function isTransientNetworkError(error: unknown) {
 }
 
 async function readErrorDetail(response: Response) {
-  let detail = `HTTP ${response.status}`;
+  let detail = response.status >= 500 ? "服务暂时不可用，请稍后重试。" : `HTTP ${response.status}`;
   try {
     const payload = await readJsonResponse<{ detail?: string; message?: string }>(response);
     if (payload?.detail?.trim()) {
@@ -1265,6 +1315,11 @@ async function requestJsonDirectLocal<T>(path: string, init: RequestInit, timeou
       throw new Error(await readErrorDetail(response));
     }
     return readJsonResponse<T>(response);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timeout");
+    }
+    throw error;
   } finally {
     if (timeoutId) {
       window.clearTimeout(timeoutId);
@@ -1277,11 +1332,132 @@ async function requestJsonWithLocalFallback<T>(path: string, init: RequestInit, 
     return await requestJson<T>(path, init, timeoutMs);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    const shouldFallback = /HTTP 404|Failed to fetch|NetworkError|load failed/i.test(message) || isTransientNetworkError(error);
+    const shouldFallback =
+      /HTTP 404|Failed to fetch|NetworkError|load failed|Request timeout/i.test(message) || isTransientNetworkError(error);
     if (!shouldFallback) {
       throw error;
     }
     return requestJsonDirectLocal<T>(path, init, timeoutMs);
+  }
+}
+
+async function requestWithLocalFallback<T>(path: string, timeoutMs?: number): Promise<T> {
+  try {
+    return await request<T>(path, timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const shouldFallback =
+      /HTTP 404|Failed to fetch|NetworkError|load failed|Request timeout/i.test(message) || isTransientNetworkError(error);
+    if (!shouldFallback) {
+      throw error;
+    }
+    return requestDirectLocal<T>(path, timeoutMs);
+  }
+}
+
+async function requestAsUser<T>(path: string, userId: string | number, timeoutMs?: number): Promise<T> {
+  const fetchJson = async (baseUrl: string) => {
+    const controller = timeoutMs ? new AbortController() : null;
+    const timeoutId =
+      timeoutMs && controller
+        ? window.setTimeout(() => {
+            controller.abort();
+          }, timeoutMs)
+        : null;
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        signal: controller?.signal,
+        headers: {
+          Accept: "application/json",
+          ...buildAuthHeadersForUser(userId),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response));
+      }
+      return readJsonResponse<T>(response);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("Request timeout");
+      }
+      throw error;
+    } finally {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    }
+  };
+
+  try {
+    return await fetchJson(AI_BASE_URL);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const shouldFallback =
+      /HTTP 404|Failed to fetch|NetworkError|load failed|Request timeout/i.test(message) || isTransientNetworkError(error);
+    if (!shouldFallback) {
+      throw error;
+    }
+    if (typeof window === "undefined" || !["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+      throw error;
+    }
+    return fetchJson(LOCAL_AI_BASE_URL);
+  }
+}
+
+async function requestJsonAsUser<T>(
+  path: string,
+  init: RequestInit,
+  userId: string | number,
+  timeoutMs?: number,
+): Promise<T> {
+  const fetchJson = async (baseUrl: string) => {
+    const controller = timeoutMs ? new AbortController() : null;
+    const timeoutId =
+      timeoutMs && controller
+        ? window.setTimeout(() => {
+            controller.abort();
+          }, timeoutMs)
+        : null;
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        ...init,
+        signal: controller?.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...buildAuthHeadersForUser(userId),
+          ...(init.headers || {}),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response));
+      }
+      return readJsonResponse<T>(response);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("Request timeout");
+      }
+      throw error;
+    } finally {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    }
+  };
+
+  try {
+    return await fetchJson(AI_BASE_URL);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const shouldFallback =
+      /HTTP 404|Failed to fetch|NetworkError|load failed|Request timeout/i.test(message) || isTransientNetworkError(error);
+    if (!shouldFallback) {
+      throw error;
+    }
+    if (typeof window === "undefined" || !["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+      throw error;
+    }
+    return fetchJson(LOCAL_AI_BASE_URL);
   }
 }
 
@@ -1375,16 +1551,17 @@ export const studentApi = {
       `/learning/personalized/next-step?course_id=${courseId}&section_index=${sectionIndex}`,
     );
   },
-  getGoalPath(courseId: number) {
-    return request<GoalPathResponse>(`/learning/personalized/goal-path?course_id=${courseId}`);
+  getGoalPath(courseId: number, timeoutMs = 5000) {
+    return request<GoalPathResponse>(`/learning/personalized/goal-path?course_id=${courseId}`, timeoutMs);
   },
-  getReviewPlan(courseId: number, sectionIndex = 0) {
+  getReviewPlan(courseId: number, sectionIndex = 0, timeoutMs = 5000) {
     return request<ReviewPlanResponse>(
       `/learning/personalized/review-plan?course_id=${courseId}&section_index=${sectionIndex}`,
+      timeoutMs,
     );
   },
-  getLevelRecommendation(courseId: number) {
-    return request<LevelRecommendationResponse>(`/learning/personalized/level-recommendation?course_id=${courseId}`);
+  getLevelRecommendation(courseId: number, timeoutMs = 5000) {
+    return request<LevelRecommendationResponse>(`/learning/personalized/level-recommendation?course_id=${courseId}`, timeoutMs);
   },
   getGrowthMap(courseId: number, userId: number) {
     return request<GrowthMapResponse>(`/learning/personalized/growth-map?course_id=${courseId}&user_id=${userId}`);
@@ -1501,8 +1678,8 @@ export const studentApi = {
       method: "DELETE",
     });
   },
-  getLatestLearningPlan(userId: number, courseId: number) {
-    return request<LearningPlanResponse>(`/plan/latest?user_id=${userId}&course_id=${courseId}`);
+  getLatestLearningPlan(userId: number, courseId: number, timeoutMs = 6000) {
+    return request<LearningPlanResponse>(`/plan/latest?user_id=${userId}&course_id=${courseId}`, timeoutMs);
   },
   generateLearningPlan(payload: {
     user_id: number;
@@ -1510,14 +1687,14 @@ export const studentApi = {
     target: string;
     available_days: number;
     daily_study_minutes: number;
-  }) {
+  }, timeoutMs = 10000) {
     return requestJson<LearningPlanResponse>("/plan/generate", {
       method: "POST",
       body: JSON.stringify(payload),
-    });
+    }, timeoutMs);
   },
-  getPlanProgress(planId: number, userId: number) {
-    return request<PlanProgressResponse>(`/plan/${planId}/progress?user_id=${userId}`);
+  getPlanProgress(planId: number, userId: number, timeoutMs = 4000) {
+    return request<PlanProgressResponse>(`/plan/${planId}/progress?user_id=${userId}`, timeoutMs);
   },
   completePlanStep(planId: number, stepId: string, userId: number) {
     return requestJson<PlanProgressResponse>(`/plan/${planId}/steps/${stepId}/complete`, {
@@ -1591,6 +1768,7 @@ export const studentApi = {
     course_id: number;
     knowledge_points: string[];
     resource_types: string[];
+    profile_context?: Record<string, unknown> | null;
   }) {
     return requestJson<ResourceGenerationResponse>(
       "/resource/generate",
@@ -1698,7 +1876,7 @@ export const studentApi = {
     return requestJson<EvaluationPaperResponse>("/evaluation/papers/generate", {
       method: "POST",
       body: JSON.stringify(payload),
-    });
+    }, 18_000);
   },
   getEvaluationPaper(paperId: number) {
     return request<EvaluationPaperResponse>(`/evaluation/papers/${paperId}`);
@@ -1760,6 +1938,13 @@ export const studentApi = {
   getProfileDetail(userId: number) {
     return request<StudentProfileDetailResponse>(`/profile/conversation/profile/${userId}`);
   },
+  async getProfileDetailOrNull(userId: number) {
+    try {
+      return await request<StudentProfileDetailResponse>(`/profile/conversation/profile/${userId}`);
+    } catch {
+      return null;
+    }
+  },
   getProfileSummary(userId: number) {
     return request<ProfileSummaryResponse>(`/profile/conversation/profile/${userId}/summary`);
   },
@@ -1793,28 +1978,41 @@ export const studentApi = {
       body: JSON.stringify(payload),
     });
   },
-  listImSessions() {
-    return request<ImSessionListResponse>("/chat/sessions");
+  listImSessions(userId?: string | number) {
+    return userId
+      ? requestAsUser<ImSessionListResponse>("/chat/sessions", userId, 6000)
+      : requestWithLocalFallback<ImSessionListResponse>("/chat/sessions", 6000);
   },
-  createImSession(payload: { peer_user_id: number; peer_name?: string; owner_name?: string }) {
-    return requestJson<ImSessionSummaryResponse>("/chat/sessions", {
+  createImSession(payload: { peer_user_id: number; peer_name?: string; owner_name?: string }, userId?: string | number) {
+    const init = {
       method: "POST",
       body: JSON.stringify(payload),
-    });
+    };
+    return userId
+      ? requestJsonAsUser<ImSessionSummaryResponse>("/chat/sessions", init, userId, 6000)
+      : requestJsonWithLocalFallback<ImSessionSummaryResponse>("/chat/sessions", init, 6000);
   },
-  listImMessages(sessionId: number) {
-    return request<ImMessageListResponse>(`/chat/sessions/${sessionId}/messages`);
+  listImMessages(sessionId: number, userId?: string | number) {
+    return userId
+      ? requestAsUser<ImMessageListResponse>(`/chat/sessions/${sessionId}/messages`, userId, 6000)
+      : requestWithLocalFallback<ImMessageListResponse>(`/chat/sessions/${sessionId}/messages`, 6000);
   },
-  markImSessionRead(sessionId: number) {
-    return requestJson<ImSessionReadResponse>(`/chat/sessions/${sessionId}/read`, {
+  markImSessionRead(sessionId: number, userId?: string | number) {
+    const init = {
       method: "PUT",
-    });
+    };
+    return userId
+      ? requestJsonAsUser<ImSessionReadResponse>(`/chat/sessions/${sessionId}/read`, init, userId, 6000)
+      : requestJsonWithLocalFallback<ImSessionReadResponse>(`/chat/sessions/${sessionId}/read`, init, 6000);
   },
-  sendImMessage(sessionId: number, payload: { content: string }) {
-    return requestJson<ImMessageResponse>(`/chat/sessions/${sessionId}/messages`, {
+  sendImMessage(sessionId: number, payload: { content: string }, userId?: string | number) {
+    const init = {
       method: "POST",
       body: JSON.stringify(payload),
-    });
+    };
+    return userId
+      ? requestJsonAsUser<ImMessageResponse>(`/chat/sessions/${sessionId}/messages`, init, userId, 6000)
+      : requestJsonWithLocalFallback<ImMessageResponse>(`/chat/sessions/${sessionId}/messages`, init, 6000);
   },
   webSearch(payload: {
     query: string;
@@ -1861,7 +2059,7 @@ export const studentApi = {
     return requestJson<TutoringQuestionSubmitResponse>("/tutoring/question", {
       method: "POST",
       body: JSON.stringify(payload),
-    });
+    }, 12_000);
   },
   async uploadTutoringAsset(file: File) {
     const formData = new FormData();
@@ -1892,7 +2090,7 @@ export const studentApi = {
     return parseJsonPreservingLargeIds<TutoringAssetUploadResponse>(await response.text());
   },
   getTutoringAnswer(questionId: string | number) {
-    return request<TutoringAnswerDetail>(`/tutoring/answer/${questionId}`);
+    return request<TutoringAnswerDetail>(`/tutoring/answer/${questionId}`, 30_000);
   },
   submitTutoringTask(payload: {
     question_text: string;
@@ -1944,7 +2142,7 @@ export const studentApi = {
       search.set("keyword", params.keyword);
     }
     const suffix = search.size ? `?${search.toString()}` : "";
-    return request<TutoringHistoryResponse>(`/tutoring/history${suffix}`);
+    return request<TutoringHistoryResponse>(`/tutoring/history${suffix}`, 8_000);
   },
   addTutoringFavorite(payload: { question_id: string | number; answer_id: string | number; note?: string }) {
     const search = new URLSearchParams({

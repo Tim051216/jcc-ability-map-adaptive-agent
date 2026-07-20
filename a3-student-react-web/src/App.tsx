@@ -3,27 +3,152 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Suspense, lazy, useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from "react-router-dom";
-import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, Bot, MessageCircleMore } from "lucide-react";
-import { OPEN_TUTOR_PANEL_EVENT, loadActiveTutorContext, type TutorPanelPayload } from "./lib/tutorPanel";
+import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, ChevronDown, Bot, MessageCircleMore, ArrowRight } from "lucide-react";
+import { ACTIVE_TUTOR_CONTEXT_EVENT, OPEN_TUTOR_PANEL_EVENT, loadActiveTutorContext, type TutorPanelPayload } from "./lib/tutorPanel";
 import { getDemoUserIdentity } from "./lib/demoUserIdentity";
 import { buildResourcesRoute, readLastRouteCourseId } from "./lib/routeCourseContext";
 
-const Header = lazy(() => import("./components/Header"));
-const Login = lazy(() => import("./pages/Login"));
-const Overview = lazy(() => import("./pages/Overview"));
-const LearningPath = lazy(() => import("./pages/LearningPath"));
-const CourseLearning = lazy(() => import("./pages/CourseLearning"));
-const ResourceCenter = lazy(() => import("./pages/ResourceCenter"));
-const ResourceSourcePreview = lazy(() => import("./pages/ResourceSourcePreview"));
-const CapabilityModel = lazy(() => import("./pages/CapabilityModel"));
-const Evaluation = lazy(() => import("./pages/Evaluation"));
-const StudyReport = lazy(() => import("./pages/StudyReport"));
-const Collection = lazy(() => import("./pages/Collection"));
-const IMCenter = lazy(() => import("./pages/IMCenter"));
-const AITutor = lazy(() => import("./pages/AITutor"));
-const WelcomeScreen = lazy(() => import("./components/WelcomeScreen"));
+const routeImporters = {
+  header: () => import("./components/Header"),
+  login: () => import("./pages/Login"),
+  overview: () => import("./pages/Overview"),
+  path: () => import("./pages/LearningPath"),
+  learn: () => import("./pages/CourseLearning"),
+  search: () => import("./pages/SearchResults"),
+  resources: () => import("./pages/ResourceCenter"),
+  resourcePreview: () => import("./pages/ResourceSourcePreview"),
+  judgeResult: () => import("./pages/CodingJudgeResult"),
+  profile: () => import("./pages/CapabilityModel"),
+  profileConversation: () => import("./pages/ProfileConversation"),
+  evaluation: () => import("./pages/Evaluation"),
+  report: () => import("./pages/StudyReport"),
+  collection: () => import("./pages/Collection"),
+  im: () => import("./pages/IMCenter"),
+  tutor: () => import("./pages/AITutor"),
+  welcome: () => import("./components/WelcomeScreen"),
+};
+
+const Header = lazy(routeImporters.header);
+const Login = lazy(routeImporters.login);
+const Overview = lazy(routeImporters.overview);
+const LearningPath = lazy(routeImporters.path);
+const CourseLearning = lazy(routeImporters.learn);
+const SearchResults = lazy(routeImporters.search);
+const ResourceCenter = lazy(routeImporters.resources);
+const ResourceSourcePreview = lazy(routeImporters.resourcePreview);
+const CodingJudgeResult = lazy(routeImporters.judgeResult);
+const CapabilityModel = lazy(routeImporters.profile);
+const ProfileConversation = lazy(routeImporters.profileConversation);
+const Evaluation = lazy(routeImporters.evaluation);
+const StudyReport = lazy(routeImporters.report);
+const Collection = lazy(routeImporters.collection);
+const IMCenter = lazy(routeImporters.im);
+const AITutor = lazy(routeImporters.tutor);
+
+// Warm route chunks after the first screen settles so the first navigation is not a cold import.
+if (typeof window !== "undefined") {
+  const warmRouteChunks = () => {
+    Object.values(routeImporters).forEach((loadRoute) => {
+      void loadRoute();
+    });
+  };
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  };
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(warmRouteChunks, { timeout: 3500 });
+  } else {
+    window.setTimeout(warmRouteChunks, 2500);
+  }
+}
+const WelcomeScreen = lazy(routeImporters.welcome);
+const StudyAssistant3D = lazy(() => import("./components/StudyAssistant3D"));
+const preloadedRouteKeys = new Set<string>();
+
+function preloadRoute(path: string) {
+  const normalizedPath = path.split("?")[0] || path;
+  if (preloadedRouteKeys.has(normalizedPath)) return;
+  const importer =
+    normalizedPath === "/"
+        ? routeImporters.overview
+      : normalizedPath === "/search"
+        ? routeImporters.search
+      : normalizedPath === "/path"
+        ? routeImporters.path
+        : normalizedPath === "/learn"
+          ? routeImporters.learn
+          : normalizedPath === "/resources"
+            ? routeImporters.resources
+            : normalizedPath === "/resources/preview" || normalizedPath === "/resources/code-list"
+              ? routeImporters.resourcePreview
+              : normalizedPath === "/resources/judge-result"
+                ? routeImporters.judgeResult
+                : normalizedPath === "/collection"
+                  ? routeImporters.collection
+                  : normalizedPath === "/evaluation"
+                    ? routeImporters.evaluation
+                    : normalizedPath === "/report"
+                      ? routeImporters.report
+                      : normalizedPath === "/profile"
+                        ? routeImporters.profile
+                        : normalizedPath === "/profile/conversation"
+                          ? routeImporters.profileConversation
+                          : normalizedPath === "/im"
+                            ? routeImporters.im
+                            : normalizedPath === "/login"
+                              ? routeImporters.login
+                              : null;
+
+  if (importer) {
+    preloadedRouteKeys.add(normalizedPath);
+    void importer();
+  }
+}
+
+function scheduleRouteWarmup() {
+  const shouldSkipWarmup = () => {
+    const connection = (navigator as Navigator & {
+      connection?: { saveData?: boolean; effectiveType?: string };
+    }).connection;
+    return Boolean(connection?.saveData || /2g/.test(connection?.effectiveType || ""));
+  };
+
+  const warmRoutes = () => {
+    if (shouldSkipWarmup()) return;
+    const currentPath = window.location.pathname;
+    const importers = [
+      routeImporters.overview,
+      routeImporters.path,
+      routeImporters.resources,
+      routeImporters.evaluation,
+      routeImporters.profile,
+    ].filter((importer) => {
+      if (currentPath === "/" && importer === routeImporters.overview) return false;
+      if (currentPath === "/path" && importer === routeImporters.path) return false;
+      if (currentPath === "/resources" && importer === routeImporters.resources) return false;
+      if (currentPath === "/evaluation" && importer === routeImporters.evaluation) return false;
+      if (currentPath === "/profile" && importer === routeImporters.profile) return false;
+      return true;
+    });
+    importers.forEach((importer, index) => {
+      window.setTimeout(() => void importer(), index * 700);
+    });
+  };
+
+  if (typeof window === "undefined") return undefined;
+  if ("requestIdleCallback" in window) {
+    const idleId = (window as Window & {
+      requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback: (id: number) => void;
+    }).requestIdleCallback(warmRoutes, { timeout: 12000 });
+    return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+  }
+
+  const timer = globalThis.setTimeout(warmRoutes, 2500);
+  return () => globalThis.clearTimeout(timer);
+}
 
 interface UserSession {
   id: string;
@@ -161,11 +286,57 @@ export const RECOVERY_SESSION_STORAGE_KEY = "a3-student-user-session-recovery";
 export const WELCOME_SEEN_STORAGE_KEY = "a3-student-welcome-seen";
 export const APP_BROWSER_STATE_STORAGE_KEY = "a3-student-app-browser-state";
 export const APP_BROWSER_SCROLL_STATE_STORAGE_KEY = "a3-student-app-browser-scroll-state";
+export const ASSISTANT_BUBBLE_POSITION_STORAGE_KEY = "a3-student-assistant-bubble-position";
+
+type AssistantBubblePosition = {
+  x: number;
+  y: number;
+};
+
+function getAssistantBubbleSize() {
+  if (typeof window === "undefined") {
+    return { width: 134, height: 174, offsetY: 94 };
+  }
+  const isCompact = window.innerWidth < 768;
+  return {
+    width: isCompact ? 116 : 134,
+    height: isCompact ? 144 : 174,
+    offsetY: isCompact ? 82 : 94,
+  };
+}
+
+function clampAssistantBubblePosition(next: AssistantBubblePosition) {
+  if (typeof window === "undefined") {
+    return next;
+  }
+  const { width, height, offsetY } = getAssistantBubbleSize();
+  const maxX = Math.max(12, window.innerWidth - width - 12);
+  const maxY = Math.max(12, window.innerHeight - height - offsetY);
+  return {
+    x: Math.min(Math.max(next.x, 12), maxX),
+    y: Math.min(Math.max(next.y, 12), maxY),
+  };
+}
+
+function readAssistantBubblePosition(): AssistantBubblePosition | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(ASSISTANT_BUBBLE_POSITION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AssistantBubblePosition>;
+    if (!Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return null;
+    return clampAssistantBubblePosition({ x: Number(parsed.x), y: Number(parsed.y) });
+  } catch {
+    return null;
+  }
+}
 
 function RouteFallback() {
   return (
     <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-[#E3E8EC] bg-white text-sm font-semibold text-[#564145]">
-      正在生成与你当前画像和课程进度匹配的学习路径，请稍候...
+      正在加载当前页面，请稍候...
     </div>
   );
 }
@@ -178,49 +349,58 @@ function RouteErrorBoundaryShell({ children }: { children: React.ReactNode }) {
 function GlobalAIAssistantBar() {
   const location = useLocation();
 
-  const pageMeta: Record<string, { title: string; status: string; nextAction: string }> = {
+  const pageMeta: Record<string, { title: string; agent: string; status: string; nextAction: string }> = {
     "/": {
       title: "概览",
+      agent: "总览调度智能体",
       status: "系统正在汇总你的进度、资源与测评结果。",
       nextAction: "先继续最近的任务，再补充关键资料。",
     },
     "/resources": {
       title: "资源中心",
+      agent: "资源生成智能体",
       status: "资源已按课程和当前检索意图整理。",
       nextAction: "优先打开最贴近当前卡点的讲义或视频。",
     },
     "/evaluation": {
       title: "测评",
+      agent: "评估反馈智能体",
       status: "保留关键步骤，先完成本轮作答。",
       nextAction: "完成短测后，再看结果并继续追问。",
     },
     "/report": {
       title: "报告",
+      agent: "学习报告智能体",
       status: "这一阶段的关键结论、薄弱点和下一步方向都已经帮你收好。",
       nextAction: "先看最该补的点，再决定是补资源、调路径还是继续练题。",
     },
     "/collection": {
       title: "收藏",
+      agent: "复习收藏智能体",
       status: "这里适合快速回看高频复习内容。",
       nextAction: "优先整理本周一定会复习的内容。",
     },
     "/learn": {
       title: "课堂",
+      agent: "课堂学习智能体",
       status: "当前页面更适合边学边问，不需要跳走。",
       nextAction: "有卡点时直接打开右侧 AI 导师。",
     },
     "/path": {
       title: "个性化学习路径",
+      agent: "路径规划智能体",
       status: "这条路径会结合你的学习画像、当前课程进度和薄弱点，拆出接下来每一阶段具体该学什么、练什么、产出什么。",
       nextAction: "先完成当前阶段的首个关键任务，再由系统继续生成下一步学习动作。",
     },
     "/profile": {
       title: "画像",
+      agent: "学习画像智能体",
       status: "画像只保留对后续学习决策有帮助的信息。",
       nextAction: "对照薄弱项调整资源和练习顺序。",
     },
     "/im": {
       title: "IM 通讯",
+      agent: "消息协同智能体",
       status: "这里集中处理课程群、助教私聊和系统通知。",
       nextAction: "优先处理未读消息，再决定是否回到路径或课堂。",
     },
@@ -229,21 +409,25 @@ function GlobalAIAssistantBar() {
   const currentMeta = pageMeta[location.pathname] || pageMeta["/"];
 
   return (
-<section className="mb-3 rounded-[22px] bg-white px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)] ring-1 ring-[#E9EEF2]">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[#FFF2F7] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#e85d8e]">
-            <Bot className="h-3.5 w-3.5" />
-            Assistant
+    <section className="mb-3 rounded-xl border border-[#E3E8EC] bg-white/92 px-4 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.04)] backdrop-blur">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#F3D6E3] bg-[#FFF7FA] text-[#E4002B]">
+            <Bot className="h-4 w-4" />
           </div>
-          <div className="mt-2 flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-3">
-            <h2 className="text-[17px] font-extrabold text-[#171c22]">{currentMeta.title}</h2>
-            <p className="text-[13px] text-[#5b6770]">{currentMeta.status}</p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 className="text-[16px] font-extrabold text-[#171c22]">{currentMeta.title}</h2>
+              <span className="rounded-full border border-[#E3E8EC] bg-[#F7F7F8] px-2.5 py-1 text-[11px] font-bold text-[#4b5563]">
+                {currentMeta.agent}
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[12px] text-[#5b6770]">{currentMeta.status}</p>
           </div>
         </div>
 
-        <div className="rounded-[18px] border border-[#edf2f6] bg-[#F7FAFC] px-3.5 py-2 text-[13px] text-[#334155] lg:max-w-[360px]">
-          <span className="font-bold text-[#e85d8e]">下一步：</span>
+        <div className="min-w-0 rounded-lg border border-[#edf2f6] bg-[#F7F7F8] px-3 py-2 text-[12px] text-[#334155] lg:max-w-[380px]">
+          <span className="font-bold text-[#E4002B]">下一步：</span>
           {currentMeta.nextAction}
         </div>
       </div>
@@ -271,12 +455,21 @@ function TutorRouteBridge() {
   return null;
 }
 
+function SearchRouteBridge({ onEnter }: { onEnter: () => void }) {
+  useEffect(() => {
+    onEnter();
+  }, [onEnter]);
+
+  return <SearchResults />;
+}
+
 function MainLayout({
   user,
   onLogout,
   tutorDrawer,
   onOpenTutor,
   onCloseTutor,
+  onPreloadRoute,
   children,
 }: {
   user: UserSession;
@@ -284,24 +477,55 @@ function MainLayout({
   tutorDrawer: TutorDrawerState;
   onOpenTutor: (payload?: TutorPanelPayload) => void;
   onCloseTutor: () => void;
+  onPreloadRoute: (path: string) => void;
   children: React.ReactNode;
 }) {
   const location = useLocation();
   const isLoginPage = location.pathname === "/login";
   const isPreviewPage = location.pathname === "/resources/preview";
-  const isShellHiddenPage = isLoginPage || isPreviewPage;
+  const isJudgeResultPage = location.pathname === "/resources/judge-result";
+  const isShellHiddenPage = isLoginPage || isPreviewPage || isJudgeResultPage;
   const currentPath = location.pathname;
   const isNavItemActive = (itemPath: string) => {
     const normalizedPath = itemPath.split("?")[0] || itemPath;
-    return currentPath === normalizedPath;
+    return currentPath === normalizedPath || (normalizedPath !== "/" && currentPath.startsWith(`${normalizedPath}/`));
   };
   const desktopTutorWidthClass = tutorDrawer.open ? "lg:pr-[420px] xl:pr-[460px]" : "";
   const isOverviewPage = currentPath === "/";
+  const isProductizedPage = !isShellHiddenPage;
+  const isPathPage = currentPath === "/path";
+  const hideCompactAgentBar = currentPath === "/path" || currentPath === "/evaluation" || currentPath === "/search";
+  const [shouldRenderAssistantModel, setShouldRenderAssistantModel] = useState(!isLoginPage);
+  const [assistantContext, setAssistantContext] = useState<TutorPanelPayload | undefined>(() => loadActiveTutorContext());
+  const [assistantBubbleId, setAssistantBubbleId] = useState<string | null>(null);
+  const [assistantPanelCollapsed, setAssistantPanelCollapsed] = useState(true);
+  const [assistantBubblePosition, setAssistantBubblePosition] = useState<AssistantBubblePosition>(() => {
+    const persisted = readAssistantBubblePosition();
+    if (persisted) return persisted;
+    if (typeof window === "undefined") return { x: 0, y: 0 };
+    const size = getAssistantBubbleSize();
+    return clampAssistantBubblePosition({
+      x: Math.max(12, window.innerWidth - size.width - 12),
+      y: Math.max(12, window.innerHeight - size.height - size.offsetY),
+    });
+  });
+  const [assistantBubbleDragging, setAssistantBubbleDragging] = useState(false);
+  const assistantBubbleDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
+  const assistantBubbleSuppressClickRef = useRef(false);
   const shellContainerClass = isShellHiddenPage
     ? ""
     : isOverviewPage
       ? `mx-auto w-full max-w-[1600px] px-2 py-4 pb-24 transition-[padding] duration-300 md:px-4 md:py-5 md:pb-8 lg:px-5 xl:px-6 ${desktopTutorWidthClass}`
-      : `mx-auto w-full max-w-[1480px] px-4 py-6 pb-24 transition-[padding] duration-300 md:px-8 md:py-8 md:pb-8 lg:px-10 xl:px-12 ${desktopTutorWidthClass}`;
+      : hideCompactAgentBar
+        ? `mx-auto w-full max-w-[1480px] px-4 py-3 pb-24 transition-[padding] duration-300 md:px-8 md:py-4 md:pb-8 lg:px-10 xl:px-12 ${desktopTutorWidthClass}`
+        : `mx-auto w-full max-w-[1480px] px-4 py-6 pb-24 transition-[padding] duration-300 md:px-8 md:py-8 md:pb-8 lg:px-10 xl:px-12 ${desktopTutorWidthClass}`;
 
   const navItems = [
     { label: "概览", id: "overview", path: "/", icon: Layers },
@@ -315,6 +539,238 @@ function MainLayout({
     { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
   ];
 
+  useEffect(() => {
+    if (isShellHiddenPage || shouldRenderAssistantModel) return undefined;
+    const renderModel = () => setShouldRenderAssistantModel(true);
+    if ("requestIdleCallback" in window) {
+      const idleId = (window as Window & {
+        requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
+        cancelIdleCallback: (id: number) => void;
+      }).requestIdleCallback(renderModel, { timeout: 7000 });
+      return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+    }
+    const timer = setTimeout(renderModel, 7000);
+    return () => clearTimeout(timer);
+  }, [isShellHiddenPage, shouldRenderAssistantModel]);
+
+  useEffect(() => {
+    const refreshAssistantContext = () => setAssistantContext(loadActiveTutorContext());
+    refreshAssistantContext();
+    window.addEventListener(ACTIVE_TUTOR_CONTEXT_EVENT, refreshAssistantContext as EventListener);
+    return () => window.removeEventListener(ACTIVE_TUTOR_CONTEXT_EVENT, refreshAssistantContext as EventListener);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (tutorDrawer.open) {
+      setAssistantBubbleId(null);
+      setAssistantPanelCollapsed(true);
+    }
+  }, [tutorDrawer.open, location.pathname]);
+
+  useEffect(() => {
+    setAssistantBubbleId(null);
+    setAssistantPanelCollapsed(true);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!isLoginPage) {
+      setShouldRenderAssistantModel(true);
+    }
+  }, [isLoginPage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleResize = () => {
+      setAssistantBubblePosition((current) => clampAssistantBubblePosition(current));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(ASSISTANT_BUBBLE_POSITION_STORAGE_KEY, JSON.stringify(assistantBubblePosition));
+    } catch {
+      // Ignore persistence failures.
+    }
+  }, [assistantBubblePosition]);
+
+  const handleAssistantBubblePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    assistantBubbleDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: assistantBubblePosition.x,
+      originY: assistantBubblePosition.y,
+      moved: false,
+    };
+    setAssistantBubbleDragging(true);
+    assistantBubbleSuppressClickRef.current = false;
+  };
+
+  const handleAssistantBubblePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = assistantBubbleDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+      drag.moved = true;
+    }
+    setAssistantBubblePosition(
+      clampAssistantBubblePosition({
+        x: drag.originX + deltaX,
+        y: drag.originY + deltaY,
+      }),
+    );
+  };
+
+  const finishAssistantBubbleDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = assistantBubbleDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    assistantBubbleDragRef.current = null;
+    setAssistantBubbleDragging(false);
+    assistantBubbleSuppressClickRef.current = drag.moved;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setAssistantBubblePosition((current) => clampAssistantBubblePosition(current));
+  };
+
+  const handleAssistantBubbleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (assistantBubbleSuppressClickRef.current) {
+      assistantBubbleSuppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    setAssistantBubbleId(null);
+    onOpenTutor();
+  };
+
+  const assistantCourseId = useMemo(() => {
+    const searchCourseId = new URLSearchParams(location.search).get("courseId")?.trim();
+    return searchCourseId || assistantContext?.courseId || readLastRouteCourseId() || "";
+  }, [assistantContext?.courseId, location.search]);
+
+  const assistantPageLabel =
+    currentPath === "/learn"
+      ? "课堂"
+      : currentPath === "/path"
+        ? "学习路径"
+        : currentPath === "/resources"
+          ? "资源中心"
+          : currentPath === "/evaluation"
+            ? "测评页"
+            : currentPath === "/report"
+              ? "报告页"
+              : "当前页面";
+
+  const assistantBubbles = useMemo(
+    () => {
+      const chapterLabel = assistantContext?.subtitle || assistantContext?.title || assistantPageLabel;
+      const nextRouteBase = assistantCourseId ? `?courseId=${encodeURIComponent(assistantCourseId)}` : "";
+      const routeForPath = `/path${nextRouteBase}`;
+      const routeForResources = `/resources${nextRouteBase}`;
+      const routeForEvaluation = `/evaluation${nextRouteBase}`;
+
+      return [
+        {
+          id: "progress",
+          title: "进度",
+          summary: assistantContext
+            ? `接着看 ${chapterLabel}`
+            : `按当前页面看进度`,
+          routeLabel: "去路径",
+          route: routeForPath,
+          prompt: assistantContext
+            ? `结合我正在看的内容 ${chapterLabel}，告诉我当前进度和下一步。`
+            : `结合我当前所在的${assistantPageLabel}，告诉我现在最该先做什么。`,
+        },
+        {
+          id: "next",
+          title: "下一步",
+          summary:
+            currentPath === "/learn"
+              ? "先补课堂资源"
+              : currentPath === "/path"
+                ? "先做当前任务"
+                : currentPath === "/resources"
+                  ? "先把资料补完"
+                  : currentPath === "/evaluation"
+                    ? "先做完测评"
+                    : "先回主线任务",
+          routeLabel: "去完成",
+          route:
+            currentPath === "/learn"
+              ? routeForResources
+              : currentPath === "/path"
+                ? `/learn${nextRouteBase}`
+                : currentPath === "/resources"
+                  ? `/learn${nextRouteBase}`
+                  : routeForResources || routeForPath,
+          prompt:
+            currentPath === "/learn"
+              ? "请结合我当前视频和课堂上下文，告诉我下一步先做什么。"
+              : currentPath === "/path"
+                ? "请结合我的学习路径，告诉我下一步先做什么。"
+                : "请结合当前页面，告诉我下一步先做什么。",
+        },
+        {
+          id: "todo",
+          title: "待补",
+          summary:
+            currentPath === "/learn"
+              ? "练习和复盘可补齐"
+              : currentPath === "/path"
+                ? "还有阶段任务"
+                : currentPath === "/resources"
+                  ? "还有资源导出"
+                  : "还有收尾动作",
+          routeLabel: "去补齐",
+          route: routeForEvaluation,
+          prompt:
+            currentPath === "/learn"
+              ? "帮我列出当前课堂里还没有完成的内容。"
+              : currentPath === "/path"
+                ? "帮我列出当前学习路径里还没有完成的内容。"
+                : "帮我列出当前页面里还没有完成的内容。",
+        },
+      ];
+    },
+    [assistantContext, assistantCourseId, assistantPageLabel, currentPath],
+  );
+
+  const openAssistantBubbleTutor = (bubble: (typeof assistantBubbles)[number]) => {
+    onOpenTutor({
+      courseId: assistantCourseId || assistantContext?.courseId || undefined,
+      sectionId: assistantContext?.sectionId,
+      mode: assistantContext?.mode || "learning",
+      title: assistantContext?.title || "AI 学习助手",
+      subtitle: assistantContext?.subtitle || assistantPageLabel,
+      videoSrc: assistantContext?.videoSrc,
+      videoResourceId: assistantContext?.videoResourceId,
+      videoFileId: assistantContext?.videoFileId,
+      videoFileName: assistantContext?.videoFileName,
+      resourceId: assistantContext?.resourceId,
+      resourceTitle: assistantContext?.resourceTitle,
+      resourceType: assistantContext?.resourceType,
+      resourceSummary: assistantContext?.resourceSummary,
+      quickPrompts:
+        assistantContext?.quickPrompts?.length ? assistantContext.quickPrompts : ["继续讲清楚", "告诉我下一步", "帮我找遗漏"],
+      startAt: assistantContext?.startAt,
+      autoplay: true,
+      muted: true,
+      query: bubble.prompt,
+    });
+  };
+
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#fff9fb_0%,#f8fbff_34%,#f4f7f9_100%)] text-[#171c22]">
       {!isShellHiddenPage ? (
@@ -324,6 +780,7 @@ function MainLayout({
             onLogout={onLogout}
             onOpenTutor={() => onOpenTutor()}
             contentShiftClass={desktopTutorWidthClass}
+            onPreloadRoute={onPreloadRoute}
           />
         </Suspense>
       ) : null}
@@ -332,19 +789,23 @@ function MainLayout({
         className={`relative flex flex-grow flex-col ${shellContainerClass}`}
       >
         {!isShellHiddenPage ? (
-          <>
-            <div className="pointer-events-none absolute inset-x-0 top-8 h-[260px] rounded-full bg-[#fb7299]/10 blur-3xl" />
-            <div className="pointer-events-none absolute right-0 top-[180px] h-[320px] w-[320px] rounded-full bg-[#7dd3fc]/12 blur-3xl" />
-          </>
+          <div className="global-frame-background" aria-hidden="true">
+            <img className="global-frame-image global-frame-image--portrait" src="/backgrounds/path-haibara-dog-clear-frame.png" alt="" />
+            <img className="global-frame-image global-frame-image--water" src="/backgrounds/path-water-frame.webp" alt="" />
+          </div>
         ) : null}
 
         <main
-          className={`relative min-w-0 flex-grow transition-[max-width,transform] duration-300 ${
+          className={`relative z-[1] min-w-0 flex-grow transition-[max-width,transform] duration-300 ${
+            isProductizedPage && !isPathPage ? "product-page" : ""
+          } ${
             tutorDrawer.open ? "lg:origin-right" : ""
           }`}
         >
-          {!isShellHiddenPage && !["/", "/collection"].includes(currentPath) ? <GlobalAIAssistantBar /> : null}
-          {children}
+          {!isShellHiddenPage && !["/", "/collection"].includes(currentPath) && !hideCompactAgentBar ? <GlobalAIAssistantBar /> : null}
+          <div key={`${location.pathname}${location.search}`}>
+            {children}
+          </div>
         </main>
       </div>
 
@@ -356,6 +817,9 @@ function MainLayout({
               <Link
                 key={item.path}
                 to={item.path}
+                onMouseEnter={() => onPreloadRoute(item.path)}
+                onFocus={() => onPreloadRoute(item.path)}
+                onPointerDown={() => onPreloadRoute(item.path)}
                 className={`flex shrink-0 flex-col items-center gap-1 rounded-xl px-3 pb-1.5 pt-0.5 text-[10px] font-extrabold transition-all ${
                   isActive ? "scale-105 bg-[#fb7299]/5 ui-text-brand" : "ui-text-muted-rose/80 hover:text-[#fb7299]"
                 }`}
@@ -368,8 +832,152 @@ function MainLayout({
         </nav>
       ) : null}
 
-      {!isShellHiddenPage ? (
+      {!isLoginPage ? (
         <>
+          <div
+            className={`fixed bottom-[242px] right-3 z-[149] w-[min(292px,calc(100vw-1.5rem))] transition-all duration-300 md:bottom-[252px] md:right-5 ${
+              tutorDrawer.open ? "pointer-events-none translate-y-3 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
+            }`}
+          >
+            <div className="overflow-hidden rounded-[20px] border border-white/80 bg-white/92 shadow-[0_12px_26px_rgba(15,23,42,0.08)] backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => setAssistantPanelCollapsed((value) => !value)}
+                className="flex w-full items-center justify-between gap-3 border-b border-[#eef2f6] px-3 py-2.5 text-left"
+                aria-label={assistantPanelCollapsed ? "展开 AI 建议" : "收起 AI 建议"}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#fff1f6] text-[#fb7299]">
+                    <Sparkles className="h-4 w-4" />
+                  </span>
+                  <span>
+                    <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">AI 导师建议</span>
+                    <span className="block text-[12px] font-semibold text-[#171c22]">
+                      {assistantPanelCollapsed ? "已收起，点击展开" : "点击题目继续问"}
+                    </span>
+                  </span>
+                </span>
+                <ChevronDown className={`h-4 w-4 text-[#8a94a3] transition-transform ${assistantPanelCollapsed ? "-rotate-90" : "rotate-0"}`} />
+              </button>
+              {!assistantPanelCollapsed ? (
+                <div className="space-y-2 p-2.5">
+                  {assistantBubbles.map((bubble) => {
+                    const expanded = assistantBubbleId === bubble.id;
+                    return (
+                      <div
+                        key={bubble.id}
+                        className={`rounded-[18px] border bg-white/96 transition-all ${
+                          expanded ? "border-[#fb7299]/30" : "border-[#e7edf3]"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setAssistantBubbleId(expanded ? null : bubble.id)}
+                          className="flex w-full items-start gap-3 px-3 py-2.5 text-left"
+                        >
+                          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${bubble.id === "next" ? "bg-[#171c22] text-white" : "bg-[#fff1f6] text-[#fb7299]"}`}>
+                            <Sparkles className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">{bubble.title}</span>
+                            <span className="mt-1 block text-[12px] leading-5 text-[#171c22]">{bubble.summary}</span>
+                          </span>
+                        </button>
+                        {expanded ? (
+                          <div className="border-t border-[#eef2f6] px-3 pb-3 pt-2">
+                            <div className="flex flex-wrap gap-2">
+                              <Link
+                                to={bubble.route}
+                                onClick={() => setAssistantBubbleId(null)}
+                                className="inline-flex items-center gap-1 rounded-full bg-[#fb7299] px-3 py-1.5 text-[11px] font-black text-white shadow-[0_10px_20px_rgba(251,114,153,0.16)] transition hover:-translate-y-0.5"
+                              >
+                                {bubble.routeLabel}
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssistantBubbleId(null);
+                                  openAssistantBubbleTutor(bubble);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-[#e7edf3] bg-white px-3 py-1.5 text-[11px] font-black text-[#171c22] transition hover:-translate-y-0.5 hover:border-[#fb7299]/30"
+                              >
+                                打开 AI 导师
+                                <Bot className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between px-3 py-2.5">
+                  <span className="text-xs font-semibold text-[#5b6574]">已收起，点击右侧小箭头展开</span>
+                  <button
+                    type="button"
+                    onClick={() => setAssistantPanelCollapsed(false)}
+                    className="inline-flex items-center gap-1 rounded-full border border-[#e7edf3] bg-white px-3 py-1.5 text-[11px] font-black text-[#171c22]"
+                  >
+                    展开
+                    <ChevronDown className="h-3.5 w-3.5 -rotate-180" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAssistantBubbleClick}
+            onPointerDown={handleAssistantBubblePointerDown}
+            onPointerMove={handleAssistantBubblePointerMove}
+            onPointerUp={finishAssistantBubbleDrag}
+            onPointerCancel={finishAssistantBubbleDrag}
+            onMouseEnter={() => setShouldRenderAssistantModel(true)}
+            onFocus={() => setShouldRenderAssistantModel(true)}
+            className={`group fixed z-[150] flex h-[144px] w-[116px] items-end justify-center overflow-visible rounded-[30px] bg-transparent pb-2 transition-[opacity,transform,left,top] duration-300 hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-[#fb7299]/20 md:h-[174px] md:w-[134px] ${
+              tutorDrawer.open ? "pointer-events-none translate-x-8 opacity-0" : "translate-x-0 opacity-100"
+            } ${assistantBubbleDragging ? "cursor-grabbing transition-none" : "cursor-grab"}`}
+            style={{
+              left: `${assistantBubblePosition.x}px`,
+              top: `${assistantBubblePosition.y}px`,
+              right: "auto",
+              bottom: "auto",
+              touchAction: "none",
+            }}
+            aria-label="打开 AI 导师侧栏"
+            title="打开 AI 导师侧栏"
+          >
+            <span className="absolute bottom-0 left-1/2 h-12 w-[102px] -translate-x-1/2 rounded-[999px] bg-[#fb7299]/18 blur-md transition group-hover:bg-[#fb7299]/24 md:w-[118px]" />
+            <span className="absolute bottom-1 left-1/2 h-9 w-[92px] -translate-x-1/2 rounded-[999px] border border-white/80 bg-white/78 shadow-[0_16px_34px_rgba(15,23,42,0.14)] backdrop-blur-md md:w-[106px]" />
+            <span className="absolute right-0 top-1 rounded-full border border-[#F6B6CA] bg-white/94 px-2.5 py-1 text-[10px] font-black text-[#fb7299] shadow-[0_10px_24px_rgba(251,114,153,0.16)] transition group-hover:-translate-y-0.5">
+              AI 导师
+            </span>
+            <span className="pointer-events-none absolute inset-x-[-22px] bottom-[7px] top-[-10px] block">
+              <Suspense
+                fallback={
+                  <span className="absolute bottom-9 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full border border-[#F6B6CA] bg-white text-[#fb7299] shadow-[0_14px_30px_rgba(251,114,153,0.18)]">
+                    <Bot className="h-6 w-6" />
+                  </span>
+                }
+              >
+                {shouldRenderAssistantModel ? (
+                  <StudyAssistant3D
+                    className="h-full w-full"
+                    minHeightClassName="min-h-0"
+                    minRenderWidth={150}
+                    minRenderHeight={190}
+                  />
+                ) : (
+                  <span className="absolute bottom-9 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full border border-[#F6B6CA] bg-white text-[#fb7299] shadow-[0_14px_30px_rgba(251,114,153,0.18)]">
+                    <Bot className="h-6 w-6" />
+                  </span>
+                )}
+              </Suspense>
+            </span>
+          </button>
           <div
             className={`fixed inset-0 z-[160] bg-[#0f172a]/18 transition-opacity duration-300 md:hidden ${
               tutorDrawer.open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
@@ -441,9 +1049,9 @@ function WelcomeScreenGate({
   onDismiss: () => void;
 }) {
   const location = useLocation();
-  const hiddenRoutes = ["/login", "/resources/preview"];
+  const hiddenRoutes = ["/login", "/resources/preview", "/resources/judge-result"];
   const shouldHideWelcome =
-    tutorOpen || hiddenRoutes.includes(location.pathname) || location.pathname.startsWith("/resources/preview");
+    tutorOpen || hiddenRoutes.includes(location.pathname) || location.pathname.startsWith("/resources/preview") || location.pathname.startsWith("/resources/judge-result");
 
   if (!showWelcome || shouldHideWelcome) {
     return null;
@@ -517,8 +1125,12 @@ function RouterStateSync({
 
       const currentUrl = `${location.pathname}${location.search}`;
       const targetUrl = `${stored.path || "/"}${stored.search || ""}`;
+      const canRestoreStoredRoute =
+        Boolean(stored.path) &&
+        !stored.path.startsWith("/resources/preview") &&
+        !stored.path.startsWith("/resources/judge-result");
 
-      if ((location.pathname === "/" || location.pathname === "/login") && stored.path && currentUrl !== targetUrl) {
+      if ((location.pathname === "/" || location.pathname === "/login") && canRestoreStoredRoute && currentUrl !== targetUrl) {
         navigate(targetUrl, { replace: true });
       }
 
@@ -613,7 +1225,29 @@ function RouterStateSync({
       return;
     }
 
+    let persistTimer: number | null = null;
     const persistScroll = () => {
+      if (persistTimer !== null) {
+        return;
+      }
+      persistTimer = window.setTimeout(() => {
+        persistTimer = null;
+        try {
+          const raw = localStorage.getItem(APP_BROWSER_SCROLL_STATE_STORAGE_KEY);
+          const parsed = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+          parsed[routeKey] = window.scrollY;
+          localStorage.setItem(APP_BROWSER_SCROLL_STATE_STORAGE_KEY, JSON.stringify(parsed));
+        } catch {
+          // Ignore scroll persistence errors.
+        }
+      }, 180);
+    };
+
+    const persistScrollNow = () => {
+      if (persistTimer !== null) {
+        window.clearTimeout(persistTimer);
+        persistTimer = null;
+      }
       try {
         const raw = localStorage.getItem(APP_BROWSER_SCROLL_STATE_STORAGE_KEY);
         const parsed = raw ? (JSON.parse(raw) as Record<string, number>) : {};
@@ -624,14 +1258,13 @@ function RouterStateSync({
       }
     };
 
-    persistScroll();
     window.addEventListener("scroll", persistScroll, { passive: true });
-    window.addEventListener("beforeunload", persistScroll);
+    window.addEventListener("beforeunload", persistScrollNow);
 
     return () => {
-      persistScroll();
+      persistScrollNow();
       window.removeEventListener("scroll", persistScroll);
-      window.removeEventListener("beforeunload", persistScroll);
+      window.removeEventListener("beforeunload", persistScrollNow);
     };
   }, [routeKey, user.loggedIn]);
 
@@ -703,10 +1336,13 @@ export default function App() {
 
   useEffect(() => {
     try {
+      // Do not auto-open the welcome page on startup.
       const welcomeSeen =
         sessionStorage.getItem("hasSeenWelcome") === "true" ||
         localStorage.getItem(WELCOME_SEEN_STORAGE_KEY) === "true";
-      setShowWelcome(!welcomeSeen);
+      if (welcomeSeen) {
+        setShowWelcome(false);
+      }
 
       const persistentRaw = localStorage.getItem(PERSISTENT_SESSION_STORAGE_KEY);
       if (!persistentRaw) {
@@ -752,12 +1388,19 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(PERSISTENT_SESSION_STORAGE_KEY);
+    localStorage.removeItem(RECOVERY_SESSION_STORAGE_KEY);
+    localStorage.removeItem(APP_BROWSER_STATE_STORAGE_KEY);
+    localStorage.removeItem(APP_BROWSER_SCROLL_STATE_STORAGE_KEY);
     setUser({
       id: "",
       name: "",
       avatar: "",
       loggedIn: false,
     });
+    setPersistLogin(false);
+    setShowWelcome(false);
     setTutorDrawer({ open: false, nonce: Date.now() });
   };
 
@@ -795,9 +1438,14 @@ export default function App() {
     });
   };
 
+  useEffect(() => {
+    if (!user.loggedIn) return undefined;
+    return scheduleRouteWarmup();
+  }, [user.loggedIn]);
+
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const location = useLocation();
-    if (location.pathname === "/resources/preview") {
+    if (location.pathname === "/resources/preview" || location.pathname === "/resources/judge-result") {
       return <>{children}</>;
     }
     if (!user.loggedIn) {
@@ -830,6 +1478,7 @@ export default function App() {
         tutorDrawer={tutorDrawer}
         onOpenTutor={handleOpenTutor}
         onCloseTutor={() => setTutorDrawer((prev) => ({ ...prev, open: false }))}
+        onPreloadRoute={preloadRoute}
       >
         <RouteErrorBoundaryShell>
           <Suspense fallback={<RouteFallback />}>
@@ -852,6 +1501,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <CapabilityModel user={user} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile/conversation"
+                element={
+                  <ProtectedRoute>
+                    <ProfileConversation />
                   </ProtectedRoute>
                 }
               />
@@ -880,6 +1537,14 @@ export default function App() {
                 }
               />
               <Route
+                path="/search"
+                element={
+                  <ProtectedRoute>
+                    <SearchRouteBridge onEnter={() => setTutorDrawer((prev) => (prev.open ? { ...prev, open: false } : prev))} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/resources"
                 element={
                   <ProtectedRoute>
@@ -892,6 +1557,22 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <ResourceSourcePreview />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resources/code-list"
+                element={
+                  <ProtectedRoute>
+                    <ResourceSourcePreview />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resources/judge-result"
+                element={
+                  <ProtectedRoute>
+                    <CodingJudgeResult />
                   </ProtectedRoute>
                 }
               />

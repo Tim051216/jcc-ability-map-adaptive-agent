@@ -24,7 +24,7 @@ import {
 
 import { INBOX_UPDATED_EVENT, getInboxSummary, type InboxItem } from "../lib/inbox";
 import { getDemoUserIdentity } from "../lib/demoUserIdentity";
-import { buildResourcesRoute, readLastRouteCourseId } from "../lib/routeCourseContext";
+import { buildResourcesRoute, buildSearchRoute, readLastRouteCourseId } from "../lib/routeCourseContext";
 
 interface HeaderProps {
   user: {
@@ -36,6 +36,7 @@ interface HeaderProps {
   onLogout: () => void;
   onOpenTutor?: () => void;
   contentShiftClass?: string;
+  onPreloadRoute?: (path: string) => void;
 }
 
 function formatNotificationTime(value?: string) {
@@ -54,7 +55,7 @@ function formatNotificationTime(value?: string) {
   }).format(date);
 }
 
-export default function Header({ user, onLogout, onOpenTutor, contentShiftClass = "" }: HeaderProps) {
+export default function Header({ user, onLogout, onOpenTutor, contentShiftClass = "", onPreloadRoute }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -118,6 +119,15 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
     setShowDropdown(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (location.pathname === "/resources") {
+      setSearchQuery(new URLSearchParams(location.search).get("search") || "");
+    }
+    if (location.pathname === "/search") {
+      setSearchQuery(new URLSearchParams(location.search).get("q") || "");
+    }
+  }, [location.pathname, location.search]);
+
   const navItems = useMemo(
     () => [
       { label: "摘要", id: "overview", path: "/", icon: Layers },
@@ -135,15 +145,18 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
 
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(buildResourcesRoute(readLastRouteCourseId(), searchQuery));
+    const keyword = searchQuery.trim();
+    if (keyword) {
+      setShowDropdown(false);
+      setShowNotificationPanel(false);
+      navigate(buildSearchRoute(keyword));
     }
   };
 
   const currentPath = location.pathname;
   const isNavItemActive = (itemPath: string) => {
     const normalizedPath = itemPath.split("?")[0] || itemPath;
-    return currentPath === normalizedPath;
+    return currentPath === normalizedPath || (normalizedPath !== "/" && currentPath.startsWith(`${normalizedPath}/`));
   };
 
   return (
@@ -153,6 +166,9 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
           <Link
             id="nav-brand"
             to="/"
+            onMouseEnter={() => onPreloadRoute?.("/")}
+            onFocus={() => onPreloadRoute?.("/")}
+            onPointerDown={() => onPreloadRoute?.("/")}
             className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#fb7299]/15 bg-[#fb7299]/5 px-3 py-1 font-sans text-xl font-extrabold ui-tracking-tighter text-[#fb7299] md:text-2xl"
           >
             BiliLearn
@@ -348,10 +364,13 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
             {navItems.map((item) => {
               const isActive = isNavItemActive(item.path);
               return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-sans text-xs font-bold transition-all duration-150 ${
+              <Link
+                key={item.path}
+                to={item.path}
+                onMouseEnter={() => onPreloadRoute?.(item.path)}
+                onFocus={() => onPreloadRoute?.(item.path)}
+                onPointerDown={() => onPreloadRoute?.(item.path)}
+                className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-sans text-xs font-bold transition-all duration-150 ${
                     isActive
                       ? "ui-bg-brand text-white shadow-sm shadow-[#fb7299]/15"
                       : "ui-text-muted-rose hover:bg-[#fb7299]/10 hover:ui-text-brand"

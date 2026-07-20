@@ -32,6 +32,9 @@ class ResourceCard(BaseModel):
     study_suggestion: str | None = None
     source_file_count: int = 0
     source_files: list[ResourceSourceFileRef] = Field(default_factory=list)
+    generated_at: str | None = None
+    updated_at: str | None = None
+    generation_context: dict | None = None
 
 
 class KnowledgeHit(BaseModel):

@@ -34,7 +34,7 @@ const CASES: PreviewCase[] = [
 async function primeSession(page: Page) {
   await page.addInitScript(() => {
     sessionStorage.setItem(
-      "bililearn-user-session",
+      "a3-student-user-session",
       JSON.stringify({
         id: "demo2024",
         name: "联合研学画像已接入",

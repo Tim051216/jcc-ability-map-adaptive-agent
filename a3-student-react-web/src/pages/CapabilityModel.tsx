@@ -7,13 +7,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Activity,
-  AlertCircle,
   ArrowRight,
   Award,
+  BookOpen,
   CheckCircle,
+  ClipboardCheck,
+  Download,
+  FileCheck2,
   History,
   RefreshCw,
   Sparkles,
+  Target,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -30,8 +34,107 @@ import {
   type StudentProfileDetailResponse,
 } from "../lib/studentApi";
 import { getCurrentLoggedInUserId } from "../lib/currentUser";
-import { openTutorPanel } from "../lib/tutorPanel";
 const USER_ID = getCurrentLoggedInUserId();
+const PROFILE_SECTION_TIMEOUT_MS = 4500;
+const PROFILE_PAGE_CACHE_KEY = "a3-profile-page-cache";
+const PROFILE_REPORT_STORAGE_KEY = "a3-profile-report-cache";
+const PROFILE_PAGE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type ProfilePageCacheRecord = {
+  savedAt: number;
+  profileSummary: ProfileSummaryResponse | null;
+  profileDetail: StudentProfileDetailResponse | null;
+  profileHistory: ProfileHistoryResponse | null;
+  growthMap: GrowthMapResponse | null;
+};
+
+type ProfileReportCacheRecord = {
+  generated: boolean;
+  generatedAt: string;
+  sbtiCode: string;
+};
+
+function getProfileLoadErrorMessage(results: PromiseSettledResult<unknown>[]) {
+  const messages = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => {
+      if (result.status !== "rejected") return "";
+      return result.reason instanceof Error ? result.reason.message : "学习画像部分数据加载失败";
+    })
+    .filter(Boolean);
+
+  return Array.from(new Set(messages)).join("；");
+}
+
+function withProfileTimeout<T>(promise: Promise<T>, timeoutMs = PROFILE_SECTION_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("画像数据加载超时")), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function readProfilePageCache(userId: number): ProfilePageCacheRecord | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PROFILE_PAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, ProfilePageCacheRecord>;
+    const record = parsed[String(userId)];
+    if (!record || Date.now() - record.savedAt > PROFILE_PAGE_CACHE_TTL_MS) return null;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+function writeProfilePageCache(userId: number, record: Omit<ProfilePageCacheRecord, "savedAt">) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.sessionStorage.getItem(PROFILE_PAGE_CACHE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, ProfilePageCacheRecord>) : {};
+    parsed[String(userId)] = {
+      ...record,
+      savedAt: Date.now(),
+    };
+    window.sessionStorage.setItem(PROFILE_PAGE_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore profile cache failures.
+  }
+}
+
+function readProfileReportCache(userId: number): ProfileReportCacheRecord | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PROFILE_REPORT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, ProfileReportCacheRecord>;
+    const record = parsed[String(userId)];
+    return record?.generated ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeProfileReportCache(userId: number, record: ProfileReportCacheRecord) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(PROFILE_REPORT_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, ProfileReportCacheRecord>) : {};
+    parsed[String(userId)] = record;
+    window.localStorage.setItem(PROFILE_REPORT_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore report cache failures. The page can still render the generated report in memory.
+  }
+}
 
 const CORE_AGENT_OVERVIEW = [
   {
@@ -159,6 +262,17 @@ const SBTI_PROFILE_LABELS: Record<string, { title: string; subtitle: string }> =
     title: "节奏推进型",
     subtitle: "主线清晰，渐进提升",
   },
+};
+
+const SBTI_LETTER_GUIDE: Record<string, { label: string; description: string }> = {
+  S: { label: "稳态", description: "学习节奏相对稳定，适合以清晰主线持续推进。" },
+  P: { label: "实战", description: "更容易通过项目、练习和即时验证把知识转成能力。" },
+  T: { label: "任务", description: "需要明确目标、步骤和验收标准来降低学习摩擦。" },
+  A: { label: "行动", description: "适合把结论快速落到下一步动作，而不是停留在概念层。" },
+  C: { label: "建构", description: "更依赖框架、结构和概念关系来形成长期理解。" },
+  E: { label: "探索", description: "对新问题和开放式任务更敏感，适合先尝试再校准。" },
+  F: { label: "反馈", description: "需要高频反馈来修正理解偏差和保持学习投入。" },
+  I: { label: "内化", description: "适合通过复盘、解释和再表达把知识沉淀下来。" },
 };
 
 const FALLBACK_AXES: CapabilityAxis[] = [
@@ -310,6 +424,43 @@ function formatProfileMessageTime(value?: string | null) {
   });
 }
 
+function formatProfileReportTime(value?: string | null) {
+  if (!value) return "未生成";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "已保存";
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function escapeReportHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeReportFileName(value: string) {
+  return value.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "-").slice(0, 80);
+}
+
+function triggerReportDownload(fileName: string, html: string) {
+  const blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName.endsWith(".doc") ? fileName : `${fileName}.doc`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+}
+
 function getSbtiSnapshot(profile: ProfileSummaryResponse | null) {
   const code = String(profile?.sbti_code || "SPTA").toUpperCase();
   const matched = SBTI_PROFILE_LABELS[code] || SBTI_PROFILE_LABELS.SPTA;
@@ -324,8 +475,12 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
   const navigate = useNavigate();
   const activeUserId = user?.id && /^\d+$/.test(user.id) ? Number(user.id) : getCurrentLoggedInUserId();
   const radarCardRef = useRef<HTMLDivElement | null>(null);
+  const profileReportRef = useRef<HTMLElement | null>(null);
+  const persistedReport = readProfileReportCache(activeUserId);
   const [radarProgress, setRadarProgress] = useState(0);
   const [shouldAnimateRadar, setShouldAnimateRadar] = useState(false);
+  const [profileReportGenerated, setProfileReportGenerated] = useState(Boolean(persistedReport));
+  const [profileReportGeneratedAt, setProfileReportGeneratedAt] = useState<string | null>(persistedReport?.generatedAt || null);
   const [profileSummary, setProfileSummary] = useState<ProfileSummaryResponse | null>(null);
   const [lastBehaviorUpdate, setLastBehaviorUpdate] = useState<ProfileBehaviorUpdateResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -343,6 +498,8 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [conversationCompleting, setConversationCompleting] = useState(false);
   const [conversationFlow, setConversationFlow] = useState<ProfileConversationFlowResponse | null>(null);
+  const [conversationStatusMessage, setConversationStatusMessage] = useState<string | null>(null);
+  const [conversationErrorMessage, setConversationErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const target = radarCardRef.current;
@@ -390,19 +547,28 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
   }, [toastMessage]);
 
   const loadProfile = async ({ silent = false }: { silent?: boolean } = {}) => {
+    const cachedProfile = !silent ? readProfilePageCache(activeUserId) : null;
+    if (cachedProfile) {
+      setProfileSummary(cachedProfile.profileSummary);
+      setProfileDetail(cachedProfile.profileDetail);
+      setProfileHistory(cachedProfile.profileHistory);
+      setGrowthMap(cachedProfile.growthMap);
+      setUsingFallback(!cachedProfile.profileSummary && !cachedProfile.profileDetail);
+    }
+
     if (silent) {
       setRefreshing(true);
     } else {
-      setLoading(true);
+      setLoading(!cachedProfile);
     }
     setError(null);
 
     try {
       const [profileResult, detailResult, historyResult, growthResult] = await Promise.allSettled([
-        studentApi.getProfileSummary(activeUserId),
-        studentApi.getProfileDetail(activeUserId),
-        studentApi.getProfileHistory(activeUserId, 8),
-        studentApi.getGrowthMap(401, activeUserId),
+        withProfileTimeout(studentApi.getProfileSummary(activeUserId)),
+        withProfileTimeout(studentApi.getProfileDetail(activeUserId)),
+        withProfileTimeout(studentApi.getProfileHistory(activeUserId, 8)),
+        withProfileTimeout(studentApi.getGrowthMap(401, activeUserId)),
       ]);
 
       const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
@@ -414,19 +580,22 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
       setProfileDetail(detail);
       setProfileHistory(history);
       setGrowthMap(growth);
+      if (profile || detail || history || growth) {
+        writeProfilePageCache(activeUserId, {
+          profileSummary: profile,
+          profileDetail: detail,
+          profileHistory: history,
+          growthMap: growth,
+        });
+      }
 
+      const hasCoreProfileData = Boolean(profile || detail);
       const failedResults = [profileResult, detailResult, historyResult, growthResult].filter(
         (result) => result.status === "rejected",
       );
 
-      setUsingFallback(!profile);
-      setError(
-        failedResults.length > 0
-          ? failedResults
-              .map((result) => (result.status === "rejected" && result.reason instanceof Error ? result.reason.message : "学习画像部分数据加载失败"))
-              .join("；")
-          : null,
-      );
+      setUsingFallback(!hasCoreProfileData);
+      setError(!hasCoreProfileData && failedResults.length > 0 ? getProfileLoadErrorMessage(failedResults) : null);
     } catch (loadError) {
       setProfileSummary(null);
       setProfileDetail(null);
@@ -458,6 +627,8 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
   const handleStartConversation = async () => {
     setConversationLoading(true);
     setError(null);
+    setConversationErrorMessage(null);
+    setConversationStatusMessage("正在创建画像对话会话...");
     try {
       const session = await studentApi.startProfileConversation({
         user_id: activeUserId,
@@ -466,9 +637,13 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
       setConversationSessionId(session.session_id);
       setConversationMessages(session.messages || []);
       setConversationFlow(null);
+      setConversationStatusMessage("会话已创建，输入一段自然语言后系统会抽取画像维度。");
       setToastMessage("画像对话已开启，请直接用自然语言描述你的专业、目标和学习情况。");
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "开启画像对话失败");
+      const message = startError instanceof Error ? startError.message : "开启画像对话失败";
+      setError(message);
+      setConversationErrorMessage(message);
+      setConversationStatusMessage(null);
     } finally {
       setConversationLoading(false);
     }
@@ -480,6 +655,8 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
 
     setConversationLoading(true);
     setError(null);
+    setConversationErrorMessage(null);
+    setConversationStatusMessage("正在创建/确认画像会话...");
     try {
       const sessionId = await ensureConversationSession();
       const optimisticUserMessage: ProfileConversationMessage = {
@@ -493,6 +670,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
       };
       setConversationMessages((current) => [...current, optimisticUserMessage]);
       setConversationInput("");
+      setConversationStatusMessage("已收到回答，正在抽取知识基础、学习节奏、卡点和目标方向...");
 
       const response = await studentApi.sendProfileConversationMessage({
         session_id: sessionId,
@@ -503,11 +681,22 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         const deduped = current.filter((item) => item.message_id !== optimisticUserMessage.message_id);
         return [...deduped, optimisticUserMessage, response.assistant_message];
       });
+      const extractedCount = response.extraction_result?.extracted_info?.length || 0;
+      setConversationStatusMessage(
+        extractedCount
+          ? `本轮已抽取 ${extractedCount} 条画像信号，当前完整度 ${response.completeness}%。`
+          : `本轮已完成分析，当前完整度 ${response.completeness}%。`,
+      );
       if (!response.should_continue && response.completeness >= 60) {
         setToastMessage("六维画像信息已基本齐全，可以生成正式学生画像。");
+      } else {
+        setToastMessage("回答已写入画像对话，右侧维度监控已刷新。");
       }
     } catch (messageError) {
-      setError(messageError instanceof Error ? messageError.message : "发送画像对话失败");
+      const message = messageError instanceof Error ? messageError.message : "发送画像对话失败";
+      setError(message);
+      setConversationErrorMessage(message);
+      setConversationStatusMessage(null);
     } finally {
       setConversationLoading(false);
     }
@@ -518,6 +707,8 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
 
     setConversationCompleting(true);
     setError(null);
+    setConversationErrorMessage(null);
+    setConversationStatusMessage("正在生成正式画像并同步到路径、资源、测评和答疑...");
     try {
       const detail = await studentApi.completeProfileConversation({
         session_id: conversationSessionId,
@@ -525,9 +716,13 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
       });
       setProfileDetail(detail);
       await loadProfile({ silent: true });
+      setConversationStatusMessage(`正式画像已生成，当前完整度 ${detail.completeness}%。`);
       setToastMessage("学生画像已正式生成，并已接入后续路径、资源、测评和答疑链路。");
     } catch (completeError) {
-      setError(completeError instanceof Error ? completeError.message : "完成画像构建失败");
+      const message = completeError instanceof Error ? completeError.message : "完成画像构建失败";
+      setError(message);
+      setConversationErrorMessage(message);
+      setConversationStatusMessage(null);
     } finally {
       setConversationCompleting(false);
     }
@@ -562,6 +757,11 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
   };
 
   const axes = useMemo(() => (profileSummary ? buildAxesFromProfile(profileSummary) : FALLBACK_AXES), [profileSummary]);
+  const radarSourceLabel = profileSummary
+    ? "当前使用实时画像 summary 指标"
+    : profileDetail
+      ? "画像详情已接入，雷达等待 summary 同步"
+      : "当前使用页面内 fallback 指标";
   const animatedScores = useMemo(() => axes.map((axis) => (axis.score / 100) * radarProgress), [axes, radarProgress]);
   const benchmarkScores = useMemo(() => axes.map((axis) => axis.benchmark / 100), [axes]);
   const overallScore = useMemo(
@@ -572,12 +772,17 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
     () => axes.reduce((best, axis) => (axis.score > best.score ? axis : best), axes[0]),
     [axes],
   );
+  const weakestAxis = useMemo(
+    () => axes.reduce((weakest, axis) => (axis.score < weakest.score ? axis : weakest), axes[0]),
+    [axes],
+  );
   const animatedPolygonPoints = useMemo(() => buildPolygonPoints(animatedScores, axes), [animatedScores, axes]);
   const benchmarkPolygonPoints = useMemo(() => buildPolygonPoints(benchmarkScores, axes), [benchmarkScores, axes]);
   const autoConversationDimensions = useMemo(
     () => buildRealConversationalDimensions(profileDetail, conversationFlow?.extraction_result),
     [profileDetail, conversationFlow?.extraction_result],
   );
+  const extractedConversationSignals = conversationFlow?.extraction_result?.extracted_info || [];
   const portraitInsightCards = useMemo(() => {
     const dimensions = [...(growthMap?.dimensions || [])].sort((a, b) => b.score - a.score);
     const strongestDimension = dimensions[0];
@@ -629,7 +834,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
       subtitle: growthMap?.title || `你当前处于${stage}，更适合用“${style}”继续推进`,
       summary:
         growthMap?.summary ||
-        `系统判断你现在最突出的优势是“${strongest}”，但在“${weakest}”上还需要继续补强。接下来更适合先沿着当前节奏稳住优势，再通过针对性练习和资料补齐薄弱点。`,
+      `系统判断你现在最突出的优势是“${strongest}”，但在“${weakest}”上还需要继续补强。接下来更适合先沿着当前节奏稳住优势，再通过针对性练习和资料补齐薄弱点。`,
     };
   }, [
     growthMap?.summary,
@@ -639,22 +844,226 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
     profileSummary?.recommended_learning_style,
     strongestAxis.label,
   ]);
+  const profileEvidenceCards = useMemo(() => {
+    const dimensions = [...(growthMap?.dimensions || [])].sort((a, b) => b.score - a.score);
+    const strongestDimension = dimensions[0];
+    const weakestDimension = dimensions[dimensions.length - 1];
+    const recentProfileChange = profileHistory?.history?.[0];
+    const stage = getStageText(profileSummary?.current_stage);
+    const style = getFriendlyStyle(profileSummary?.recommended_learning_style);
+
+    return [
+      {
+        key: "assessment",
+        title: "测评数据",
+        label: "知识掌握信号",
+        icon: ClipboardCheck,
+        description:
+          weakestDimension?.evidence ||
+          "测评得分、错题类型和薄弱知识点会写入画像，用来判断当前掌握程度与优先补齐方向。",
+        result: weakestDimension?.label ? `重点关注：${weakestDimension.label}` : `当前阶段：${stage}`,
+        tone: "from-[#fff4f8] to-[#ffffff]",
+      },
+      {
+        key: "behavior",
+        title: "学习行为",
+        label: "学习偏好信号",
+        icon: BookOpen,
+        description:
+          recentProfileChange?.change_description ||
+          "课程学习、资源浏览、收藏、提问和停留节奏会持续回写，用来识别更适合的讲解方式与学习节奏。",
+        result: `学习方式：${style}`,
+        tone: "from-[#f4fbff] to-[#ffffff]",
+      },
+      {
+        key: "assignment",
+        title: "作业表现",
+        label: "成果输出信号",
+        icon: FileCheck2,
+        description:
+          strongestDimension?.evidence ||
+          "练习提交、项目输出和实操反馈会进入成果输出与执行效率维度，帮助系统判断能否把知识真正用起来。",
+        result: `当前优势：${strongestDimension?.label || strongestAxis.label}`,
+        tone: "from-[#fffaf1] to-[#ffffff]",
+      },
+      {
+        key: "judgement",
+        title: "画像判断",
+        label: "个性化结论",
+        icon: Target,
+        description:
+          profileSummary?.key_features ||
+          "画像智能体把这些信号汇总成当前阶段、强弱项和学习偏好，再同步给路径、资源、测评与 AI 导师。",
+        result: `画像完整度：${profileSummary?.completeness ?? overallScore}%`,
+        tone: "from-[#f5f7ff] to-[#ffffff]",
+      },
+    ];
+  }, [
+    growthMap?.dimensions,
+    overallScore,
+    profileHistory?.history,
+    profileSummary?.completeness,
+    profileSummary?.current_stage,
+    profileSummary?.key_features,
+    profileSummary?.recommended_learning_style,
+    strongestAxis.label,
+  ]);
   const sbtiSnapshot = useMemo(() => getSbtiSnapshot(profileSummary), [profileSummary]);
-  const openProfileTutor = () => {
-    openTutorPanel({
-      courseId: "series-2",
-      mode: "default",
-      title: "学习画像解读",
-      subtitle: "AI 导师会结合当前画像页的阶段、风格和强弱项，解释这份画像对后续学习意味着什么。",
-      resourceTitle: "当前学习画像",
-      resourceType: "course_overview",
-      resourceSummary:
-        profileSummary?.key_features ||
-        "系统已根据课程、资源、测评与提问行为生成当前画像，并准备把它同步到路径、资料、答疑与练习。",
-      query:
-        "请解读我当前这份学习画像：先告诉我最强项和最该补的地方，再说它会怎样影响后续路径、资料和答疑方式。",
-      quickPrompts: ["解读这份画像", "我最该补哪项能力", "画像会怎样影响后续推荐"],
+  const sbtiBreakdown = useMemo(
+    () =>
+      sbtiSnapshot.code.split("").map((letter) => ({
+        letter,
+        ...(SBTI_LETTER_GUIDE[letter] || { label: "画像维度", description: "系统会结合当前数据继续补充这一维度的解释。" }),
+      })),
+    [sbtiSnapshot.code],
+  );
+  const reportActionPlan = useMemo(
+    () => [
+      {
+        title: `先放大${strongestAxis.label}`,
+        detail: `当前最高维度是 ${strongestAxis.label}，建议把它作为主线能力，用讲义、项目练习和 AI 答疑继续巩固。`,
+      },
+      {
+        title: `再补齐${weakestAxis.label}`,
+        detail: `当前相对薄弱的是 ${weakestAxis.label}，后续路径会优先安排短练习、错题复盘和针对性资源。`,
+      },
+      {
+        title: "用 SPTA 节奏推进",
+        detail: `${sbtiSnapshot.title}更适合“明确任务 - 动手验证 - 反馈修正”的闭环，避免只看内容不产出。`,
+      },
+    ],
+    [sbtiSnapshot.title, strongestAxis.label, weakestAxis.label],
+  );
+  const handleGenerateProfileReport = () => {
+    const generatedAt = new Date().toISOString();
+    setProfileReportGenerated(true);
+    setProfileReportGeneratedAt(generatedAt);
+    writeProfileReportCache(activeUserId, {
+      generated: true,
+      generatedAt,
+      sbtiCode: sbtiSnapshot.code,
     });
+    setToastMessage("画像报告已生成，正在定位到报告区。");
+    window.setTimeout(() => {
+      profileReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  };
+
+  const handleExportProfileReport = () => {
+    if (!profileReportGenerated) {
+      setToastMessage("请先生成画像报告，再导出。");
+      return;
+    }
+
+    const savedAt = formatProfileReportTime(profileReportGeneratedAt);
+    const reportTitle = `${sbtiSnapshot.code} · ${sbtiSnapshot.title}画像解读报告`;
+    const axisRows = axes
+      .map(
+        (axis) => `
+          <tr>
+            <td>${escapeReportHtml(axis.label)}</td>
+            <td>${escapeReportHtml(axis.score)}</td>
+            <td>${escapeReportHtml(axis.benchmark)}</td>
+          </tr>
+        `,
+      )
+      .join("");
+    const sbtiRows = sbtiBreakdown
+      .map(
+        (item) => `
+          <tr>
+            <td>${escapeReportHtml(item.letter)}</td>
+            <td>${escapeReportHtml(item.label)}</td>
+            <td>${escapeReportHtml(item.description)}</td>
+          </tr>
+        `,
+      )
+      .join("");
+    const evidenceRows = profileEvidenceCards
+      .map(
+        (item) => `
+          <tr>
+            <td>${escapeReportHtml(item.title)}</td>
+            <td>${escapeReportHtml(item.result)}</td>
+            <td>${escapeReportHtml(item.description)}</td>
+          </tr>
+        `,
+      )
+      .join("");
+    const actionItems = reportActionPlan
+      .map((item, index) => `<li><strong>${index + 1}. ${escapeReportHtml(item.title)}</strong><br />${escapeReportHtml(item.detail)}</li>`)
+      .join("");
+    const tagText = (profileSummary?.tags?.length ? profileSummary.tags : ["中级学习者", "结构化笔记", "动手验证"])
+      .slice(0, 6)
+      .join("、");
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeReportHtml(reportTitle)}</title>
+          <style>
+            body { font-family: "Microsoft YaHei", Arial, sans-serif; color: #171c22; line-height: 1.75; padding: 32px; }
+            h1 { font-size: 26px; margin: 0 0 8px; }
+            h2 { margin: 28px 0 10px; font-size: 18px; color: #fb7299; }
+            .meta { color: #64748b; font-size: 13px; margin-bottom: 22px; }
+            .summary { border: 1px solid #ffd6e3; background: #fff7fa; border-radius: 16px; padding: 16px; }
+            .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+            .metric { border: 1px solid #e5edf5; border-radius: 14px; padding: 12px; background: #fbfdff; }
+            .label { color: #64748b; font-size: 12px; }
+            .value { font-size: 18px; font-weight: 800; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { border: 1px solid #e5edf5; padding: 9px 10px; text-align: left; vertical-align: top; }
+            th { background: #fff4f8; color: #c25179; }
+            li { margin-bottom: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeReportHtml(reportTitle)}</h1>
+          <div class="meta">BiliLearn 学习画像导出 · 用户：${escapeReportHtml(user?.name || "BiliLearn 用户")} · 保存于：${escapeReportHtml(savedAt)}</div>
+
+          <div class="summary">
+            <strong>${escapeReportHtml(portraitInterpretation.subtitle)}</strong>
+            <p>${escapeReportHtml(portraitInterpretation.summary)}</p>
+          </div>
+
+          <div class="metrics">
+            <div class="metric"><div class="label">画像完整度</div><div class="value">${escapeReportHtml(overallScore)}%</div></div>
+            <div class="metric"><div class="label">当前阶段</div><div class="value">${escapeReportHtml(getStageText(profileSummary?.current_stage))}</div></div>
+            <div class="metric"><div class="label">学习风格</div><div class="value">${escapeReportHtml(getFriendlyStyle(profileSummary?.recommended_learning_style))}</div></div>
+          </div>
+
+          <h2>一、画像标签</h2>
+          <p>${escapeReportHtml(tagText)}</p>
+
+          <h2>二、SPTA 拆解</h2>
+          <table>
+            <thead><tr><th>字母</th><th>画像含义</th><th>解释</th></tr></thead>
+            <tbody>${sbtiRows}</tbody>
+          </table>
+
+          <h2>三、五维能力分析</h2>
+          <table>
+            <thead><tr><th>维度</th><th>当前分</th><th>基线</th></tr></thead>
+            <tbody>${axisRows}</tbody>
+          </table>
+
+          <h2>四、证据链</h2>
+          <table>
+            <thead><tr><th>来源</th><th>结果</th><th>说明</th></tr></thead>
+            <tbody>${evidenceRows}</tbody>
+          </table>
+
+          <h2>五、后续行动</h2>
+          <ol>${actionItems}</ol>
+        </body>
+      </html>
+    `;
+
+    const fileName = sanitizeReportFileName(`BiliLearn-${sbtiSnapshot.code}-画像报告-${new Date().toISOString().slice(0, 10)}`);
+    triggerReportDownload(fileName, html);
+    setToastMessage("画像报告已开始导出。");
   };
 
   return (
@@ -663,13 +1072,13 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         <div className="mb-2.5 flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-[#ffd6e3] bg-white/88 px-3 py-1.5 shadow-sm backdrop-blur">
             <Sparkles className="h-3.5 w-3.5 text-[#fb7299]" />
-            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#fb7299]">Profile Center</span>
+            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#fb7299]">画像中心</span>
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold tracking-[0.18em] ${
                 usingFallback ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
               }`}
             >
-              {usingFallback ? "FALLBACK" : "REALTIME"}
+              {usingFallback ? "稳定摘要" : "实时画像"}
             </span>
           </div>
 
@@ -695,7 +1104,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-black uppercase tracking-[0.24em] text-[#fb7299]">Auto Portrait Runtime</span>
+                    <span className="text-[11px] font-black uppercase tracking-[0.24em] text-[#fb7299]">自动画像</span>
                     <span className="rounded-full bg-[#171c22] px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-white">
                       {sbtiSnapshot.code}
                     </span>
@@ -719,11 +1128,11 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
               <div className="grid gap-2 rounded-[22px] border border-[#edf1f5] bg-[linear-gradient(135deg,rgba(255,246,250,0.92)_0%,rgba(247,251,255,0.96)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">Current Stage</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">当前阶段</p>
                     <p className="mt-1 text-sm font-extrabold text-[#171c22]">{getStageText(profileSummary?.current_stage)}</p>
                   </div>
                   <div className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-[#0f6c7b] shadow-sm">
-                    Score {overallScore}
+                    完整度 {overallScore}%
                   </div>
                 </div>
                 <p className="text-[11px] leading-5 text-[#564145]">
@@ -772,14 +1181,63 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
                 回写画像
               </button>
               <button
-                onClick={openProfileTutor}
+                onClick={handleGenerateProfileReport}
                 className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-[#d9edf3] bg-[#f4fbff] px-4 py-2.5 text-sm font-bold text-[#0f6c7b] shadow-sm hover:bg-[#eaf7fb]"
               >
                 <ArrowRight className="h-4 w-4" />
-                让 AI 解读画像
+                生成画像报告
               </button>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-[30px] border border-[#E3E8EC] bg-white p-4 shadow-[0_16px_34px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#ffd6e3] bg-[#fff7fa] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">
+              <Sparkles className="h-3.5 w-3.5" />
+              画像智能体
+            </div>
+            <h2 className="mt-2 text-[20px] font-black tracking-[-0.04em] text-[#171c22]">
+              从测评、行为和作业表现生成学生画像
+            </h2>
+            <p className="mt-1.5 max-w-3xl text-sm leading-6 text-[#64748b]">
+              页面会把输入信号、判断依据和画像输出放在同一条链路里：先识别知识掌握程度和学习偏好，再把结果同步给路径、资源、测评与 AI 导师。
+            </p>
+          </div>
+          <div className="rounded-[18px] border border-[#d9edf3] bg-[#f4fbff] px-3.5 py-2.5 text-right">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#0f6c7b]">当前结论</p>
+            <p className="mt-1 text-sm font-extrabold text-[#171c22]">
+              {getStageText(profileSummary?.current_stage)} · {strongestAxis.label}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {profileEvidenceCards.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                key={item.key}
+                className={`rounded-[24px] border border-[#edf1f5] bg-[linear-gradient(135deg,var(--tw-gradient-stops))] ${item.tone} p-4 shadow-[0_10px_24px_rgba(148,163,184,0.06)]`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-white/80 bg-white text-[#171c22] shadow-sm">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="rounded-full bg-white/86 px-2.5 py-1 text-[10px] font-black text-[#6b7280] shadow-sm">
+                    {item.label}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-[15px] font-black text-[#171c22]">{item.title}</h3>
+                <p className="mt-2 min-h-[72px] text-xs leading-6 text-[#52606f]">{item.description}</p>
+                <div className="mt-3 rounded-[16px] border border-white/80 bg-white/82 px-3 py-2 text-xs font-extrabold text-[#2b1f24] shadow-sm">
+                  {item.result}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -870,9 +1328,43 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
                 <textarea
                   value={conversationInput}
                   onChange={(event) => setConversationInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      void handleSendConversationMessage();
+                    }
+                  }}
                   placeholder="直接输入你的专业、学习目标、基础情况、常见卡点、偏好的学习方式与节奏..."
                   className="min-h-[96px] w-full resize-none rounded-2xl border border-[#dbe4ee] bg-[#fcfdff] px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/10"
                 />
+                {(conversationStatusMessage || conversationErrorMessage || extractedConversationSignals.length > 0 || conversationLoading) ? (
+                  <div
+                    className={`mt-3 rounded-2xl border px-4 py-3 text-xs leading-6 ${
+                      conversationErrorMessage
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : "border-[#bfe8f3] bg-[linear-gradient(135deg,#f4fbff_0%,#fff7fa_100%)] text-[#275366]"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      {conversationLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                      <span className="font-black">
+                        {conversationErrorMessage || conversationStatusMessage || "画像信号已更新。"}
+                      </span>
+                    </div>
+                    {extractedConversationSignals.length ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {extractedConversationSignals.slice(0, 8).map((item) => (
+                          <span
+                            key={`${item.dimension}-${item.info_key}-${item.info_value}`}
+                            className="rounded-full border border-white/70 bg-white/80 px-2.5 py-1 text-[11px] font-bold text-[#0f6c7b] shadow-sm"
+                          >
+                            {PROFILE_DIMENSION_LABELS[item.dimension] || item.dimension}：{item.info_value}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                   <div className="text-xs leading-6 text-[#64748b]">
                     {conversationFlow?.guide_question?.question || "系统会根据你的自然语言回答自动追问缺失维度，无需逐项填表。"}
@@ -883,8 +1375,8 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
                       disabled={conversationLoading || !conversationInput.trim()}
                       className="inline-flex items-center gap-2 rounded-full bg-[#171c22] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#0f141a] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <ArrowRight className="h-4 w-4" />
-                      发送回答
+                      {conversationLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                      {conversationLoading ? "正在抽取画像" : "发送回答"}
                     </button>
                     <button
                       onClick={() => void handleCompleteConversation()}
@@ -1000,12 +1492,6 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         </div>
       </section>
 
-      {error ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          学习画像真实接口暂时不可用：{error}。页面已切换到 fallback 画像，不影响继续演示路径、资源、测评与 AI 助教联动。
-        </section>
-      ) : null}
-
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_340px]">
         <section className="rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-100 pb-4">
@@ -1014,7 +1500,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
               五维能力雷达
             </h3>
             <span className="text-[10px] font-bold text-slate-400">
-              {usingFallback ? "当前使用页面内 fallback 指标" : "当前使用实时画像 summary 指标"}
+              {radarSourceLabel}
             </span>
           </div>
 
@@ -1024,7 +1510,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
               <p className="mt-2 text-sm font-extrabold text-[#171c22]">课堂、资源、测评、提问</p>
             </div>
             <div className="rounded-2xl border border-[#e8eef5] bg-[#f8fbff] px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">Runtime</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">画像联动</p>
               <p className="mt-2 text-sm font-extrabold text-[#171c22]">{autoConversationDimensions.length} 个维度持续刷新</p>
             </div>
             <div className="rounded-2xl border border-[#e8eef5] bg-[#f8fbff] px-4 py-3">
@@ -1339,45 +1825,187 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[#E3E8EC] bg-white p-4 shadow-sm">
+      <section
+        ref={profileReportRef}
+        className={`rounded-3xl border p-4 shadow-sm transition-all duration-300 ${
+          profileReportGenerated
+            ? "border-[#ffd2e1] bg-[linear-gradient(135deg,#fff7fa_0%,#ffffff_45%,#f4fbff_100%)] shadow-[0_24px_70px_rgba(251,114,153,0.10)]"
+            : "border-[#E3E8EC] bg-white"
+        }`}
+      >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl space-y-2">
-            <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#fb7299]">
-              AI 自动画像解读
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#ffd6e3] bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#fb7299]">
+              <Sparkles className="h-3.5 w-3.5" />
+              AI 画像报告
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-[22px] font-extrabold leading-tight text-[#171c22]">
-                {sbtiSnapshot.code} · {sbtiSnapshot.title}
+                {sbtiSnapshot.code} · {sbtiSnapshot.title}画像解读报告
               </h3>
-              <span className="rounded-full bg-[#fff4f8] px-2.5 py-1 text-[10px] font-black text-[#fb7299]">
-                系统自动生成
+              <span className="rounded-full bg-[#171c22] px-2.5 py-1 text-[10px] font-black text-white">
+                {profileReportGenerated ? "已生成" : "等待生成"}
               </span>
+              {profileReportGenerated ? (
+                <span className="rounded-full bg-[#eef8fc] px-2.5 py-1 text-[10px] font-black text-[#0f6c7b]">
+                  保存于 {formatProfileReportTime(profileReportGeneratedAt)}
+                </span>
+              ) : null}
             </div>
             <p className="text-[15px] font-bold leading-6 text-[#2b1f24]">
-              {portraitInterpretation.subtitle}
+              {profileReportGenerated ? portraitInterpretation.subtitle : "点击上方“生成画像报告”后，这里会汇总画像叙述、SPTA 拆解、图表分析和后续学习动作。"}
             </p>
           </div>
-          <div className="rounded-[22px] bg-[linear-gradient(135deg,#fff6fa_0%,#f7fbff_100%)] px-4 py-3 lg:w-[320px]">
-            <p className="text-[10px] font-extrabold tracking-[0.18em] text-[#fb7299]">下一步判断</p>
-            <p className="mt-1.5 text-sm font-extrabold leading-6 text-[#171c22]">
-              {growthMap?.next_milestone || "现在更适合先巩固短板，再把优势能力继续放大。"}
-            </p>
+          <div className="flex flex-wrap gap-2">
+            {profileReportGenerated ? (
+              <button
+                type="button"
+                onClick={handleExportProfileReport}
+                className="inline-flex items-center justify-center gap-2 rounded-[20px] border border-[#dbeaf3] bg-white px-4 py-3 text-sm font-black text-[#0f6c7b] transition hover:bg-[#f4fbff]"
+              >
+                <Download className="h-4 w-4" />
+                导出报告
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleGenerateProfileReport}
+              className="inline-flex items-center justify-center gap-2 rounded-[20px] border border-[#fb7299]/25 bg-[#fff4f8] px-4 py-3 text-sm font-black text-[#fb7299] transition hover:bg-[#ffe8f0]"
+            >
+              <Sparkles className="h-4 w-4" />
+              {profileReportGenerated ? "更新并保存报告" : "生成完整报告"}
+            </button>
           </div>
         </div>
 
-        <p className="mt-3 text-xs leading-6 text-[#564145]">
-          {portraitInterpretation.summary}
-        </p>
+        {profileReportGenerated ? (
+          <div className="mt-5 space-y-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="rounded-[26px] border border-[#f1dce5] bg-white/88 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">画像叙述</p>
+                    <h4 className="mt-1 text-lg font-black text-[#171c22]">{user?.name || "BiliLearn 用户"}当前学习状态</h4>
+                  </div>
+                  <span className="rounded-full bg-[#eef8fc] px-3 py-1 text-[11px] font-black text-[#0f6c7b]">完整度 {overallScore}%</span>
+                </div>
+                <p className="mt-3 text-sm font-bold leading-7 text-[#2b1f24]">
+                  {portraitInterpretation.summary}
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-[20px] bg-[#fff7fa] px-4 py-3">
+                    <p className="text-[10px] font-black text-[#fb7299]">当前阶段</p>
+                    <p className="mt-1 text-sm font-extrabold text-[#171c22]">{getStageText(profileSummary?.current_stage)}</p>
+                  </div>
+                  <div className="rounded-[20px] bg-[#f4fbff] px-4 py-3">
+                    <p className="text-[10px] font-black text-[#0f6c7b]">优势维度</p>
+                    <p className="mt-1 text-sm font-extrabold text-[#171c22]">{strongestAxis.label} · {strongestAxis.score}</p>
+                  </div>
+                  <div className="rounded-[20px] bg-[#fffaf1] px-4 py-3">
+                    <p className="text-[10px] font-black text-amber-700">待补维度</p>
+                    <p className="mt-1 text-sm font-extrabold text-[#171c22]">{weakestAxis.label} · {weakestAxis.score}</p>
+                  </div>
+                </div>
+              </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {portraitInsightCards.map((item) => (
-            <div key={item.key} className={`rounded-[20px] bg-[linear-gradient(180deg,var(--tw-gradient-stops))] ${item.tone} p-3.5`}>
-              <p className="text-[10px] font-extrabold tracking-[0.16em] text-[#fb7299]">{item.eyebrow}</p>
-              <p className="mt-1.5 text-sm font-extrabold leading-6 text-[#171c22]">{item.title}</p>
-              <p className="mt-1.5 text-xs leading-5 text-[#564145]">{item.description}</p>
+              <div className="rounded-[26px] border border-[#dbeaf3] bg-[#f4fbff] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#0f6c7b]">SPTA 拆解</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {sbtiBreakdown.map((item) => (
+                    <div key={`${item.letter}-${item.label}`} className="rounded-[18px] border border-white/80 bg-white px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#171c22] text-sm font-black text-white">{item.letter}</span>
+                        <span className="text-sm font-black text-[#171c22]">{item.label}</span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-[#564145]">{item.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <div className="rounded-[26px] border border-[#e5edf5] bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">图表分析</p>
+                    <h4 className="mt-1 text-base font-black text-[#171c22]">五维能力条形解读</h4>
+                  </div>
+                  <Activity className="h-5 w-5 text-[#fb7299]" />
+                </div>
+                <div className="mt-4 space-y-3">
+                  {axes.map((axis) => (
+                    <div key={`report-${axis.label}`}>
+                      <div className="flex items-center justify-between text-xs font-bold text-[#564145]">
+                        <span>{axis.label}</span>
+                        <span>{axis.score} / 基线 {axis.benchmark}</span>
+                      </div>
+                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#eef2f7]">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#fb7299,#38bdf8)]"
+                          style={{ width: `${Math.max(8, axis.score)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 rounded-[18px] bg-[#f8fbff] px-4 py-3 text-xs leading-6 text-[#475569]">
+                  雷达图显示当前画像不是单一分数，而是由规划、执行、持续力、认知广度和成果输出共同构成。系统会用最高维度承接学习优势，用最低维度决定优先补齐顺序。
+                </p>
+              </div>
+
+              <div className="rounded-[26px] border border-[#e5edf5] bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">证据链分析</p>
+                    <h4 className="mt-1 text-base font-black text-[#171c22]">测评、行为、作业与画像联动</h4>
+                  </div>
+                  <ClipboardCheck className="h-5 w-5 text-[#fb7299]" />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {profileEvidenceCards.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={`report-${item.key}`} className={`rounded-[20px] bg-[linear-gradient(180deg,var(--tw-gradient-stops))] ${item.tone} p-3.5`}>
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4 text-[#fb7299]" />
+                          <p className="text-[11px] font-black text-[#171c22]">{item.title}</p>
+                        </div>
+                        <p className="mt-2 text-xs font-bold leading-5 text-[#564145]">{item.result}</p>
+                        <p className="mt-1.5 text-xs leading-5 text-[#64748b]">{item.description}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-[#ffd9e6] bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">后续安排</p>
+                  <h4 className="mt-1 text-base font-black text-[#171c22]">系统会按这份报告调整下一步学习</h4>
+                </div>
+                <span className="rounded-full bg-[#fff4f8] px-3 py-1 text-[11px] font-black text-[#fb7299]">
+                  {growthMap?.next_milestone || "先补短板，再放大优势"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {reportActionPlan.map((item, index) => (
+                  <div key={item.title} className="rounded-[20px] border border-[#edf1f5] bg-[#fbfdff] px-4 py-3">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#171c22] text-[11px] font-black text-white">{index + 1}</span>
+                    <p className="mt-3 text-sm font-black text-[#171c22]">{item.title}</p>
+                    <p className="mt-2 text-xs leading-6 text-[#564145]">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-[24px] border border-dashed border-[#dbe4ee] bg-[#fbfdff] px-4 py-5 text-sm leading-7 text-[#64748b]">
+            报告会在点击后生成，并使用当前页面已经读取到的画像编码、完整度、五维雷达、画像证据和后续里程碑进行整理。
+          </div>
+        )}
       </section>
 
       {loading ? (

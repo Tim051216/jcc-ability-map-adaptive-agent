@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -29,6 +29,8 @@ import {
   type LevelRecommendationResponse,
   type PlanProgressResponse,
   type ReviewPlanResponse,
+  type ProfileSummaryResponse,
+  type StudentProfileDetailResponse,
 } from "../lib/studentApi";
 import {
   formatGoalDeadline,
@@ -77,22 +79,102 @@ type StageCardCopy = {
   nextDetail: string;
 };
 
+type GoalPlanningProfile = {
+  target: string;
+  domain: string;
+  objective: string;
+  knowledgePoints: string[];
+  dailyItems: GoalPathItem[];
+  decisionTitle: string;
+  decisionSummary: string;
+  evidenceItems: string[];
+  learnNext: string;
+  practiceNext: string;
+  reason: string;
+  phaseCards: StageCardCopy[];
+};
+
+type PathDecisionInsight = {
+  profileEvidence: string[];
+  weakSignals: string[];
+  masteryMetrics: Array<{
+    label: string;
+    score: number;
+    detail: string;
+    tone?: "positive" | "risk";
+  }>;
+  preferenceItems: string[];
+  decisionRules: string[];
+  learnNext: string;
+  practiceNext: string;
+  reason: string;
+  sourceLabel: string;
+  confidenceLabel: string;
+  goalProfile?: GoalPlanningProfile | null;
+};
+
+const PATH_PAGE_CACHE_KEY = "a3-learning-path-page-cache";
+const PATH_PAGE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type PathPageCacheRecord = {
+  savedAt: number;
+  plan: LearningPlanResponse | null;
+  progress: PlanProgressResponse | null;
+  phases: UiPhase[];
+  goalPath: GoalPathResponse | null;
+  levelRecommendation: LevelRecommendationResponse | null;
+  usingFallback: boolean;
+};
+
+function buildPathPageCacheKey(userId: number, courseId: string) {
+  return `${userId}:${courseId}`;
+}
+
+function readPathPageCache(userId: number, courseId: string): PathPageCacheRecord | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PATH_PAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, PathPageCacheRecord>;
+    const record = parsed[buildPathPageCacheKey(userId, courseId)];
+    if (!record || Date.now() - record.savedAt > PATH_PAGE_CACHE_TTL_MS || !record.phases?.length) return null;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+function writePathPageCache(userId: number, courseId: string, record: Omit<PathPageCacheRecord, "savedAt">) {
+  if (typeof window === "undefined" || !record.phases.length) return;
+  try {
+    const raw = window.sessionStorage.getItem(PATH_PAGE_CACHE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, PathPageCacheRecord>) : {};
+    parsed[buildPathPageCacheKey(userId, courseId)] = {
+      ...record,
+      savedAt: Date.now(),
+    };
+    window.sessionStorage.setItem(PATH_PAGE_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore path cache failures.
+  }
+}
+
 const PATH_PAGE_LABELS: Record<string, { title: string; subtitle: string }> = {
   "series-1": {
-    title: "设计系统个性化学习方案",
-    subtitle: "围绕设计规范、组件落地与页面协同，生成更适合你当前阶段的学习安排",
+    title: "设计系统学习路径",
+    subtitle: "把设计规范、组件落地和页面协同整理成一条更清晰的推进顺序",
   },
   "series-2": {
-    title: "软件工程个性化学习方案",
-    subtitle: "围绕需求分析、系统设计、实现测试与项目推进，生成阶段化学习路径",
+    title: "软件工程学习路径",
+    subtitle: "围绕需求、设计、实现、测试和项目推进，整理出本轮该先做什么",
   },
   "series-3": {
-    title: "界面动效个性化学习方案",
-    subtitle: "围绕微交互、转场节奏与体验细节，生成更适合你的学习推进顺序",
+    title: "界面动效学习路径",
+    subtitle: "围绕微交互、转场节奏和体验细节，排出更顺手的学习顺序",
   },
   "course-4": {
-    title: "数据可视化个性化学习方案",
-    subtitle: "围绕数据叙事、图表表达与项目输出，生成更具体的学习安排",
+    title: "数据可视化学习路径",
+    subtitle: "围绕数据叙事、图表表达和项目输出，给出更具体的学习安排",
   },
 };
 
@@ -550,6 +632,260 @@ function getPlanStepStatus(status?: string | null) {
   return "接下来做";
 }
 
+function stringifyProfileValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) {
+    return value.map((item) => stringifyProfileValue(item)).filter(Boolean).join("、");
+  }
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .map((item) => stringifyProfileValue(item))
+      .filter(Boolean)
+      .join("、");
+  }
+  if (typeof value === "boolean") return "";
+  return String(value).trim();
+}
+
+function compactList(items: Array<string | null | undefined>, limit = 5) {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  items.forEach((item) => {
+    const text = localizePlanCopy(item).replace(/\s+/g, " ").trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    cleaned.push(text);
+  });
+  return cleaned.slice(0, limit);
+}
+
+function buildProfileEvidence(
+  profileSummary: ProfileSummaryResponse | null,
+  profileDetail: StudentProfileDetailResponse | null,
+): string[] {
+  const tagEvidence = compactList([...(profileSummary?.tags || []), ...(profileDetail?.tags || [])], 4);
+  const dimensionEvidence = compactList(
+    (profileDetail?.dimensions || []).map((dimension) => {
+      const values = compactList(Object.values(dimension.data || {}).map((value) => stringifyProfileValue(value)), 2);
+      return values.length ? `${dimension.dimension_name || dimension.dimension_code}：${values.join("、")}` : "";
+    }),
+    4,
+  );
+  const summaryEvidence = profileDetail?.summary || profileSummary?.key_features || "";
+  return compactList([...tagEvidence, ...dimensionEvidence, summaryEvidence], 6);
+}
+
+function buildWeakSignals(
+  profileSummary: ProfileSummaryResponse | null,
+  profileDetail: StudentProfileDetailResponse | null,
+  nextStep: UiStep | null,
+): string[] {
+  const profileTexts = [
+    ...(profileSummary?.tags || []),
+    ...(profileDetail?.tags || []),
+    ...(profileDetail?.dimensions || []).flatMap((dimension) =>
+      Object.values(dimension.data || {}).map((value) => stringifyProfileValue(value)),
+    ),
+  ];
+  const weakFromProfile = profileTexts.filter((text) => /卡|弱|不足|困难|短板|需要|薄弱|不熟|欠缺/.test(text));
+  return compactList([...weakFromProfile, nextStep?.subtitle, nextStep?.title], 4);
+}
+
+function normalizeProfileScore(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number.parseFloat(String(value || ""));
+  if (!Number.isFinite(numeric)) return null;
+  const percent = numeric <= 1 ? numeric * 100 : numeric;
+  return Math.max(0, Math.min(100, Math.round(percent)));
+}
+
+function getDimensionLabel(profileDetail: StudentProfileDetailResponse | null, key: string) {
+  const matched = profileDetail?.dimensions?.find(
+    (dimension) => dimension.dimension_code === key || dimension.dimension_name === key,
+  );
+  return matched?.dimension_name || key;
+}
+
+function buildMasteryMetrics(
+  profileSummary: ProfileSummaryResponse | null,
+  profileDetail: StudentProfileDetailResponse | null,
+  activeLevelItem: LevelRecommendationResponse["items"][number] | null,
+  currentPhase: UiPhase | null,
+  overallProgress: number,
+  completedStepCount: number,
+  totalStepCount: number,
+) {
+  const metrics: Array<{ label: string; score: number; detail: string; tone?: "positive" | "risk" }> = [];
+  Object.entries(profileDetail?.score_breakdown || {}).forEach(([key, value]) => {
+    const score = normalizeProfileScore(value);
+    if (score === null) return;
+    metrics.push({
+      label: getDimensionLabel(profileDetail, key),
+      score,
+      detail: "来自画像能力评分",
+    });
+  });
+
+  const fitScore = activeLevelItem?.fit_score ? normalizeProfileScore(activeLevelItem.fit_score) : null;
+  const phaseProgress = normalizeProfileScore(currentPhase?.progress ?? null);
+  const progressScore = normalizeProfileScore(overallProgress) ?? 0;
+  const stepRatio = totalStepCount > 0 ? Math.round((completedStepCount / totalStepCount) * 100) : progressScore;
+  const profileTagText = [
+    ...(profileSummary?.tags || []),
+    ...(profileDetail?.tags || []),
+    profileSummary?.key_features || "",
+    profileDetail?.summary || "",
+  ].join(" ");
+  const weakPenalty = /薄弱|不足|卡|困难|欠缺|不熟|易错|错题/.test(profileTagText) ? 8 : 0;
+  const inferredBasics = Math.max(35, Math.min(92, Math.round((fitScore ?? 68) * 0.45 + progressScore * 0.35 + (phaseProgress ?? 55) * 0.2 - weakPenalty)));
+  const inferredStyle = Math.max(40, Math.min(88, Math.round((fitScore ?? 72) * 0.55 + (profileSummary?.recommended_learning_style ? 18 : 8))));
+  const inferredProgress = Math.max(0, Math.min(96, Math.round(progressScore || stepRatio || phaseProgress || 0)));
+  const inferredWeakness = Math.max(28, Math.min(86, Math.round(100 - inferredBasics * 0.55 - inferredProgress * 0.25 + weakPenalty)));
+
+  const addMetric = (label: string, score: number, detail: string, tone: "positive" | "risk" = "positive") => {
+    if (metrics.some((metric) => metric.label === label)) return;
+    metrics.push({
+      label,
+      score: Math.max(0, Math.min(100, Math.round(score))),
+      detail,
+      tone,
+    });
+  };
+
+  addMetric("知识基础", inferredBasics, activeLevelItem ? `结合${activeLevelItem.label}、路径进度和薄弱信号估算` : "结合路径进度和画像标签估算");
+  addMetric("认知风格匹配", inferredStyle, profileSummary?.recommended_learning_style ? "来自推荐学习风格与任务类型匹配" : "画像偏好不足，按默认学习节奏估算");
+  addMetric("学习进度", inferredProgress, totalStepCount > 0 ? `已完成 ${completedStepCount}/${totalStepCount} 个路径任务` : "来自当前学习路径完成率");
+  addMetric("易错风险", inferredWeakness, weakPenalty > 0 ? "检测到薄弱/易错相关画像信号" : "根据掌握度和进度反向估算", "risk");
+
+  return metrics.slice(0, 4);
+}
+
+function buildPreferenceItems(
+  profileSummary: ProfileSummaryResponse | null,
+  profileDetail: StudentProfileDetailResponse | null,
+) {
+  const preferenceDimensions = (profileDetail?.dimensions || []).filter((dimension) =>
+    /偏好|风格|认知|节奏|目标|动机|基础/.test(`${dimension.dimension_name}${dimension.dimension_code}`),
+  );
+  const dimensionValues = preferenceDimensions.flatMap((dimension) =>
+    Object.values(dimension.data || {}).map((value) => stringifyProfileValue(value)),
+  );
+  const style = profileSummary?.recommended_learning_style || "";
+  const preferenceTags = [...(profileSummary?.tags || []), ...(profileDetail?.tags || [])].filter((tag) =>
+    /实战|结构|项目|视频|阅读|练习|联调|工程|目标|复盘|自驱/.test(tag),
+  );
+  return compactList([style, ...preferenceTags, ...dimensionValues], 6);
+}
+
+function buildPathDecisionInsight(params: {
+  profileSummary: ProfileSummaryResponse | null;
+  profileDetail: StudentProfileDetailResponse | null;
+  profileLoading: boolean;
+  profileError: string | null;
+  nextStep: UiStep | null;
+  currentPhase: UiPhase | null;
+  activeLevelItem: LevelRecommendationResponse["items"][number] | null;
+  learningGoal: StoredLearningGoal | null;
+  usingFallback: boolean;
+  overallProgress: number;
+  completedStepCount: number;
+  totalStepCount: number;
+  goalProfile?: GoalPlanningProfile | null;
+}): PathDecisionInsight {
+  const {
+    profileSummary,
+    profileDetail,
+    profileLoading,
+    profileError,
+    nextStep,
+    currentPhase,
+    activeLevelItem,
+    learningGoal,
+    usingFallback,
+    overallProgress,
+    completedStepCount,
+    totalStepCount,
+    goalProfile,
+  } = params;
+  const evidence = buildProfileEvidence(profileSummary, profileDetail);
+  const weakSignals = buildWeakSignals(profileSummary, profileDetail, nextStep);
+  const masteryMetrics = buildMasteryMetrics(
+    profileSummary,
+    profileDetail,
+    activeLevelItem,
+    currentPhase,
+    overallProgress,
+    completedStepCount,
+    totalStepCount,
+  );
+  const preferenceItems = buildPreferenceItems(profileSummary, profileDetail);
+  const completeness = profileDetail?.completeness ?? profileSummary?.completeness ?? null;
+  const completenessText = typeof completeness === "number" ? `${Math.round(completeness)}%` : "未读取到";
+  const learnNext = nextStep?.title || currentPhase?.title || "先完成当前课程主线的第一个可执行任务";
+  const practiceNext =
+    nextStep?.type === "code"
+      ? "完成配套代码实操，并提交一份可运行结果"
+      : nextStep?.type === "quiz"
+        ? "完成阶段测评，用错题结果更新画像"
+        : "完成配套练习或复盘记录，让系统获得新的学习证据";
+
+  if (goalProfile) {
+    return {
+      profileEvidence: goalProfile.evidenceItems,
+      weakSignals: goalProfile.knowledgePoints.map((point) => `目标知识点：${point}`),
+      masteryMetrics: goalProfile.knowledgePoints.slice(0, 3).map((point, index) => ({
+        label: index === 0 ? "先补知识点" : index === 1 ? "第二步" : "第三步",
+        score: Math.max(35, 72 - index * 12),
+        detail: point,
+        tone: index === 0 ? "risk" : "positive",
+      })),
+      preferenceItems: [goalProfile.domain, ...goalProfile.knowledgePoints.slice(0, 3)],
+      decisionRules: [
+        `目标写的是：${goalProfile.target}。`,
+        `先拆成专业知识点：${goalProfile.knowledgePoints.slice(0, 3).join("、")}。`,
+        `所以第一步不是泛看课程，而是先做：${goalProfile.dailyItems[0]?.title || goalProfile.learnNext}。`,
+      ],
+      learnNext: goalProfile.learnNext,
+      practiceNext: goalProfile.practiceNext,
+      reason: goalProfile.reason,
+      sourceLabel: `依据用户目标拆解：${goalProfile.domain}`,
+      confidenceLabel: "按目标规划",
+      goalProfile,
+    };
+  }
+
+  return {
+    profileEvidence:
+      evidence.length > 0
+        ? evidence
+        : [profileLoading ? "正在读取画像结果" : "未读取到正式画像，请先在画像页完成一次对话或测评"],
+    weakSignals:
+      weakSignals.length > 0 ? weakSignals : ["暂无明确薄弱信号，先按课程阶段和目标推进"],
+    masteryMetrics,
+    preferenceItems:
+      preferenceItems.length > 0
+        ? preferenceItems
+        : [profileLoading ? "正在读取学习偏好" : "暂无明确学习偏好，请先在画像页补充学习方式、节奏和目标"],
+    decisionRules: [
+      `先看当前阶段：${currentPhase?.title || "学习起步"}。`,
+      `再看画像与进度：画像完整度 ${completenessText}。`,
+      activeLevelItem
+        ? `当前难度按 ${activeLevelItem.label} 收敛，匹配度 ${activeLevelItem.fit_score || "--"}。`
+        : "学习层级未返回，先按课程主线推进。",
+    ],
+    learnNext,
+    practiceNext,
+    reason: learningGoal
+      ? `已按你的目标和 ${learningGoal.dailyMinutes} 分钟/天的节奏排过优先级。`
+      : "当前还没有明确目标，所以先按课程主线给你排了最稳的一步。",
+    sourceLabel: profileError
+      ? `画像读取异常：${profileError}`
+      : usingFallback
+        ? "当前显示的是临时方案"
+        : "已结合画像、进度和当前阶段",
+    confidenceLabel: profileLoading ? "同步中" : evidence.length > 0 ? "已结合当前数据" : "等待更多记录",
+  };
+}
+
 function containsBrokenPlanText(value?: string | null) {
   const text = String(value || "").trim();
   if (!text) return false;
@@ -584,15 +920,15 @@ function isFallbackLikePlan(plan: LearningPlanResponse | null, routeCourseId: st
 
 function getFallbackSummary(routeCourseId: string) {
   if (routeCourseId === "series-2") {
-    return "当前先展示与你的软件工程课程主线一致的保底学习方案，真实个性化阶段任务恢复后会自动顶替这份内容。";
+    return "当前先按软件工程课程主线给你一份可直接执行的临时安排。";
   }
   if (routeCourseId === "series-1") {
-    return "当前先展示设计系统主线的保底学习方案，真实个性化阶段任务恢复后会自动顶替这份内容。";
+    return "当前先按设计系统主线给你一份可直接执行的临时安排。";
   }
   if (routeCourseId === "series-3") {
-    return "当前先展示界面动效主线的保底学习方案，真实个性化阶段任务恢复后会自动顶替这份内容。";
+    return "当前先按界面动效主线给你一份可直接执行的临时安排。";
   }
-  return "当前先展示与你当前课程方向一致的保底学习方案，真实个性化阶段任务恢复后会自动顶替这份内容。";
+  return "当前先按课程主线给你一份可直接执行的临时安排。";
 }
 
 function buildPlanFromPersonalizedData(params: {
@@ -754,18 +1090,367 @@ function getGoalForCurrentCourse(goal: StoredLearningGoal | null, routeCourseId:
   return goal.courseId === routeCourseId ? goal : null;
 }
 
-function buildDailyPlanItemsFromPhases(phases: UiPhase[]): GoalPathItem[] {
-  return phases
-    .flatMap((phase, phaseIndex) =>
-      phase.steps.map((step, stepIndex) => ({
-        day: phaseIndex + stepIndex + 1,
-        title: step.title.replace(/^第\s*\d+\s*天[:：]\s*/u, ""),
-        focus: step.subtitle || phase.summary || "围绕当前阶段重点继续推进。",
-        task: step.subtitle || `先完成 ${phase.title} 的当前关键任务，并留下可复盘结果。`,
-        deliverable: getStepOutcomeCopy(step),
+function buildDailyPlanItemsFromPhases(phases: UiPhase[], routeCourseId: string): GoalPathItem[] {
+  const isSoftwareEngineering = routeCourseId === "series-2";
+  const concreteItems = phases.flatMap((phase, phaseIndex) =>
+    phase.steps.map((step, stepIndex) => {
+      const day = phaseIndex + stepIndex + 1;
+      const stepText = step.title.replace(/^第\s*\d+\s*天[:：]\s*/u, "");
+      if (isSoftwareEngineering) {
+        if (phase.title.includes("主线") || phase.title.includes("目标对齐")) {
+          return {
+            day,
+            title: "把软件工程主线画出来",
+            focus: "先看讲义与章节目录，明确软件生命周期、软件危机和课程章节之间的关系。",
+            task: "打开当前章节讲义，边看边画一张“需求-设计-实现-测试-维护”的流程图，再把这轮最该先补的知识点列成 3 条。",
+            deliverable: "一张主线关系图 + 3 条优先补的知识点",
+          };
+        }
+        if (phase.title.includes("需求") || phase.title.includes("专题强化")) {
+          return {
+            day,
+            title: "拆一份真实需求",
+            focus: "围绕一个课程案例，把需求、用例和非功能要求拆开。",
+            task: "选一个你最熟的项目例子，写出 1 份功能需求清单、1 张用例表和 1 句这件事为什么难。",
+            deliverable: "需求清单 + 用例表 + 一句问题说明",
+          };
+        }
+        if (phase.title.includes("设计") || phase.title.includes("迁移") || phase.title.includes("巩固")) {
+          return {
+            day,
+            title: "画出模块设计草图",
+            focus: "把需求继续推到系统设计、模块划分和接口协作。",
+            task: "根据前两天整理的需求，画一张模块结构图，标出每个模块负责什么、接口怎么连、测试时先看哪一块。",
+            deliverable: "模块结构图 + 接口说明 + 测试检查点",
+          };
+        }
+      }
+
+      const concreteTitle = stepText || step.title || `第 ${day} 天任务`;
+      const concreteFocus = step.subtitle || phase.summary || "围绕当前阶段重点继续推进。";
+      const concreteTask = step.subtitle
+        ? step.subtitle
+        : `先完成 ${phase.title} 的当前关键任务，并留下可复盘结果。`;
+      const concreteDeliverable = getStepOutcomeCopy(step);
+      return {
+        day,
+        title: concreteTitle,
+        focus: concreteFocus,
+        task: concreteTask,
+        deliverable: concreteDeliverable,
+      };
+    }),
+  );
+
+  return concreteItems.slice(0, 7);
+}
+
+function getGoalStageCardCopy(goalProfile: GoalPlanningProfile | null | undefined, index: number) {
+  return goalProfile?.phaseCards[index] || null;
+}
+
+function buildGoalDrivenDailyPlan(
+  learningGoal: StoredLearningGoal | null,
+  courseTitle: string,
+  routeCourseId: string,
+): GoalPathItem[] | null {
+  const profile = buildGoalPlanningProfile(learningGoal, courseTitle, routeCourseId);
+  return profile?.dailyItems || null;
+}
+
+function buildGoalPlanningProfile(
+  learningGoal: StoredLearningGoal | null,
+  courseTitle: string,
+  routeCourseId: string,
+): GoalPlanningProfile | null {
+  const target = learningGoal?.goal?.trim();
+  if (!target) return null;
+  const dailyMinutes = Math.max(15, learningGoal?.dailyMinutes || 45);
+  const normalized = `${target} ${courseTitle}`;
+
+  if (/java|jdk|jvm|面向对象|变量|数据类型|数组|循环|类|对象/i.test(normalized)) {
+    const knowledgePoints = /基础|入门|数据类型|变量|java/i.test(normalized)
+      ? ["Java 基本数据类型", "变量声明与命名规范", "类型转换与运算符", "if/for/while 流程控制"]
+      : ["类与对象", "方法与参数传递", "封装与构造方法", "数组或集合基础"];
+    const dailyItems: GoalPathItem[] = [
+      {
+        day: 1,
+        title: "掌握 Java 基本数据类型",
+        focus: "先把 byte、short、int、long、float、double、char、boolean 的用途和取值范围讲清楚。",
+        task: `用 ${dailyMinutes} 分钟整理 8 种基本数据类型表格，并各写 1 行变量声明示例，重点标出 int、double、char、boolean 的常见用法。`,
+        deliverable: "8 种基本数据类型表 + 8 行变量声明示例",
+      },
+      {
+        day: 2,
+        title: "练变量、运算符和类型转换",
+        focus: "把变量赋值、算术运算、字符串拼接、强制类型转换这些基础错误先压下去。",
+        task: "写 6 个小练习：变量赋值、整数除法、double 计算、char 编码、String 拼接、int 和 double 强转，并记录每题输出。",
+        deliverable: "6 段 Java 小代码 + 每段运行输出",
+      },
+      {
+        day: 3,
+        title: "用流程控制写一个小程序",
+        focus: "把 if、for、while 和基本输入输出串成一个完整练习。",
+        task: "完成一个“成绩等级判断 + 1 到 n 求和”的控制台小程序，要求至少使用 1 个 if/else、1 个 for 或 while，并写清楚每段代码作用。",
+        deliverable: "一个可运行 Java 控制台程序 + 代码注释说明",
+      },
+    ];
+    return {
+      target,
+      domain: "Java 基础",
+      objective: "先把 Java 入门必须会写、会解释、会运行的基础语法补齐。",
+      knowledgePoints,
+      dailyItems,
+      decisionTitle: "按 Java 基础目标先补语法地基",
+      decisionSummary: "你当前目标不是泛泛学软件工程，而是 Java 基础；所以路径先落到数据类型、变量运算和流程控制。",
+      evidenceItems: [
+        `当前目标：${target}`,
+        `每日投入：${dailyMinutes} 分钟`,
+        `优先知识点：${knowledgePoints.slice(0, 3).join("、")}`,
+      ],
+      learnNext: "先学 Java 8 种基本数据类型和变量声明",
+      practiceNext: "再写 6 个变量、运算符、类型转换小练习并记录输出",
+      reason: "Java 基础如果数据类型和变量没掌握，后面的流程控制、方法和面向对象都会卡住，所以先从这里排。",
+      phaseCards: [
+        {
+          summary: "围绕目标先补 Java 语法地基，不再按软件工程章节泛排。",
+          focusTitle: "Java 基本数据类型",
+          nextTitle: "整理 8 种基本数据类型表",
+          nextDetail: "写出 byte、short、int、long、float、double、char、boolean 的用途、示例和常见错误。",
+        },
+        {
+          summary: "把数据类型推进到能写代码：变量、运算符和类型转换必须动手跑一遍。",
+          focusTitle: "变量与类型转换",
+          nextTitle: "完成 6 个 Java 小练习",
+          nextDetail: "覆盖整数除法、double 计算、char 编码、String 拼接、强制转换和输出记录。",
+        },
+        {
+          summary: "用一个小程序把基础语法串起来，验证能否独立完成简单逻辑。",
+          focusTitle: "流程控制小程序",
+          nextTitle: "写成绩等级判断和求和程序",
+          nextDetail: "至少包含 if/else 和循环，并给关键代码写注释。",
+        },
+      ],
+    };
+  }
+
+  if (/答辩|汇报|展示|演示|PPT|讲解/.test(normalized)) {
+    const dailyItems: GoalPathItem[] = [
+      {
+        day: 1,
+        title: "先搭出目标汇报主线",
+        focus: `围绕“${target}”整理一条 3 分钟能讲清楚的表达顺序。`,
+        task: `用 ${dailyMinutes} 分钟写出“背景问题 -> 核心方法 -> 页面/成果 -> 价值总结”四段式提纲，每段只保留 2 个要点。`,
+        deliverable: "一份 4 段式汇报提纲 + 每段 2 个讲解要点",
+      },
+      {
+        day: 2,
+        title: "补齐可展示材料",
+        focus: "把目标拆成能在课堂或答辩现场展示的页面、图和资料。",
+        task: "挑 3 个最能证明目标完成的页面或资料，分别写清楚它展示什么、由什么数据支撑、演示时先点哪里。",
+        deliverable: "3 个展示点清单 + 对应演示路径",
+      },
+      {
+        day: 3,
+        title: "做一次模拟讲解",
+        focus: "检查讲解是否能闭环，避免只介绍功能不说明目标达成。",
+        task: "按提纲录一遍或口头讲一遍，把卡壳处标出来，再补 3 个可能被问到的问题和回答。",
+        deliverable: "一版讲解稿 + 3 个问答准备",
+      },
+    ];
+    return {
+      target,
+      domain: "答辩演示",
+      objective: "把目标整理成能现场讲清楚、能被追问的演示闭环。",
+      knowledgePoints: ["汇报主线", "展示材料", "模拟问答"],
+      dailyItems,
+      decisionTitle: "按答辩目标先做可展示闭环",
+      decisionSummary: "当前目标指向演示和表达，所以优先排提纲、展示证据和模拟问答。",
+      evidenceItems: [`当前目标：${target}`, `每日投入：${dailyMinutes} 分钟`, "输出形式：讲解稿/展示路径/问答准备"],
+      learnNext: dailyItems[0].title,
+      practiceNext: dailyItems[1].title,
+      reason: "答辩目标最怕只有功能没有表达主线，所以先把讲解顺序和展示证据排清楚。",
+      phaseCards: dailyItems.map((item) => ({
+        summary: item.focus,
+        focusTitle: item.title,
+        nextTitle: item.task,
+        nextDetail: `完成标准：${item.deliverable}`,
       })),
-    )
-    .slice(0, 7);
+    };
+  }
+
+  if (/考试|测评|期末|刷题|分数|通过|掌握|复习/.test(normalized)) {
+    const dailyItems: GoalPathItem[] = [
+      {
+        day: 1,
+        title: "把目标拆成考点清单",
+        focus: `先围绕“${target}”确认最该补的知识点。`,
+        task: `用 ${dailyMinutes} 分钟通读当前章节讲义，把会考、易混、不会讲的内容各列 3 条。`,
+        deliverable: "9 条考点清单：会考 3 条、易混 3 条、不会讲 3 条",
+      },
+      {
+        day: 2,
+        title: "围绕薄弱点做题",
+        focus: "用练习结果证明哪些点已经掌握，哪些点还需要回看。",
+        task: "完成一组 5-8 题短测或随堂练习，每做错一题都写一句错因，不跳过解析。",
+        deliverable: "一份练习记录 + 错因清单",
+      },
+      {
+        day: 3,
+        title: "复盘并补最后一轮",
+        focus: "把错题和知识点重新对齐，形成下一轮复习入口。",
+        task: "把错题按概念、流程、应用三类归档，再选 2 个最薄弱点让 AI 导师重新讲一遍。",
+        deliverable: "错题分类表 + 2 个追问记录",
+      },
+    ];
+    return {
+      target,
+      domain: "考试复习",
+      objective: "把目标拆成考点、练习和错题复盘三段。",
+      knowledgePoints: ["考点清单", "短测练习", "错题复盘"],
+      dailyItems,
+      decisionTitle: "按复习目标先定位考点",
+      decisionSummary: "当前目标偏考试/掌握度，所以先明确考点，再用练习结果校准。",
+      evidenceItems: [`当前目标：${target}`, `每日投入：${dailyMinutes} 分钟`, "优先方式：考点清单 -> 练习 -> 错题复盘"],
+      learnNext: dailyItems[0].title,
+      practiceNext: dailyItems[1].title,
+      reason: "复习目标需要用题目验证掌握度，所以不能只看资料，必须马上进入练习和错题记录。",
+      phaseCards: dailyItems.map((item) => ({
+        summary: item.focus,
+        focusTitle: item.title,
+        nextTitle: item.task,
+        nextDetail: `完成标准：${item.deliverable}`,
+      })),
+    };
+  }
+
+  if (/项目|作业|课程设计|实训|实现|开发|系统|功能/.test(normalized)) {
+    const dailyItems: GoalPathItem[] = [
+      {
+        day: 1,
+        title: "拆清目标对应的需求",
+        focus: `把“${target}”从一句目标拆成能执行的功能和边界。`,
+        task: `用 ${dailyMinutes} 分钟写出 3 个核心功能、2 个非功能要求和 1 个不做的边界，避免后面越做越散。`,
+        deliverable: "3 个核心功能 + 2 个非功能要求 + 1 个范围边界",
+      },
+      {
+        day: 2,
+        title: "画出实现方案",
+        focus: "把需求推进到模块、数据和页面/接口协作。",
+        task: "画一张模块结构图，标出输入、处理、输出和可能失败的地方，再对应到课程里的设计原则。",
+        deliverable: "模块结构图 + 输入输出说明 + 风险点",
+      },
+      {
+        day: 3,
+        title: "完成可验收闭环",
+        focus: "让目标从“做了”变成“能证明做成了”。",
+        task: "列 3 条验收标准，准备 1 个真实演示用例，并记录还没解决的问题。",
+        deliverable: "验收标准 + 演示用例 + 待解决问题",
+      },
+    ];
+    return {
+      target,
+      domain: "项目作业",
+      objective: "把目标拆成需求、方案和验收闭环。",
+      knowledgePoints: ["需求拆解", "模块设计", "验收标准"],
+      dailyItems,
+      decisionTitle: "按项目目标先拆需求和验收",
+      decisionSummary: "当前目标偏项目交付，所以优先明确功能边界、实现方案和验收证据。",
+      evidenceItems: [`当前目标：${target}`, `每日投入：${dailyMinutes} 分钟`, "输出方式：需求清单/模块图/验收用例"],
+      learnNext: dailyItems[0].title,
+      practiceNext: dailyItems[1].title,
+      reason: "项目目标需要可验收成果，先把范围和模块定住，后面开发才不会散。",
+      phaseCards: dailyItems.map((item) => ({
+        summary: item.focus,
+        focusTitle: item.title,
+        nextTitle: item.task,
+        nextDetail: `完成标准：${item.deliverable}`,
+      })),
+    };
+  }
+
+  const dailyItems: GoalPathItem[] = [
+    {
+      day: 1,
+      title: "把目标翻译成学习清单",
+      focus: `先明确“${target}”到底需要补哪些知识和产出。`,
+      task: `用 ${dailyMinutes} 分钟浏览当前课程资料，列出 3 个必须掌握的知识点和 1 个最终要交付的成果。`,
+      deliverable: "3 个知识点 + 1 个目标成果",
+    },
+    {
+      day: 2,
+      title: "完成一轮核心学习",
+      focus: "围绕目标最关键的一块内容集中学习，不分散到太多方向。",
+      task: "打开讲义或视频，把目标相关内容整理成 5 条笔记，并补一组对应练习。",
+      deliverable: "5 条学习笔记 + 一组练习记录",
+    },
+    {
+      day: 3,
+      title: "输出目标成果草稿",
+      focus: "用一个可见成果检验目标是否真的往前走了。",
+      task: "把前两天内容整理成一份草稿、图表、讲解稿或任务单，再标出下一步需要补的 2 个问题。",
+      deliverable: "目标成果草稿 + 2 个待补问题",
+    },
+  ];
+  return {
+    target,
+    domain: "目标学习",
+    objective: `围绕“${target}”拆出知识点、练习和成果。`,
+    knowledgePoints: ["目标拆解", "核心学习", "成果草稿"],
+    dailyItems,
+    decisionTitle: "先把目标拆成可执行任务",
+    decisionSummary: "当前目标还没有明确到知识点，所以先把它拆成必须掌握的内容和最终交付物。",
+    evidenceItems: [`当前目标：${target}`, `每日投入：${dailyMinutes} 分钟`, "计划方式：知识点 -> 练习 -> 成果"],
+    learnNext: dailyItems[0].title,
+    practiceNext: dailyItems[1].title,
+    reason: "目标还比较宽，需要先明确知识范围，否则后续路径会继续显得泛。",
+    phaseCards: dailyItems.map((item) => ({
+      summary: item.focus,
+      focusTitle: item.title,
+      nextTitle: item.task,
+      nextDetail: `完成标准：${item.deliverable}`,
+    })),
+  };
+}
+
+function concretizeGoalPathItem(item: GoalPathItem, index: number, routeCourseId: string, learningGoal: StoredLearningGoal | null): GoalPathItem {
+  if (learningGoal?.goal?.trim()) {
+    return item;
+  }
+  if (routeCourseId !== "series-2") {
+    return item;
+  }
+  const day = item.day || index + 1;
+  if (day === 1) {
+    return {
+      ...item,
+      title: item.title || "把软件工程主线画出来",
+      focus: item.focus || "先看讲义与章节目录，明确软件生命周期、软件危机和课程章节之间的关系。",
+      task:
+        item.task ||
+        "打开当前章节讲义，边看边画一张“需求-设计-实现-测试-维护”的流程图，再把这轮最该先补的知识点列成 3 条。",
+      deliverable: item.deliverable || "一张主线关系图 + 3 条优先补的知识点",
+    };
+  }
+  if (day === 2) {
+    return {
+      ...item,
+      title: item.title || "拆一份真实需求",
+      focus: item.focus || "围绕一个课程案例，把需求、用例和非功能要求拆开。",
+      task: item.task || "选一个你最熟的项目例子，写出 1 份功能需求清单、1 张用例表和 1 句这件事为什么难。",
+      deliverable: item.deliverable || "需求清单 + 用例表 + 一句问题说明",
+    };
+  }
+  if (day === 3) {
+    return {
+      ...item,
+      title: item.title || "画出模块设计草图",
+      focus: item.focus || "把需求继续推到系统设计、模块划分和接口协作。",
+      task: item.task || "根据前两天整理的需求，画一张模块结构图，标出每个模块负责什么、接口怎么连、测试时先看哪一块。",
+      deliverable: item.deliverable || "模块结构图 + 接口说明 + 测试检查点",
+    };
+  }
+  return item;
 }
 
 function buildPlanAgentCards(params: {
@@ -785,37 +1470,37 @@ function buildPlanAgentCards(params: {
   return [
     {
       key: "profile_agent",
-      title: "学习画像智能体",
+      title: "学习画像",
       detail: usingFallback
-        ? "当前使用本地画像输入兜底，保证路径页可持续浏览"
-        : `已读取当前学习状态与用户画像${plan?.current_stage ? `，识别当前处于${plan.current_stage}` : ""}`,
+        ? "当前先用本地记录补齐页面内容"
+        : `已同步当前学习状态${plan?.current_stage ? `，目前处于${plan.current_stage}` : ""}`,
       status: activeStatus,
       icon: Bot,
     },
     {
       key: "knowledge_tutoring_agent",
-      title: "知识检索智能体",
+      title: "知识依据",
       detail: usingFallback
-        ? "真实资料检索暂不可用，当前使用本地路径模板说明"
-        : `已结合画像偏好、课程重点和薄弱点，为当前路径补充 ${phaseCount} 个阶段的任务依据`,
+        ? "检索未返回时，先按课程主线给出安排"
+        : `已结合课程重点和当前短板，补齐 ${phaseCount} 个阶段的任务依据`,
       status: activeStatus,
       icon: BookOpen,
     },
     {
       key: "learning_planning_agent",
-      title: "路径规划智能体",
+      title: "路径安排",
       detail: plan
-        ? `已基于用户画像、目标和进度生成 ${stepCount} 个个性化学习步骤`
-        : "根据用户画像、目标、天数和每日时长生成阶段化任务清单",
+        ? `本轮已整理出 ${stepCount} 个可执行步骤`
+        : "会根据目标、进度和投入时长生成阶段任务",
       status: activeStatus,
       icon: Target,
     },
     {
       key: "evaluation_feedback_agent",
-      title: "评估反馈智能体",
+      title: "评估反馈",
       detail: usingFallback
-        ? "当前只保留进度展示，真实评估回写恢复后会自动补齐"
-        : "会根据测评结果与进度完成率持续调整后续任务优先级",
+        ? "当前先保留进度展示，评估结果恢复后会自动补齐"
+        : "会根据测评结果和完成率继续调整后续优先级",
       status: loading ? "standby" : usingFallback ? "standby" : "completed",
       icon: CheckCircle2,
     },
@@ -942,6 +1627,10 @@ export default function LearningPath() {
   const [goalPath, setGoalPath] = useState<GoalPathResponse | null>(null);
   const [reviewPlan, setReviewPlan] = useState<ReviewPlanResponse | null>(null);
   const [levelRecommendation, setLevelRecommendation] = useState<LevelRecommendationResponse | null>(null);
+  const [profileSummary, setProfileSummary] = useState<ProfileSummaryResponse | null>(null);
+  const [profileDetail, setProfileDetail] = useState<StudentProfileDetailResponse | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [personalizedReady, setPersonalizedReady] = useState(false);
   const [learningGoal, setLearningGoal] = useState<StoredLearningGoal | null>(null);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
@@ -954,7 +1643,7 @@ export default function LearningPath() {
       ? plan.summary
       : usingFallback
         ? getFallbackSummary(routeCourseId)
-        : "这里展示的是系统结合你的用户画像、当前目标、课程阶段与学习进度实时生成的个性化学习方案。";
+        : "按当前目标、进度和课程阶段整理出的本轮安排。";
   const sessionGoalUserId = useMemo(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -996,9 +1685,18 @@ export default function LearningPath() {
     const unlockedIndex = phases.findIndex((phase) => phase.steps.some((step) => step.status === "unlocked" && !step.completed));
     return unlockedIndex >= 0 ? unlockedIndex : 0;
   }, [phases]);
+  const goalPlanningProfile = useMemo(
+    () => buildGoalPlanningProfile(learningGoal, course.title, routeCourseId),
+    [course.title, learningGoal, routeCourseId],
+  );
   const resolvedDailyPlanItems = useMemo(
-    () => (goalPath?.items?.length ? goalPath.items : buildDailyPlanItemsFromPhases(phases)),
-    [goalPath, phases],
+    () => {
+      if (goalPlanningProfile?.dailyItems?.length) return goalPlanningProfile.dailyItems;
+      return goalPath?.items?.length
+        ? goalPath.items.map((item, index) => concretizeGoalPathItem(item, index, routeCourseId, learningGoal))
+        : buildDailyPlanItemsFromPhases(phases, routeCourseId);
+    },
+    [goalPath, goalPlanningProfile, learningGoal, phases, routeCourseId],
   );
   const planAgentCards = useMemo(
     () =>
@@ -1012,12 +1710,64 @@ export default function LearningPath() {
       }),
     [generating, loading, phases, plan, refreshing, usingFallback],
   );
+  const currentPhase = phases[currentPhaseIndex] || null;
+  const activeLevelItem = levelRecommendation?.items.find((item) => item.level === levelRecommendation.active_level) || null;
+  const pathDecisionInsight = useMemo(
+    () =>
+      buildPathDecisionInsight({
+        profileSummary,
+        profileDetail,
+        profileLoading,
+        profileError,
+        nextStep,
+        currentPhase,
+        activeLevelItem,
+        learningGoal,
+        usingFallback,
+        overallProgress,
+        completedStepCount,
+        totalStepCount,
+        goalProfile: goalPlanningProfile,
+      }),
+    [
+      activeLevelItem,
+      completedStepCount,
+      currentPhase,
+      learningGoal,
+      nextStep,
+      overallProgress,
+      profileDetail,
+      profileError,
+      profileLoading,
+      profileSummary,
+      totalStepCount,
+      usingFallback,
+      goalPlanningProfile,
+    ],
+  );
+  const visibleDailyPlanItems = dailyPlanExpanded ? resolvedDailyPlanItems : resolvedDailyPlanItems.slice(0, 3);
+  const heroNextActionTitle = resolvedDailyPlanItems[0]?.title || nextStep?.title || plan?.next_action || "等待生成建议";
+  const planSourceLabel = usingFallback ? "临时方案" : plan ? "本轮计划" : "同步中";
 
   useEffect(() => {
     if (!toastMessage) return;
     const timer = window.setTimeout(() => setToastMessage(null), 2400);
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
+
+  useEffect(() => {
+    if (!loading || phases.length > 0) return;
+    const timer = window.setTimeout(() => {
+      setPlan(null);
+      setProgress(null);
+      setPhases(localFallbackPhases(routeCourseId));
+      setUsingFallback(true);
+      setLoading(false);
+      setRefreshing(false);
+      setError("学习路径同步超时，已先展示备用学习路径");
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [loading, phases.length, routeCourseId]);
 
   useEffect(() => {
     const savedGoal =
@@ -1042,13 +1792,40 @@ export default function LearningPath() {
   }, [goalUserId, routeCourseId]);
 
   useEffect(() => {
-    setPlan(null);
-    setProgress(null);
-    setPhases([]);
-    setUsingFallback(false);
+    const cachedPath = readPathPageCache(activeUserId, routeCourseId);
+    setPlan(cachedPath?.plan || null);
+    setProgress(cachedPath?.progress || null);
+    setPhases(cachedPath?.phases || []);
+    setGoalPath(cachedPath?.goalPath || null);
+    setLevelRecommendation(cachedPath?.levelRecommendation || null);
+    setUsingFallback(cachedPath?.usingFallback || false);
     setError(null);
-    setLoading(true);
-  }, [routeCourseId]);
+    setLoading(!cachedPath);
+  }, [activeUserId, routeCourseId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProfileLoading(true);
+    setProfileError(null);
+    Promise.all([
+      studentApi.getProfileSummary(activeUserId).catch((error) => {
+        if (!cancelled) setProfileError(error instanceof Error ? error.message : "画像摘要读取失败");
+        return null;
+      }),
+      studentApi.getProfileDetailOrNull(activeUserId),
+    ])
+      .then(([summary, detail]) => {
+        if (cancelled) return;
+        setProfileSummary(summary);
+        setProfileDetail(detail);
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUserId]);
 
   const loadPersonalizedSidebar = async () => {
     setPersonalizedReady(false);
@@ -1064,9 +1841,26 @@ export default function LearningPath() {
   };
 
   const loadPlanState = async ({ silent = false }: { silent?: boolean } = {}) => {
-    const hasUsableContent = phases.length > 0;
+    const cachedPath = !silent ? readPathPageCache(activeUserId, routeCourseId) : null;
+    const cachedPhases = cachedPath?.phases || [];
+    if (cachedPath && phases.length === 0) {
+      setPlan(cachedPath.plan);
+      setProgress(cachedPath.progress);
+      setPhases(cachedPhases);
+      setGoalPath(cachedPath.goalPath);
+      setLevelRecommendation(cachedPath.levelRecommendation);
+      setUsingFallback(cachedPath.usingFallback);
+    }
+
+    const hasUsableContent = phases.length > 0 || cachedPhases.length > 0;
     let resolvedGoalPath = goalPath;
     let resolvedLevelRecommendation = levelRecommendation;
+    if (!resolvedGoalPath && cachedPath?.goalPath) {
+      resolvedGoalPath = cachedPath.goalPath;
+    }
+    if (!resolvedLevelRecommendation && cachedPath?.levelRecommendation) {
+      resolvedLevelRecommendation = cachedPath.levelRecommendation;
+    }
     if (silent) {
       setRefreshing(true);
     } else {
@@ -1093,21 +1887,11 @@ export default function LearningPath() {
       try {
         latestPlan = await studentApi.getLatestLearningPlan(activeUserId, numericCourseId);
       } catch {
-        await regeneratePlanForCurrentGoal();
-        try {
-          latestPlan = await studentApi.getLatestLearningPlan(activeUserId, numericCourseId);
-        } catch {
-          latestPlan = null;
-        }
+        latestPlan = null;
       }
 
       if (latestPlan && (shouldRegeneratePlan(latestPlan, routeCourseId) || isFallbackLikePlan(latestPlan, routeCourseId))) {
-        await regeneratePlanForCurrentGoal();
-        try {
-          latestPlan = await studentApi.getLatestLearningPlan(activeUserId, numericCourseId);
-        } catch {
-          latestPlan = null;
-        }
+        latestPlan = null;
       }
 
       const resolvedPlan = resolveBestPlan({
@@ -1131,8 +1915,17 @@ export default function LearningPath() {
 
       setPlan(resolvedPlan);
       setProgress(latestProgress);
-      setPhases(mapPlanToPhases(resolvedPlan, latestProgress));
+      const nextPhases = mapPlanToPhases(resolvedPlan, latestProgress);
+      setPhases(nextPhases);
       setUsingFallback(false);
+      writePathPageCache(activeUserId, routeCourseId, {
+        plan: resolvedPlan,
+        progress: latestProgress,
+        phases: nextPhases,
+        goalPath: resolvedGoalPath,
+        levelRecommendation: resolvedLevelRecommendation,
+        usingFallback: false,
+      });
     } catch (loadError) {
       if (resolvedGoalPath) {
         const personalizedPlan = buildPlanFromPersonalizedData({
@@ -1142,17 +1935,35 @@ export default function LearningPath() {
           goalPath: resolvedGoalPath,
           levelRecommendation: resolvedLevelRecommendation,
         });
+        const nextPhases = mapPlanToPhases(personalizedPlan, null);
         setPlan(personalizedPlan);
         setProgress(null);
-        setPhases(mapPlanToPhases(personalizedPlan, null));
+        setPhases(nextPhases);
         setUsingFallback(false);
         setError(null);
+        writePathPageCache(activeUserId, routeCourseId, {
+          plan: personalizedPlan,
+          progress: null,
+          phases: nextPhases,
+          goalPath: resolvedGoalPath,
+          levelRecommendation: resolvedLevelRecommendation,
+          usingFallback: false,
+        });
       } else if (!hasUsableContent) {
+        const fallbackPhases = localFallbackPhases(routeCourseId);
         setPlan(null);
         setProgress(null);
-        setPhases(localFallbackPhases(routeCourseId));
+        setPhases(fallbackPhases);
         setUsingFallback(true);
         setError(loadError instanceof Error ? loadError.message : "学习路径加载失败");
+        writePathPageCache(activeUserId, routeCourseId, {
+          plan: null,
+          progress: null,
+          phases: fallbackPhases,
+          goalPath: null,
+          levelRecommendation: null,
+          usingFallback: true,
+        });
       }
     } finally {
       setLoading(false);
@@ -1306,55 +2117,55 @@ export default function LearningPath() {
   };
 
   return (
-    <div className="space-y-6 select-none" id="learning-path-workspace">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="path-product space-y-6 select-none" id="learning-path-workspace">
+      <div className="path-topbar flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <button
           onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-[#564145] transition-colors hover:text-[#fb7299]"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-[#4b5563] transition-colors hover:text-[#E4002B]"
         >
           <ArrowLeft className="h-4 w-4" />
           返回上一页
         </button>
 
-        <div className="rounded-2xl border border-[#E3E8EC] bg-white/80 px-4 py-3 text-xs font-semibold text-[#564145] shadow-sm">
-          当前方案主题：<span className="font-black text-[#171c22]">{course.title}</span>
+        <div className="path-context-chip">
+          当前课程 <span>{course.title}</span>
         </div>
       </div>
 
-      <section className="rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
+      <section className="path-hero rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#fb7299]/10 px-3 py-1 text-[10px] font-extrabold tracking-[0.2em] text-[#fb7299]">
+              <span className="path-label">
                 学习路径
               </span>
               <span
-                className={`rounded-full px-3 py-1 text-[10px] font-extrabold tracking-[0.2em] ${
+                className={`path-status-pill ${
                   usingFallback
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-emerald-100 text-emerald-700"
+                    ? "path-status-pill--warn"
+                    : "path-status-pill--ok"
                 }`}
               >
-                {usingFallback ? "备用方案" : "实时方案"}
+                {usingFallback ? "临时方案" : "最新版本"}
               </span>
             </div>
 
-            <h1 className="text-2xl font-extrabold text-[#171c22] lg:text-3xl">{currentPageLabel}</h1>
-            <p className="text-sm leading-7 text-[#564145]">
+            <h1 className="path-title text-2xl font-extrabold text-[#171c22] lg:text-3xl">{currentPageLabel}</h1>
+            <p className="path-summary text-sm leading-7 text-[#4b5563]">
               {localizedPlanSummary}
             </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-[#f7f9fc] px-4 py-3">
-                <div className="text-[11px] font-semibold tracking-[0.2em] text-[#8a94a3]">总体进度</div>
-                <div className="mt-2 text-lg font-extrabold text-[#171c22]">{formatPercent(overallProgress)}</div>
+            <div className="path-metrics grid gap-3 sm:grid-cols-3">
+              <div>
+                <div className="path-metric-label">总体进度</div>
+                <div className="path-metric-value">{formatPercent(overallProgress)}</div>
               </div>
-              <div className="rounded-2xl bg-[#f7f9fc] px-4 py-3">
-                <div className="text-[11px] font-semibold tracking-[0.2em] text-[#8a94a3]">当前阶段</div>
-                <div className="mt-2 text-sm font-extrabold text-[#171c22]">{plan?.current_stage || "路径模板准备中"}</div>
+              <div>
+                <div className="path-metric-label">当前阶段</div>
+                <div className="path-metric-value path-metric-value--small">{currentPhase?.title || plan?.current_stage || "路径准备中"}</div>
               </div>
-              <div className="rounded-2xl bg-[#f7f9fc] px-4 py-3">
-                <div className="text-[11px] font-semibold tracking-[0.2em] text-[#8a94a3]">下一步安排</div>
-                <div className="mt-2 text-sm font-extrabold text-[#171c22]">{plan?.next_action || nextStep?.title || "等待生成建议"}</div>
+              <div>
+                <div className="path-metric-label">下一步</div>
+                <div className="path-metric-value path-metric-value--small">{heroNextActionTitle}</div>
               </div>
             </div>
           </div>
@@ -1362,7 +2173,7 @@ export default function LearningPath() {
           <div className="flex w-full shrink-0 flex-col gap-3 lg:w-80">
             <button
               onClick={() => navigate(`/learn?courseId=${course.id}`)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#fb7299] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#eb5f90]"
+              className="path-primary-action inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#fb7299] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#eb5f90]"
             >
               <PlayCircle className="h-5 w-5" />
               继续学习
@@ -1370,7 +2181,7 @@ export default function LearningPath() {
             <button
               onClick={() => void loadPlanState({ silent: true })}
               disabled={refreshing}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#E3E8EC] bg-white px-5 py-3 text-sm font-bold text-[#171c22] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="path-secondary-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#E3E8EC] bg-white px-5 py-3 text-sm font-bold text-[#171c22] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               刷新路径
@@ -1378,7 +2189,7 @@ export default function LearningPath() {
             <button
               onClick={handleGeneratePlan}
               disabled={generating}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#fb7299]/25 bg-[#fff4f8] px-5 py-3 text-sm font-bold text-[#fb7299] transition-colors hover:bg-[#ffe8f0] disabled:cursor-not-allowed disabled:opacity-60"
+              className="path-secondary-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#fb7299]/25 bg-[#fff4f8] px-5 py-3 text-sm font-bold text-[#fb7299] transition-colors hover:bg-[#ffe8f0] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Sparkles className={`h-4 w-4 ${generating ? "animate-pulse" : ""}`} />
               重新生成
@@ -1387,15 +2198,15 @@ export default function LearningPath() {
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_340px]">
-        <div className="rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
-          <div className="mt-5 rounded-[28px] border border-[#f0d7e0] bg-[linear-gradient(180deg,#fffafc_0%,#ffffff_100%)] p-4">
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.28fr)_320px]">
+        <div className="path-main-panel rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
+          <div className="path-plan-panel mt-5 rounded-[28px] border border-[#f0d7e0] bg-[linear-gradient(180deg,#fffafc_0%,#ffffff_100%)] p-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="inline-flex rounded-full bg-[#fff4f8] px-3 py-1 text-[10px] font-extrabold tracking-[0.18em] text-[#fb7299]">
-                AI 已生成本轮个性化学习方案
+              <div className="path-label">
+                本轮学习计划
               </div>
-              <div className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-[#171c22]">
-                当前总进度 {formatPercent(overallProgress)}
+              <div className="path-status-pill path-status-pill--neutral">
+                {planSourceLabel} · {formatPercent(overallProgress)}
               </div>
             </div>
 
@@ -1407,23 +2218,23 @@ export default function LearningPath() {
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-[#564145]">
                   {learningGoal
-                    ? `系统会结合你的学习画像、当前进度和这个目标，在 ${formatGoalDeadline(learningGoal.deadline)} 前拆出可执行的阶段任务。`
-                    : goalPath?.goal_subtitle || "不是泛泛推荐，而是结合你的画像与当前进度拆成接下来要完成的学习动作。"}
+                    ? `围绕这个目标，把你接下来该学、该练、该交付的内容排清楚。`
+                    : goalPath?.goal_subtitle || "把当前课程主线拆成接下来能直接执行的学习动作。"}
                 </p>
                 <p className="mt-1 text-xs text-[#8a94a3]">
                   {learningGoal
-                    ? `当前记录：每日 ${learningGoal.dailyMinutes} 分钟 · ${getGoalAvailableDays(learningGoal.deadline)} 天内完成 · 路径会随画像与进度动态调整`
-                    : goalPath?.suitable_for || "系统会按你的学习基础、薄弱点和当前课程阶段持续微调路径。"}
+                    ? `当前记录：每日 ${learningGoal.dailyMinutes} 分钟 · 计划在 ${formatGoalDeadline(learningGoal.deadline)} 前完成`
+                    : goalPath?.suitable_for || "会按当前课程阶段和完成进度继续微调。"}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2 md:max-w-[360px] md:justify-end">
-                <span className="rounded-full border border-[#edf1f5] bg-white px-3 py-2 text-[11px] font-bold text-[#171c22]">
+              <div className="path-goal-tags flex flex-wrap gap-2 md:max-w-[360px] md:justify-end">
+                <span>
                   当前目标：{learningGoal?.goal || "按当前课程推进"}
                 </span>
-                <span className="rounded-full border border-[#edf1f5] bg-white px-3 py-2 text-[11px] font-bold text-[#171c22]">
+                <span>
                   完成时间：{learningGoal ? formatGoalDeadline(learningGoal.deadline) : "待设定"}
                 </span>
-                <span className="rounded-full border border-[#edf1f5] bg-white px-3 py-2 text-[11px] font-bold text-[#171c22]">
+                <span>
                   日投入：{learningGoal ? `${learningGoal.dailyMinutes} 分钟 / 天` : "按系统建议"}
                 </span>
               </div>
@@ -1432,30 +2243,27 @@ export default function LearningPath() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 onClick={() => setGoalModalOpen(true)}
-                className="inline-flex items-center justify-center rounded-2xl border border-[#f3d5de] bg-white px-4 py-2 text-xs font-bold text-[#8a5666]"
+                className="path-secondary-action inline-flex items-center justify-center rounded-2xl border border-[#f3d5de] bg-white px-4 py-2 text-xs font-bold text-[#8a5666]"
               >
                 修改目标
               </button>
               <button
                 onClick={() => navigate(`/learn?courseId=${course.id}`)}
-                className="inline-flex items-center justify-center rounded-2xl bg-[#171c22] px-4 py-2 text-xs font-bold text-white"
+                className="path-dark-action inline-flex items-center justify-center rounded-2xl bg-[#171c22] px-4 py-2 text-xs font-bold text-white"
               >
                 继续课堂
               </button>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2 rounded-2xl border border-[#f6d8e3] bg-[#fff8fb] px-4 py-3">
-              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#171c22]">
+            <div className="path-plan-facts mt-3 flex flex-wrap gap-2 rounded-2xl border border-[#f6d8e3] bg-[#fff8fb] px-4 py-3">
+              <span>
                 当前阶段：{phases[currentPhaseIndex]?.title || "学习起步"}
               </span>
-              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#171c22]">
+              <span>
                 学习目标：{learningGoal?.goal ? "已设定明确目标" : "按当前课程推进"}
               </span>
-              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#171c22]">
+              <span>
                 学习节奏：{learningGoal ? `${learningGoal.dailyMinutes} 分钟 / 天` : "按系统建议节奏"}
-              </span>
-              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#171c22]">
-                推荐方式：结合画像、进度与薄弱点动态生成
               </span>
             </div>
 
@@ -1466,24 +2274,132 @@ export default function LearningPath() {
               />
             </div>
 
-            <div className="mt-5 rounded-[28px] border border-[#f6d8e3] bg-[linear-gradient(135deg,#fff1f6_0%,#ffffff_55%,#fff9fc_100%)] p-5 shadow-[0_14px_34px_rgba(251,114,153,0.10)]">
+            <div className="mt-5 overflow-hidden rounded-[28px] border border-[#ffd2df] bg-[radial-gradient(circle_at_12%_0%,#ffe6f0_0%,transparent_32%),linear-gradient(135deg,#fff7fa_0%,#ffffff_48%,#fff1f7_100%)] p-5 shadow-[0_18px_42px_rgba(251,114,153,0.12)]">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="path-label">当前判断</div>
+                  <h3 className="mt-2 text-xl font-black text-[#171c22]">
+                    {pathDecisionInsight.goalProfile?.decisionTitle || "先把下一步和原因说清楚"}
+                  </h3>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-[#564145]">
+                    {pathDecisionInsight.goalProfile?.decisionSummary || "不展开过程说明，只保留和你现在最相关的判断、难度和下一步动作。"}
+                  </p>
+                </div>
+                <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[#ffc0d3] bg-white px-4 py-2 text-xs font-black text-[#d84f82] shadow-[0_10px_24px_rgba(251,114,153,0.12)]">
+                  <Bot className="h-4 w-4" />
+                  {pathDecisionInsight.confidenceLabel}
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 lg:grid-cols-3">
+                {pathDecisionInsight.masteryMetrics.slice(0, 3).map((metric, index) => (
+                  <div key={`${metric.label}-${metric.detail}`} className="rounded-[22px] border border-white/80 bg-white/88 p-4 shadow-[0_12px_28px_rgba(251,114,153,0.08)]">
+                    <div className="text-[10px] font-black tracking-[0.14em] text-[#8a94a3]">{metric.label}</div>
+                    <div className="mt-2 flex items-end justify-between gap-3">
+                      <div className="text-xs leading-5 text-[#564145]">{metric.detail}</div>
+                      <div className={`text-sm font-black ${metric.tone === "risk" ? "text-[#f59e0b]" : "text-[#fb7299]"}`}>
+                        {pathDecisionInsight.goalProfile ? `第 ${index + 1} 步` : `${metric.score}%`}
+                      </div>
+                    </div>
+                    {pathDecisionInsight.goalProfile ? (
+                      <div className="mt-3 rounded-full bg-[#f7f9fc] px-3 py-1.5 text-[10px] font-bold text-[#64748b]">
+                        来自用户目标拆解
+                      </div>
+                    ) : (
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f3f5f8]">
+                        <div
+                          className={`h-full rounded-full ${metric.tone === "risk" ? "bg-[linear-gradient(90deg,#f59e0b_0%,#fbbf24_100%)]" : "bg-[linear-gradient(90deg,#fb7299_0%,#ffb3c8_100%)]"}`}
+                          style={{ width: `${metric.score}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
+                <div className="rounded-[24px] border border-white/80 bg-white/88 p-4">
+                  <div className="text-xs font-black text-[#171c22]">为什么先做这个</div>
+                  <div className="mt-3 space-y-3">
+                    {pathDecisionInsight.decisionRules.map((rule, index) => (
+                      <div key={rule} className="flex gap-3 rounded-2xl border border-[#edf1f5] bg-[#fcfdff] px-3 py-3">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#171c22] text-[10px] font-black text-white">
+                          {index + 1}
+                        </span>
+                        <p className="text-xs leading-6 text-[#171c22]">{rule}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {pathDecisionInsight.preferenceItems.slice(0, 4).map((item) => (
+                      <span key={item} className="rounded-full border border-[#e7edf3] bg-white px-3 py-1.5 text-[11px] font-bold text-[#171c22]">
+                        {item}
+                      </span>
+                    ))}
+                    {pathDecisionInsight.weakSignals.slice(0, 2).map((item) => (
+                      <span key={item} className="rounded-full bg-[#fff1f6] px-3 py-1.5 text-[11px] font-bold text-[#d84f82]">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-[11px] leading-5 text-[#8a94a3]">{pathDecisionInsight.sourceLabel}</p>
+                </div>
+
+                <div className="rounded-[24px] border border-white/80 bg-white/92 p-4">
+                  <div className="text-xs font-black text-[#171c22]">接下来就做这两件事</div>
+                  <div className="mt-3 grid gap-3">
+                    <div className="rounded-2xl border border-[#f3d5de] bg-[#fff8fb] px-4 py-3">
+                      <div className="text-[10px] font-black tracking-[0.14em] text-[#d84f82]">先学</div>
+                      <div className="mt-2 text-sm font-extrabold leading-6 text-[#171c22]">{pathDecisionInsight.learnNext}</div>
+                    </div>
+                    <div className="rounded-2xl border border-[#d7e8f2] bg-[#f7fcff] px-4 py-3">
+                      <div className="text-[10px] font-black tracking-[0.14em] text-[#006689]">再练</div>
+                      <div className="mt-2 text-sm font-extrabold leading-6 text-[#171c22]">{pathDecisionInsight.practiceNext}</div>
+                    </div>
+                    <div className="rounded-2xl border border-[#edf1f5] bg-white px-4 py-3 text-xs leading-6 text-[#564145]">
+                      {pathDecisionInsight.reason}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/resources?courseId=${course.id}`)}
+                      className="inline-flex items-center gap-1 rounded-full bg-[#fb7299] px-4 py-2 text-xs font-black text-white shadow-[0_10px_24px_rgba(251,114,153,0.18)]"
+                    >
+                      去看配套资料
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/tutor?courseId=${course.id}&query=${encodeURIComponent(`结合我当前的学习路径，先帮我讲清楚：${pathDecisionInsight.learnNext}`)}`)}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#f3d5de] bg-white px-4 py-2 text-xs font-black text-[#8a5666]"
+                    >
+                      去问 AI 导师
+                      <Bot className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="path-daily-panel mt-5 rounded-[28px] border border-[#f6d8e3] bg-[linear-gradient(135deg,#fff1f6_0%,#ffffff_55%,#fff9fc_100%)] p-5 shadow-[0_14px_34px_rgba(251,114,153,0.10)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black tracking-[0.18em] text-[#8a94a3]">逐日学习安排</div>
-                  <div className="mt-2 text-lg font-extrabold text-[#171c22]">接下来 3 天具体学什么、做什么、产出什么</div>
+                  <div className="path-label">近 3 天安排</div>
+                  <div className="mt-2 text-lg font-extrabold text-[#171c22]">接下来 3 天先做这三件事</div>
                   <p className="mt-2 text-xs leading-6 text-[#64748b]">
-                    先把最该优先推进的 3 个学习日程直接展示在首屏，不再只给你抽象概括。
+                    已按优先级排好，照着推进就行。
                   </p>
                 </div>
                 <div className="rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-right">
-                  <div className="text-[10px] font-black tracking-[0.16em] text-[#8a94a3]">当前最优先</div>
+                  <div className="text-[10px] font-black tracking-[0.16em] text-[#8a94a3]">当前先做</div>
                   <div className="mt-2 text-sm font-extrabold text-[#171c22]">{resolvedDailyPlanItems[0]?.title || nextStep?.title || "等待系统生成"}</div>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 xl:grid-cols-3">
-                {resolvedDailyPlanItems.slice(0, 3).map((item, index) => (
-                  <div key={`hero-${item.day}-${item.title}`} className="rounded-2xl border border-[#edf1f5] bg-white p-4 shadow-sm">
+                {visibleDailyPlanItems.map((item, index) => (
+                  <div key={`hero-${item.day}-${item.title}`} className="path-day-card rounded-2xl border border-[#edf1f5] bg-white p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-[10px] font-black tracking-[0.18em] text-[#8a94a3]">第 {item.day} 天</div>
                       <div className="rounded-full bg-[#fff1f6] px-2.5 py-1 text-[10px] font-black text-[#d84f82]">
@@ -1492,16 +2408,26 @@ export default function LearningPath() {
                     </div>
                     <div className="mt-3 text-sm font-extrabold text-[#171c22]">{item.title}</div>
                     <div className="mt-2 rounded-2xl bg-[#f8fbff] px-3 py-2 text-xs font-bold text-[#006689]">
-                      这天重点：{item.focus}
+                      重点：{item.focus}
                     </div>
-                    <p className="mt-3 text-xs leading-6 text-[#564145]">要做的事：{item.task}</p>
+                    <p className="mt-3 text-xs leading-6 text-[#564145]">任务：{item.task}</p>
                     <div className="mt-3 rounded-2xl border border-dashed border-[#dbe7f3] bg-[#fafcff] px-3 py-3">
-                      <div className="text-[11px] font-black tracking-[0.14em] text-[#8a94a3]">当天完成标准</div>
-                      <div className="mt-2 text-xs leading-6 text-[#171c22]">产出：{item.deliverable}</div>
+                      <div className="text-[11px] font-black tracking-[0.14em] text-[#8a94a3]">完成标准</div>
+                      <div className="mt-2 text-xs leading-6 text-[#171c22]">{item.deliverable}</div>
                     </div>
                   </div>
                 ))}
               </div>
+              {resolvedDailyPlanItems.length > 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setDailyPlanExpanded((current) => !current)}
+                  className="path-expand-button mt-4 inline-flex items-center justify-center gap-2 text-xs font-bold text-[#171c22]"
+                >
+                  {dailyPlanExpanded ? "收起后续日程" : `展开全部 ${resolvedDailyPlanItems.length} 天日程`}
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${dailyPlanExpanded ? "-rotate-90" : "rotate-90"}`} />
+                </button>
+              ) : null}
             </div>
 
             <div className="mt-5 grid gap-3 lg:grid-cols-3">
@@ -1511,10 +2437,11 @@ export default function LearningPath() {
                 const phaseStepCount = phase.steps.length;
                 const phaseDoneCount = phase.steps.filter((step) => step.completed).length;
                 const currentStep = phase.steps.find((step) => !step.completed) || phase.steps[0];
+                const stageCopy = getGoalStageCardCopy(goalPlanningProfile, index) || getStageCardCopy(routeCourseId, phase, currentStep);
                 return (
                   <div
                     key={phase.id}
-                    className={`relative rounded-[24px] border p-4 transition-all ${
+                    className={`path-phase-card relative rounded-[24px] border p-4 transition-all ${
                       isCurrent
                         ? "border-[#fb7299]/35 bg-[#fff7fa] shadow-[0_12px_30px_rgba(251,114,153,0.10)]"
                         : isFinished
@@ -1523,7 +2450,7 @@ export default function LearningPath() {
                     }`}
                   >
                     {index < phases.length - 1 ? (
-                      <div className="pointer-events-none absolute -right-7 top-7 hidden items-center lg:flex">
+                      <div className="path-phase-link pointer-events-none absolute -right-7 top-7 hidden items-center lg:flex">
                         <div className="h-[3px] w-8 rounded-full bg-[linear-gradient(90deg,#f7b6cb_0%,#fb7299_100%)] shadow-[0_0_12px_rgba(251,114,153,0.22)]" />
                         <div className="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-[#f6bfd1] bg-white text-[#fb7299] shadow-[0_6px_14px_rgba(251,114,153,0.16)]">
                           <ChevronRight className="h-4 w-4" />
@@ -1544,8 +2471,10 @@ export default function LearningPath() {
                           {index + 1}
                         </div>
                         <div>
-                          <div className="text-sm font-extrabold text-[#171c22]">{phase.title}</div>
-                          <div className="mt-1 text-[11px] text-[#8a94a3]">{phaseDoneCount}/{phaseStepCount} 任务已完成</div>
+                          <div className="text-sm font-extrabold text-[#171c22]">{goalPlanningProfile ? `阶段 ${index + 1}：${stageCopy.focusTitle}` : phase.title}</div>
+                          <div className="mt-1 text-[11px] text-[#8a94a3]">
+                            {phaseDoneCount}/{phaseStepCount} 项{phaseDoneCount > 0 ? "已完成" : "待完成"}
+                          </div>
                         </div>
                       </div>
                       <span
@@ -1561,13 +2490,13 @@ export default function LearningPath() {
                       </span>
                     </div>
 
-                    <p className="mt-3 text-xs leading-6 text-[#564145]">{getStageCardCopy(routeCourseId, phase, currentStep).summary}</p>
+                    <p className="mt-3 text-xs leading-6 text-[#564145]">{stageCopy.summary}</p>
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <div className="rounded-2xl bg-white/85 px-3 py-3">
                         <div className="text-[10px] font-black tracking-[0.14em] text-[#8a94a3]">阶段重点</div>
                         <div className="mt-2 text-sm font-bold leading-6 text-[#171c22]">
-                          {getStageCardCopy(routeCourseId, phase, currentStep).focusTitle}
+                          {stageCopy.focusTitle}
                         </div>
                       </div>
                       <div className="rounded-2xl bg-white/85 px-3 py-3">
@@ -1581,10 +2510,10 @@ export default function LearningPath() {
                     <div className="mt-3 rounded-2xl border border-dashed border-[#f4ccd8] bg-white/70 px-3 py-3">
                       <div className="text-[11px] font-black tracking-[0.14em] text-[#8a94a3]">这一阶段下一步做什么</div>
                       <div className="mt-2 text-sm font-bold leading-6 text-[#171c22]">
-                        {getStageCardCopy(routeCourseId, phase, currentStep).nextTitle}
+                        {stageCopy.nextTitle}
                       </div>
                       <div className="mt-1 text-xs leading-6 text-[#64748b]">
-                        {getStageCardCopy(routeCourseId, phase, currentStep).nextDetail}
+                        {stageCopy.nextDetail}
                       </div>
                     </div>
 
@@ -1605,7 +2534,7 @@ export default function LearningPath() {
         </div>
 
         <aside className="space-y-6">
-          <section className="rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
+          <section className="path-side-panel rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-extrabold text-[#171c22]">学习建议与后续联动</h3>
@@ -1613,35 +2542,31 @@ export default function LearningPath() {
                   这里会把你当前更适合的学习层级、推荐主题和后续动作收在一起。
                 </p>
               </div>
-              <div className="rounded-full bg-[#fff4f8] px-3 py-1 text-[10px] font-black text-[#fb7299]">
+              <div className="path-status-pill path-status-pill--neutral">
                 侧边决策
               </div>
             </div>
 
-            {levelRecommendation?.active_level ? (
-              <div className="mt-4 rounded-2xl border border-[#f3d5de] bg-[linear-gradient(180deg,#fff8fb_0%,#ffffff_100%)] p-4">
+            {activeLevelItem ? (
+              <div className="path-level-card mt-4 rounded-2xl border border-[#f3d5de] bg-[linear-gradient(180deg,#fff8fb_0%,#ffffff_100%)] p-4">
                 <div className="text-[10px] font-black tracking-[0.16em] text-[#8a94a3]">当前更匹配的学习层级</div>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="text-sm font-extrabold text-[#171c22]">
-                    {levelRecommendation.items.find((item) => item.level === levelRecommendation.active_level)?.label || "当前推荐层级"}
+                    {activeLevelItem.label || "当前推荐层级"}
                   </div>
                   <div className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-[#006689]">
-                    匹配度{" "}
-                    {levelRecommendation.items.find((item) => item.level === levelRecommendation.active_level)?.fit_score || "--"}
+                    匹配度 {activeLevelItem.fit_score || "--"}
                   </div>
                 </div>
                 <p className="mt-2 text-xs leading-6 text-[#564145]">
-                  {levelRecommendation.items.find((item) => item.level === levelRecommendation.active_level)?.description ||
-                    "系统会根据你的当前表现自动推荐更适合的学习难度。"}
+                  {activeLevelItem.description || "系统会根据你的当前表现自动推荐更适合的学习难度。"}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {(levelRecommendation.items.find((item) => item.level === levelRecommendation.active_level)?.recommended_topics || []).map(
-                    (topic) => (
-                      <span key={topic} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#171c22]">
-                        {topic}
-                      </span>
-                    ),
-                  )}
+                  {(activeLevelItem.recommended_topics || []).map((topic) => (
+                    <span key={topic} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#171c22]">
+                      {topic}
+                    </span>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1683,8 +2608,8 @@ export default function LearningPath() {
 
       {goalModalOpen ? (
         <div className="fixed inset-0 z-[130] flex items-start justify-center bg-[#111827]/45 px-4 pt-20 backdrop-blur-[2px] sm:pt-24">
-          <div className="w-full max-w-md rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,246,249,0.96))] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#fb7299]">学习目标</p>
+          <div className="path-goal-modal w-full max-w-md rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,246,249,0.96))] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+            <p className="path-label">学习目标</p>
             <h3 className="mt-2 text-xl font-black text-[#171c22]">先设目标，再生成路径</h3>
             <p className="mt-2 text-sm leading-6 text-[#5b6574]">
               路径会根据你的目标、完成时间和每日可投入时长来安排。
@@ -1698,7 +2623,7 @@ export default function LearningPath() {
                   onChange={(event) => setGoalDraft(event.target.value)}
                   rows={3}
                   placeholder="比如：本周完成前端状态管理专题，并能独立拆分组件状态"
-                  className="mt-2 w-full rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/15"
+                  className="path-input mt-2 w-full rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/15"
                 />
               </label>
 
@@ -1709,7 +2634,7 @@ export default function LearningPath() {
                     type="datetime-local"
                     value={goalDeadlineDraft}
                     onChange={(event) => setGoalDeadlineDraft(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/15"
+                    className="path-input mt-2 w-full rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/15"
                   />
                 </label>
                 <label className="block">
@@ -1720,7 +2645,7 @@ export default function LearningPath() {
                     step="5"
                     value={goalDailyMinutesDraft}
                     onChange={(event) => setGoalDailyMinutesDraft(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/15"
+                    className="path-input mt-2 w-full rounded-2xl border border-[#f3d5de] bg-white px-4 py-3 text-sm text-[#171c22] outline-none transition focus:border-[#fb7299] focus:ring-2 focus:ring-[#fb7299]/15"
                   />
                 </label>
               </div>
@@ -1730,7 +2655,7 @@ export default function LearningPath() {
               <button
                 type="button"
                 onClick={handleSaveGoal}
-                className="inline-flex items-center justify-center rounded-full bg-[#fb7299] px-5 py-2.5 text-sm font-black text-white shadow-[0_12px_28px_rgba(251,114,153,0.22)] transition-transform hover:-translate-y-0.5"
+                className="path-primary-action inline-flex items-center justify-center rounded-full bg-[#fb7299] px-5 py-2.5 text-sm font-black text-white shadow-[0_12px_28px_rgba(251,114,153,0.22)] transition-transform hover:-translate-y-0.5"
               >
                 保存目标
               </button>
@@ -1742,7 +2667,7 @@ export default function LearningPath() {
                     setGoalDeadlineDraft(learningGoal.deadline);
                     setGoalDailyMinutesDraft(String(learningGoal.dailyMinutes));
                   }}
-                  className="inline-flex items-center justify-center rounded-full border border-[#f3d5de] bg-[#fff7fa] px-5 py-2.5 text-sm font-black text-[#8a5666]"
+                  className="path-secondary-action inline-flex items-center justify-center rounded-full border border-[#f3d5de] bg-[#fff7fa] px-5 py-2.5 text-sm font-black text-[#8a5666]"
                 >
                   恢复当前目标
                 </button>
@@ -1751,7 +2676,7 @@ export default function LearningPath() {
                 <button
                   type="button"
                   onClick={() => setGoalModalOpen(false)}
-                  className="inline-flex items-center justify-center rounded-full border border-[#f3d5de] bg-white px-5 py-2.5 text-sm font-black text-[#8a5666]"
+                  className="path-secondary-action inline-flex items-center justify-center rounded-full border border-[#f3d5de] bg-white px-5 py-2.5 text-sm font-black text-[#8a5666]"
                 >
                   先看当前路径
                 </button>
@@ -1762,7 +2687,7 @@ export default function LearningPath() {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
+        <section className="path-task-panel rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-lg font-extrabold text-[#171c22]">阶段任务清单</h2>
@@ -1799,7 +2724,7 @@ export default function LearningPath() {
                     return (
                       <div
                         key={step.id}
-                        className={`rounded-2xl border p-4 transition-all ${
+                        className={`path-task-row rounded-2xl border p-4 transition-all ${
                           current
                             ? "border-[#fb7299]/40 bg-[#fff7fa]"
                             : locked
@@ -1868,7 +2793,7 @@ export default function LearningPath() {
         </section>
 
         <aside className="space-y-6">
-          <section className="rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
+          <section className="path-side-panel rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
             <h3 className="flex items-center gap-2 text-sm font-extrabold text-[#171c22]">
               <Target className="h-4 w-4 text-[#fb7299]" />
               下一步可以直接去做

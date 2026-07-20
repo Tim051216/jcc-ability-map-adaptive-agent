@@ -1,4 +1,5 @@
 export const OPEN_TUTOR_PANEL_EVENT = "open-ai-tutor-panel";
+export const ACTIVE_TUTOR_CONTEXT_EVENT = "active-ai-tutor-context";
 export const ACTIVE_TUTOR_CONTEXT_STORAGE_KEY = "a3-active-tutor-context";
 
 export type TutorPanelPayload = {
@@ -30,6 +31,7 @@ export function openTutorPanel(payload: TutorPanelPayload = {}) {
 export function saveActiveTutorContext(payload: TutorPanelPayload) {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(ACTIVE_TUTOR_CONTEXT_STORAGE_KEY, JSON.stringify(payload));
+  window.dispatchEvent(new CustomEvent<TutorPanelPayload>(ACTIVE_TUTOR_CONTEXT_EVENT, { detail: payload }));
 }
 
 export function loadActiveTutorContext(): TutorPanelPayload | undefined {

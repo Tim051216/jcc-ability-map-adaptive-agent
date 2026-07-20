@@ -32,7 +32,7 @@ type SupplementSmokeResult = {
 const BASE_URL = "http://127.0.0.1:3002";
 const TARGET_COURSE_ID = process.argv[2] || "course-4";
 const TARGET_URL = `${BASE_URL}/resources?courseId=${TARGET_COURSE_ID}`;
-const SESSION_KEY = "bililearn-user-session";
+const SESSION_KEY = "a3-student-user-session";
 
 const CASES: SupplementCase[] = [
   { id: "extended_reading", label: "补阅读", successLabel: "拓展阅读" },
@@ -62,8 +62,11 @@ async function primeSession(page: Page, userId: string) {
 }
 
 async function login(page: Page) {
-  await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await page.waitForTimeout(500);
+  if (!page.url().includes("/login")) {
+    return;
+  }
   const idInput = page.locator("#login-id-input");
   if (await idInput.count()) {
     await idInput.fill("demo2024");

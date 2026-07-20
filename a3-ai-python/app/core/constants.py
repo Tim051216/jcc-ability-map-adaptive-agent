@@ -12,6 +12,7 @@ RESOURCE_TYPES = [
     "lecture_note",
     "mindmap",
     "practice_set",
+    "ppt",
     "teaching_plan",
     "assessment_guide",
     "video",

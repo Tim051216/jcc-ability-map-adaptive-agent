@@ -15,6 +15,7 @@ import {
   Compass,
   Heart,
   LoaderCircle,
+  RefreshCw,
   Target,
   UserCircle2,
 } from "lucide-react";
@@ -36,6 +37,72 @@ const LineBarChartPanel = lazy(() => import("../components/LineBarChartPanel"));
 const HeatmapChartPanel = lazy(() => import("../components/HeatmapChartPanel"));
 
 const DEFAULT_ROUTE_COURSE_ID = "series-2";
+const REPORT_SECTION_TIMEOUT_MS = 2200;
+const REPORT_PROGRESS_TIMEOUT_MS = 900;
+const REPORT_CACHE_STORAGE_KEY = "a3-study-report-cache";
+const REPORT_CACHE_TTL_MS = 30 * 60 * 1000;
+
+type StudyReportCacheSnapshot = {
+  cachedAt: string;
+  profileSummary: ProfileSummaryResponse | null;
+  plan: LearningPlanResponse | null;
+  planProgress: PlanProgressResponse | null;
+  resources: ResourceCard[];
+  favoriteSummary: ResourceFavoriteSummaryResponse | null;
+  evaluationHistory: EvaluationHistoryItem[];
+  evaluationTrend: EvaluationTrendResponse | null;
+  tutoringHistory: TutoringHistoryItem[];
+  sectionFallback: LoadSectionState;
+};
+
+function withReportTimeout<T>(promise: Promise<T>, timeoutMs = REPORT_SECTION_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("报告数据加载超时")), timeoutMs);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function buildReportCacheKey(userId: number, courseId: number) {
+  return `${userId}::${courseId}`;
+}
+
+function readReportCache(userId: number, courseId: number) {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(REPORT_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, StudyReportCacheSnapshot>;
+    const cached = parsed[buildReportCacheKey(userId, courseId)];
+    if (!cached?.cachedAt) return null;
+    const age = Date.now() - new Date(cached.cachedAt).getTime();
+    if (!Number.isFinite(age) || age < 0 || age > REPORT_CACHE_TTL_MS) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeReportCache(userId: number, courseId: number, snapshot: StudyReportCacheSnapshot) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(REPORT_CACHE_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, StudyReportCacheSnapshot>) : {};
+    parsed[buildReportCacheKey(userId, courseId)] = snapshot;
+    window.localStorage.setItem(REPORT_CACHE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore cache write failures.
+  }
+}
 
 const FALLBACK_REPORT = {
   profile: {
@@ -84,7 +151,6 @@ type SbtiPortrait = {
   code: string;
   title: string;
   subtitle: string;
-  image: string;
 };
 
 const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
@@ -92,25 +158,21 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     code: "SPTA",
     title: "稳态实战型",
     subtitle: "结构推进，实践验证",
-    image: "/sbti/spta.svg",
   },
   STCA: {
     code: "STCA",
     title: "体系建构型",
     subtitle: "原理优先，框架清晰",
-    image: "/sbti/stca.svg",
   },
   ETFI: {
     code: "ETFI",
     title: "探索反馈型",
     subtitle: "快速试错，反馈驱动",
-    image: "/sbti/etfi.svg",
   },
   SPCI: {
     code: "SPCI",
     title: "节奏推进型",
     subtitle: "主线清晰，持续进阶",
-    image: "/sbti/spci.svg",
   },
 };
 
@@ -369,7 +431,7 @@ export default function StudyReport() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
   const [profileSummary, setProfileSummary] = useState<ProfileSummaryResponse | null>(null);
   const [plan, setPlan] = useState<LearningPlanResponse | null>(null);
   const [planProgress, setPlanProgress] = useState<PlanProgressResponse | null>(null);
@@ -386,22 +448,43 @@ export default function StudyReport() {
     tutor: false,
   });
 
-  const loadReport = async ({ silent = false }: { silent?: boolean } = {}) => {
+  const applyReportSnapshot = (snapshot: StudyReportCacheSnapshot) => {
+    setProfileSummary(snapshot.profileSummary);
+    setPlan(snapshot.plan);
+    setPlanProgress(snapshot.planProgress);
+    setResources(snapshot.resources);
+    setFavoriteSummary(snapshot.favoriteSummary);
+    setEvaluationHistory(snapshot.evaluationHistory);
+    setEvaluationTrend(snapshot.evaluationTrend);
+    setTutoringHistory(snapshot.tutoringHistory);
+    setSectionFallback(snapshot.sectionFallback);
+    setLastLoadedAt(snapshot.cachedAt);
+  };
+
+  const loadReport = async ({ silent = false, force = false }: { silent?: boolean; force?: boolean } = {}) => {
+    if (!force) {
+      const cached = readReportCache(activeUserId, numericCourseId);
+      if (cached) {
+        applyReportSnapshot(cached);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
+
     if (silent) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
-    setError(null);
-
     try {
-      const profileTask = studentApi.getProfileSummary(activeUserId);
-      const planTask = studentApi.getLatestLearningPlan(activeUserId, numericCourseId);
-      const resourceListTask = studentApi.listResources(activeUserId, numericCourseId);
-      const favoriteTask = studentApi.getFavoriteSummary(activeUserId);
-      const historyTask = studentApi.getEvaluationHistory(activeUserId, numericCourseId);
-      const trendTask = studentApi.getEvaluationTrend(activeUserId, numericCourseId);
-      const tutorTask = studentApi.listTutoringHistory({ course_id: numericCourseId, page: 1, page_size: 6 });
+      const profileTask = withReportTimeout(studentApi.getProfileSummary(activeUserId));
+      const planTask = withReportTimeout(studentApi.getLatestLearningPlan(activeUserId, numericCourseId));
+      const resourceListTask = withReportTimeout(studentApi.listResources(activeUserId, numericCourseId));
+      const favoriteTask = withReportTimeout(studentApi.getFavoriteSummary(activeUserId));
+      const historyTask = withReportTimeout(studentApi.getEvaluationHistory(activeUserId, numericCourseId));
+      const trendTask = withReportTimeout(studentApi.getEvaluationTrend(activeUserId, numericCourseId));
+      const tutorTask = withReportTimeout(studentApi.listTutoringHistory({ course_id: numericCourseId, page: 1, page_size: 6 }));
 
       const [
         profileResult,
@@ -430,12 +513,22 @@ export default function StudyReport() {
       setTutoringHistory(tutorResult.status === "fulfilled" ? tutorResult.value.items : []);
 
       if (planResult.status === "fulfilled" && planResult.value.plan_id) {
-        try {
-          const progressResult = await studentApi.getPlanProgress(planResult.value.plan_id, activeUserId);
-          setPlanProgress(progressResult);
-        } catch {
-          setPlanProgress(null);
-        }
+        setPlanProgress(null);
+        void withReportTimeout(
+            studentApi.getPlanProgress(planResult.value.plan_id, activeUserId),
+            REPORT_PROGRESS_TIMEOUT_MS,
+          )
+          .then((progressResult) => {
+            setPlanProgress(progressResult);
+            const cached = readReportCache(activeUserId, numericCourseId);
+            if (cached) {
+              writeReportCache(activeUserId, numericCourseId, {
+                ...cached,
+                planProgress: progressResult,
+              });
+            }
+          })
+          .catch(() => setPlanProgress(null));
       } else {
         setPlanProgress(null);
       }
@@ -448,12 +541,21 @@ export default function StudyReport() {
         tutor: tutorResult.status !== "fulfilled",
       };
       setSectionFallback(fallbackState);
-
-      if (Object.values(fallbackState).every(Boolean)) {
-        setError("报告页当前未拿到实时链路，已整体回退到稳定数据。");
-      }
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "报告页加载失败");
+      const cachedAt = new Date().toISOString();
+      setLastLoadedAt(cachedAt);
+      writeReportCache(activeUserId, numericCourseId, {
+        cachedAt,
+        profileSummary: profileResult.status === "fulfilled" ? profileResult.value : null,
+        plan: planResult.status === "fulfilled" ? planResult.value : null,
+        planProgress: null,
+        resources: resourceResult.status === "fulfilled" ? resourceResult.value.items : [],
+        favoriteSummary: favoriteResult.status === "fulfilled" ? favoriteResult.value : null,
+        evaluationHistory: historyResult.status === "fulfilled" ? historyResult.value.items : [],
+        evaluationTrend: trendResult.status === "fulfilled" ? trendResult.value : null,
+        tutoringHistory: tutorResult.status === "fulfilled" ? tutorResult.value.items : [],
+        sectionFallback: fallbackState,
+      });
+    } catch {
       setSectionFallback({
         profile: true,
         plan: true,
@@ -502,7 +604,9 @@ export default function StudyReport() {
   const profileSummaryText = profileSummary?.key_features || FALLBACK_REPORT.profile.summary;
   const learningStyle = profileSummary?.recommended_learning_style || FALLBACK_REPORT.profile.style;
   const sbtiPortrait = useMemo(() => getSbtiPortrait(profileSummary), [profileSummary]);
-
+  const fallbackCount = Object.values(sectionFallback).filter(Boolean).length;
+  const liveCount = Object.keys(sectionFallback).length - fallbackCount;
+  const reportDataLabel = fallbackCount === 0 ? "实时数据" : liveCount > 0 ? "部分实时" : "稳定摘要";
   const summaryCards = [
     {
       title: "画像完整度",
@@ -512,7 +616,7 @@ export default function StudyReport() {
       icon: UserCircle2,
       accent: "from-[#ff8a65] to-[#fb7299]",
       route: "/profile",
-      mode: sectionFallback.profile ? "FALLBACK" : "REALTIME",
+      mode: sectionFallback.profile ? "稳定摘要" : "实时数据",
     },
     {
       title: "最近测评",
@@ -522,7 +626,7 @@ export default function StudyReport() {
       icon: Award,
       accent: "from-[#70d6df] to-[#1697a6]",
       route: `/evaluation?courseId=${routeCourseId}`,
-      mode: sectionFallback.evaluation ? "FALLBACK" : "REALTIME",
+      mode: sectionFallback.evaluation ? "稳定摘要" : "实时数据",
     },
     {
       title: "资源偏好",
@@ -532,7 +636,7 @@ export default function StudyReport() {
       icon: Heart,
       accent: "from-[#ffb74d] to-[#ff8f00]",
       route: buildResourcesRoute(routeCourseId),
-      mode: sectionFallback.resource ? "FALLBACK" : "REALTIME",
+      mode: sectionFallback.resource ? "稳定摘要" : "实时数据",
     },
     {
       title: "答疑证据",
@@ -542,7 +646,7 @@ export default function StudyReport() {
       icon: Bot,
       accent: "from-[#7c3aed] to-[#5b7cff]",
       route: `/tutor?courseId=${routeCourseId}`,
-      mode: sectionFallback.tutor ? "FALLBACK" : "REALTIME",
+      mode: sectionFallback.tutor ? "稳定摘要" : "实时数据",
     },
   ];
 
@@ -603,12 +707,12 @@ export default function StudyReport() {
   const nextActions = [
     {
       title: "查看完整画像",
-      detail: "看标签、阶段和变化。",
+      detail: "查看标签、阶段和画像证据。",
       to: "/profile",
     },
     {
       title: "重排学习路径",
-      detail: "按当前状态调整顺序。",
+      detail: "按当前状态调整后续任务。",
       to: `/path?courseId=${routeCourseId}`,
     },
   ];
@@ -628,75 +732,105 @@ export default function StudyReport() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center rounded-[32px] border border-[#dde7ea] bg-white">
-        <div className="flex items-center gap-3 text-sm font-semibold text-[#49585f]">
-          <LoaderCircle className="h-5 w-5 animate-spin text-[#fb7299]" />
-          正在汇总学生端 AI 闭环报告...
+      <div className="report-loading-shell flex min-h-[360px] items-center justify-center rounded-[32px] border border-[#dde7ea] bg-white">
+        <div className="report-loading-panel">
+          <div className="report-loading-orbit" aria-hidden="true">
+            <div className="report-loading-core">
+              <Bot className="h-8 w-8 text-[#fb7299]" />
+            </div>
+            <span className="report-loading-node report-loading-node--profile" />
+            <span className="report-loading-node report-loading-node--plan" />
+            <span className="report-loading-node report-loading-node--resource" />
+          </div>
+          <div className="space-y-2 text-center">
+            <div className="flex items-center justify-center gap-3 text-lg font-extrabold text-[#2f4650] md:text-xl">
+              <LoaderCircle className="h-6 w-6 animate-spin text-[#fb7299]" />
+              <span>正在汇总学生端 AI 闭环报告...</span>
+            </div>
+            <p className="text-sm font-semibold text-[#73828a]">画像、路径、资源和测评数据正在并行整理</p>
+          </div>
+          <div className="report-loading-bar" aria-hidden="true">
+            <span />
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 select-none" id="study-report-workspace">
-      <section className="relative overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96),_rgba(244,247,249,0.9)_42%,_rgba(219,240,238,0.92)_100%)] p-5 shadow-[0_20px_60px_rgba(15,46,57,0.08)] lg:p-6">
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(251,114,153,0.12),transparent_32%,rgba(15,108,123,0.12)_75%,rgba(255,183,77,0.12))]" />
-        <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#fb7299]/10 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-[#1697a6]/10 blur-3xl" />
-
+    <div className="path-product space-y-6 select-none" id="study-report-workspace">
+      <section className="path-hero rounded-3xl border border-[#E3E8EC] bg-white p-6 shadow-sm">
         <div className="relative grid gap-4 xl:grid-cols-[1.45fr_0.85fr]">
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center rounded-full border border-white/70 bg-white/80 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f6c7b] backdrop-blur">
-                用户画像分析
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#171c22] px-3 py-1 text-[10px] font-bold text-white">
-                <CheckCircle2 className="h-3.5 w-3.5 text-[#ffb74d]" />
-                {courseLabel} 画像结果已生成
-              </span>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="path-label">
+                  学习报告
+                </span>
+                <span className={`path-status-pill ${fallbackCount === 0 ? "path-status-pill--ok" : "path-status-pill--neutral"}`}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {reportDataLabel}
+                </span>
+                <span className="path-status-pill path-status-pill--neutral">
+                  最近刷新 {formatDateTime(lastLoadedAt)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadReport({ silent: true, force: true })}
+                disabled={refreshing}
+                className="path-secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-[#E3E8EC] bg-white px-4 py-2 text-sm font-bold text-[#171c22] transition disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw className={`h-4 w-4 text-[#E4002B] ${refreshing ? "animate-spin" : ""}`} />
+                {refreshing ? "刷新中" : "重新汇总"}
+              </button>
             </div>
 
             <div className="space-y-1.5">
-              <div className="inline-flex items-center rounded-full bg-[#eef7ff] px-3 py-1 text-[10px] font-extrabold tracking-[0.16em] text-[#0f6c7b]">
-                画像结果
-              </div>
-              <h1 className="max-w-3xl text-[24px] font-extrabold leading-[1.1] ui-tracking-tight text-[#171c22] lg:text-[36px]">
-                这份阶段报告，收拢了你当前的画像结论
+              <h1 className="path-title max-w-3xl text-2xl font-extrabold text-[#171c22] lg:text-3xl">
+                {courseLabel} 阶段学习报告
               </h1>
-              <p className="max-w-3xl text-[14px] leading-7 text-[#5a6970]">
-                它把当前阶段、优势表现、学习节奏和待补重点收拢成一份清晰的阶段结论。
+              <p className="path-summary max-w-3xl text-sm leading-7 text-[#4b5563]">
+                汇总画像、路径、资源、测评和答疑证据，给出当前判断与下一步行动。
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Link
                 to="/profile"
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#171c22] px-4 py-2 text-sm font-bold text-white shadow-sm"
+                className="path-dark-action inline-flex items-center gap-2 rounded-2xl bg-[#171c22] px-4 py-2.5 text-sm font-bold text-white transition"
               >
                 查看完整画像
                 <ArrowRight className="h-4 w-4" />
               </Link>
+              <Link
+                to={`/path?courseId=${routeCourseId}`}
+                className="path-secondary-action inline-flex items-center gap-2 rounded-2xl border border-[#E3E8EC] bg-white px-4 py-2.5 text-sm font-bold text-[#171c22] transition"
+              >
+                调整学习路径
+                <Compass className="h-4 w-4 text-[#E4002B]" />
+              </Link>
             </div>
 
-            <div className="grid grid-cols-3 gap-2.5">
-              <div className="rounded-[20px] bg-white/46 p-3 backdrop-blur-sm">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6c7b83]">画像完整度</p>
-                <p className="mt-1 text-[18px] font-extrabold text-[#171c22] md:text-2xl">{profileCompleteness}</p>
+            <div className="path-metrics grid gap-3 sm:grid-cols-3">
+              <div>
+                <p className="path-metric-label">画像完整度</p>
+                <p className="path-metric-value">{profileCompleteness}</p>
               </div>
-              <div className="rounded-[20px] bg-white/42 p-3 backdrop-blur-sm">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6c7b83]">当前阶段</p>
-                <p className="mt-1 text-[18px] font-extrabold text-[#171c22] md:text-2xl">{profileStage}</p>
+              <div>
+                <p className="path-metric-label">当前阶段</p>
+                <p className="path-metric-value path-metric-value--small">{profileStage}</p>
               </div>
-              <div className="rounded-[20px] bg-white/38 p-3 backdrop-blur-sm">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6c7b83]">最近测评</p>
-                <p className="mt-1 text-[18px] font-extrabold text-[#171c22] md:text-2xl">{latestScore}</p>
+              <div>
+                <p className="path-metric-label">最近测评</p>
+                <p className="path-metric-value">{latestScore}</p>
               </div>
             </div>
 
-            <div className="rounded-[30px] border border-white/65 bg-white/52 p-5 shadow-[0_14px_34px_rgba(23,28,34,0.04)] backdrop-blur-sm">
+            <div className="path-plan-panel rounded-[28px] border border-[#E3E8EC] bg-white p-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
-                  <div className="inline-flex items-center rounded-full bg-white/82 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#0f6c7b]">
+                  <div className="inline-flex items-center rounded-full bg-white/82 px-3 py-1 text-xs font-extrabold text-[#0f6c7b]">
                     画像解读
                   </div>
                   <h2 className="mt-3 text-2xl font-extrabold ui-tracking-tight text-[#171c22] lg:text-[32px]">
@@ -741,67 +875,69 @@ export default function StudyReport() {
             </div>
           </div>
 
-          <div className="rounded-[30px] bg-[#171c22] p-5 text-white shadow-[0_24px_50px_rgba(23,28,34,0.18)]">
+          <div className="path-side-panel rounded-3xl border border-[#E3E8EC] bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/60">画像摘要</p>
-                <p className="mt-3 text-3xl font-extrabold leading-tight">{profileStage}</p>
-                <p className="mt-2 text-sm font-semibold text-white/75">当前画像主类型：{sbtiPortrait.title}</p>
+                <p className="path-label">画像摘要</p>
+                <p className="mt-3 text-3xl font-extrabold leading-tight text-[#171c22]">{profileStage}</p>
+                <p className="mt-2 text-sm font-semibold text-[#4b5563]">当前画像主类型：{sbtiPortrait.title}</p>
               </div>
-              <div className="flex h-[92px] w-[92px] shrink-0 items-end justify-center overflow-hidden rounded-[24px] border border-white/10 bg-white/8">
-                <img src={sbtiPortrait.image} alt={sbtiPortrait.title} className="h-full w-full object-cover object-top scale-[1.03]" />
+              <div className="relative flex h-[92px] w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-[24px] border border-[#D9DEE5] bg-[#F7F7F8]">
+                <div className="absolute inset-3 rounded-full border border-[#E4002B]/35" />
+                <div className="absolute inset-6 rounded-full border border-[#D9DEE5]" />
+                <span className="relative text-xl font-black text-[#171c22]">{sbtiPortrait.code}</span>
               </div>
             </div>
 
-            <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10">
+            <div className="mt-6 h-3 overflow-hidden rounded-full bg-[#F3F5F8]">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#ffb74d_0%,#fb7299_55%,#4dd0e1_100%)]"
+                className="h-full rounded-full bg-[#E4002B]"
                 style={{ width: profileCompleteness }}
               />
             </div>
 
-            <div className="mt-6 text-sm font-semibold text-white/78">
+            <div className="mt-6 text-sm font-semibold leading-6 text-[#4b5563]">
               {profileSummaryText}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="inline-flex rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-[11px] font-bold text-white/78">
+              <span className="path-status-pill path-status-pill--neutral">
                 {sbtiPortrait.code} · {sbtiPortrait.subtitle}
               </span>
               {profileTags.slice(0, 2).map((tag) => (
-                <span key={tag} className="inline-flex rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-[11px] font-bold text-white/72">
+                <span key={tag} className="path-status-pill path-status-pill--neutral">
                   {tag}
                 </span>
               ))}
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">优势信号</p>
-                <p className="mt-3 text-[15px] font-bold leading-6 text-white">
+              <div className="path-day-card rounded-2xl border border-[#E3E8EC] bg-white p-4">
+                <p className="path-metric-label">优势信号</p>
+                <p className="mt-3 text-[15px] font-bold leading-6 text-[#171c22]">
                   {profileTags.slice(0, 3).join("、")}
                 </p>
               </div>
-              <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">待补重点</p>
-                <p className="mt-3 text-[15px] font-bold leading-6 text-white">
+              <div className="path-day-card rounded-2xl border border-[#E3E8EC] bg-white p-4">
+                <p className="path-metric-label">待补重点</p>
+                <p className="mt-3 text-[15px] font-bold leading-6 text-[#171c22]">
                   {weakPoints.join("、")}
                 </p>
               </div>
             </div>
 
-            <div className="mt-3 rounded-[22px] border border-white/10 bg-white/6 p-4">
+            <div className="path-level-card mt-3 rounded-2xl border border-[#E3E8EC] bg-white p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-extrabold text-white/70">
+                <span className="path-status-pill path-status-pill--neutral">
                   掌握判断
                 </span>
-                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-extrabold text-white/70">
+                <span className="path-status-pill path-status-pill--neutral">
                   学习方式
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-white/82">
-                当前掌握度偏向 <span className="font-bold text-white">{latestMastery}</span>，更适合以
-                <span className="font-bold text-white"> {learningStyle} </span>
+              <p className="mt-3 text-sm leading-6 text-[#4b5563]">
+                当前掌握度偏向 <span className="font-bold text-[#171c22]">{latestMastery}</span>，更适合以
+                <span className="font-bold text-[#171c22]"> {learningStyle} </span>
                 的方式继续推进。
               </p>
             </div>
@@ -813,11 +949,11 @@ export default function StudyReport() {
         {summaryCardGroups.map((group) => (
           <div
             key={group.title}
-            className="rounded-[30px] border border-[#e7eef1] bg-white/84 p-5 shadow-[0_14px_34px_rgba(23,28,34,0.045)]"
+            className="path-main-panel rounded-3xl border border-[#E3E8EC] bg-white p-5 shadow-sm"
           >
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#73838a]">{group.title}</p>
+                <p className="text-xs font-bold text-[#73838a]">{group.title}</p>
                 <p className="mt-2 text-sm text-[#5a6970]">{group.desc}</p>
               </div>
             </div>
@@ -829,15 +965,15 @@ export default function StudyReport() {
                   <Link
                     key={card.title}
                     to={card.route}
-                    className="group rounded-[24px] border border-[#edf2f4] bg-[#fafcfd] p-4 transition-transform duration-300 hover:-translate-y-0.5"
+                    className="path-day-card group rounded-2xl border border-[#E3E8EC] bg-white p-4 transition-transform duration-300 hover:-translate-y-0.5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#73838a]">{card.title}</p>
+                          <p className="text-xs font-bold text-[#73838a]">{card.title}</p>
                           <span
                             className={`rounded-full px-2 py-1 text-[10px] font-extrabold ${
-                              card.mode === "REALTIME" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                              card.mode === "实时数据" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"
                             }`}
                           >
                             {card.mode}
@@ -846,7 +982,7 @@ export default function StudyReport() {
                         <p className="mt-3 text-[26px] font-extrabold text-[#171c22]">{card.value}</p>
                         <p className="mt-1 text-[13px] font-bold text-[#0f6c7b]">{card.note}</p>
                       </div>
-                      <div className={`rounded-2xl bg-gradient-to-br p-3 text-white shadow-lg ${card.accent}`}>
+                      <div className="rounded-2xl bg-[#171c22] p-3 text-white">
                         <Icon className="h-5 w-5" />
                       </div>
                     </div>
@@ -864,13 +1000,13 @@ export default function StudyReport() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <article className="rounded-[30px] border border-[#e7eef1] bg-white/84 p-5 shadow-[0_14px_34px_rgba(23,28,34,0.045)]">
+        <article className="path-main-panel rounded-3xl border border-[#E3E8EC] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#73838a]">学习效果评估可视化</p>
+              <p className="text-xs font-bold text-[#73838a]">学习效果</p>
               <h3 className="mt-2 text-xl font-extrabold text-[#171c22]">阶段测评趋势</h3>
             </div>
-            <span className="rounded-full bg-[#171c22] px-3 py-1 text-[11px] font-extrabold text-white">ECharts</span>
+            <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-extrabold text-[#0f6c7b]">趋势</span>
           </div>
           <p className="mt-2 text-sm leading-7 text-[#5a6970]">
             将最近阶段测评结果转为趋势图，帮助学生和教师快速理解学习效果变化。
@@ -880,9 +1016,9 @@ export default function StudyReport() {
           </Suspense>
         </article>
 
-        <article className="rounded-[30px] border border-[#e7eef1] bg-white/84 p-5 shadow-[0_14px_34px_rgba(23,28,34,0.045)]">
+        <article className="path-main-panel rounded-3xl border border-[#E3E8EC] bg-white p-5 shadow-sm">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#73838a]">知识点薄弱热力图</p>
+            <p className="text-xs font-bold text-[#73838a]">薄弱点识别</p>
             <h3 className="mt-2 text-xl font-extrabold text-[#171c22]">能力风险分布</h3>
           </div>
           <p className="mt-2 text-sm leading-7 text-[#5a6970]">
@@ -895,7 +1031,7 @@ export default function StudyReport() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
-        <article className="overflow-hidden rounded-[32px] border border-[#dde7ea] bg-white shadow-[0_16px_50px_rgba(23,28,34,0.05)]">
+        <article className="path-main-panel overflow-hidden rounded-3xl border border-[#E3E8EC] bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-[#edf2f4] px-6 py-5 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#73838a]">画像构成</p>
@@ -908,7 +1044,7 @@ export default function StudyReport() {
               </p>
             </div>
             <div className="rounded-2xl bg-[#f4f8f8] px-4 py-3 text-sm font-semibold text-[#0f6c7b]">
-              最近刷新 {formatDateTime(new Date().toISOString())}
+              最近刷新 {formatDateTime(lastLoadedAt)}
             </div>
           </div>
 
@@ -916,7 +1052,7 @@ export default function StudyReport() {
             {profileComposition.map((item) => {
               const Icon = item.icon;
               return (
-                <div key={item.title} className="rounded-[22px] border border-[#edf2f4] bg-[#fafcfd] p-4">
+                <div key={item.title} className="path-day-card rounded-2xl border border-[#E3E8EC] bg-white p-4">
                   <div className="flex items-start gap-3">
                     <div className="rounded-2xl bg-white p-2 text-[#0f6c7b] shadow-sm">
                       <Icon className="h-5 w-5" />
@@ -938,31 +1074,31 @@ export default function StudyReport() {
         </article>
 
         <aside>
-          <article className="overflow-hidden rounded-[32px] border border-[#172127] bg-[#171c22] text-white shadow-[0_16px_50px_rgba(23,28,34,0.14)]">
-            <div className="border-b border-white/10 px-6 py-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/55">Decision Panel</p>
-              <h2 className="mt-2 text-xl font-extrabold">先看结论，再决定动作</h2>
+          <article className="path-side-panel overflow-hidden rounded-3xl border border-[#E3E8EC] bg-white shadow-sm">
+            <div className="border-b border-[#E3E8EC] px-6 py-5">
+              <p className="path-label">行动建议</p>
+              <h2 className="mt-2 text-xl font-extrabold text-[#171c22]">先看结论，再决定动作</h2>
             </div>
 
             <div className="space-y-5 px-6 py-5">
               <div className="space-y-3">
                 {interpretationCards.slice(0, 3).map((item) => (
-                  <div key={item.title} className="rounded-2xl bg-white/6 p-4">
-                    <div className="text-sm font-bold text-white">{item.title}</div>
-                    <p className="mt-2 text-[13px] leading-5 text-white/72">{item.desc}</p>
+                  <div key={item.title} className="path-day-card rounded-2xl border border-[#E3E8EC] bg-white p-4">
+                    <div className="text-sm font-bold text-[#171c22]">{item.title}</div>
+                    <p className="mt-2 text-[13px] leading-5 text-[#4b5563]">{item.desc}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-[24px] bg-white/8 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/55">下一步建议</p>
+              <div className="path-level-card rounded-2xl border border-[#E3E8EC] bg-white p-4">
+                <p className="path-label">下一步建议</p>
                 <div className="mt-3 space-y-3">
                   {recommendations.map((item) => (
                     <div key={item} className="flex items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full bg-[#ffb74d] text-[10px] font-extrabold text-[#171c22]">
+                      <span className="mt-0.5 inline-flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full bg-[#E4002B] text-[10px] font-extrabold text-white">
                         +
                       </span>
-                      <p className="text-sm leading-6 text-white/86">{item}</p>
+                      <p className="text-sm leading-6 text-[#4b5563]">{item}</p>
                     </div>
                   ))}
                 </div>
@@ -972,11 +1108,6 @@ export default function StudyReport() {
         </aside>
       </section>
 
-      {error ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {error}
-        </div>
-      ) : null}
     </div>
   );
 }

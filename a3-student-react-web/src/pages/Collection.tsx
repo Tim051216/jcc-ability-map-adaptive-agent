@@ -6,7 +6,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AlertCircle,
   ArrowRight,
   Bookmark,
   Clock3,
@@ -34,6 +33,9 @@ import { buildResourcesRoute, readLastRouteCourseId } from "../lib/routeCourseCo
 type CollectionTab = "All" | "Courses" | "Handouts";
 const TUTOR_SESSION_TITLE_STORAGE_KEY = "a3-tutor-session-title-map";
 const TUTOR_FAVORITE_HISTORY_STORAGE_KEY = "a3-tutor-favorite-history-cache";
+const FAVORITE_HANDOUTS_CACHE_STORAGE_KEY = "a3-favorite-handouts-cache";
+const FAVORITE_HANDOUTS_LOADING_GRACE_MS = 900;
+const FAVORITE_HANDOUTS_BACKGROUND_TIMEOUT_MS = 12000;
 
 type FavoriteHandout = {
   id: string;
@@ -81,6 +83,12 @@ type FavoriteTutorSession = {
   createdAt: string;
   courseId: string;
   courseTitle: string;
+};
+
+type FavoriteHandoutsCache = {
+  userId: number;
+  items: FavoriteHandout[];
+  savedAt: string;
 };
 
 const TAB_LABELS: Record<CollectionTab, string> = {
@@ -244,12 +252,13 @@ function buildPreviewFileState(file: FavoriteHandout) {
       ? file.previewUrl
       : null;
   const numericFileId = Number(file.fileId);
+  const fallbackFileId = Number.isFinite(numericFileId) && numericFileId > 0 ? numericFileId : Number(file.resourceId) || -1;
 
   return {
     initialResource: file.rawResource || null,
-    initialFileId: Number.isFinite(numericFileId) ? numericFileId : null,
+    initialFileId: fallbackFileId > 0 ? fallbackFileId : null,
     initialPreviewFile: {
-      file_id: Number.isFinite(numericFileId) ? numericFileId : -1,
+      file_id: fallbackFileId,
       display_name: file.title,
       relative_path: file.previewUrl || file.title,
       top_level_category: "收藏资料",
@@ -268,9 +277,24 @@ function buildPreviewFileState(file: FavoriteHandout) {
 function buildClassroomAssetPreviewState(asset: ClassroomFavoriteAsset) {
   const resourceType = asset.kind === "handout" ? "lecture_note" : asset.kind === "mindmap" ? "mindmap" : "practice_set";
   const previewText = asset.rawContent || asset.previewContent?.join("\n") || asset.summary;
+  const syntheticFileId = Number(asset.resourceId) > 0 ? Number(asset.resourceId) : 900000 + Math.abs(hashString(asset.id) % 9999);
+  const previewFile = {
+    file_id: syntheticFileId,
+    display_name: `${asset.title}.md`,
+    relative_path: "",
+    top_level_category: resourceType,
+    file_extension: ".md",
+    mime_type: "text/markdown",
+    file_size: null,
+    preview_text: previewText,
+    is_inline_previewable: true,
+    preview_mode: "text",
+    preview_url: null,
+    open_url: "",
+  };
   return {
     initialResource: {
-      resource_id: asset.resourceId || null,
+      resource_id: asset.resourceId || syntheticFileId,
       resource_type: resourceType,
       title: asset.title,
       summary: asset.summary,
@@ -282,25 +306,67 @@ function buildClassroomAssetPreviewState(asset: ClassroomFavoriteAsset) {
           : asset.kind === "practice"
             ? "建议先完成练习，再结合解析和 AI 导师继续补薄弱点。"
             : "建议先通读讲义主线，再围绕关键概念继续提问和展开。",
-      source_file_count: 0,
-      source_files: [],
+      source_file_count: 1,
+      source_files: [previewFile],
     } satisfies ResourceCard,
-    initialFileId: null,
-    initialPreviewFile: {
-      file_id: -1,
-      display_name: `${asset.title}.md`,
-      relative_path: "",
-      top_level_category: resourceType,
-      file_extension: ".md",
-      mime_type: "text/markdown",
-      file_size: null,
-      preview_text: previewText,
-      is_inline_previewable: true,
-      preview_mode: "text",
-      preview_url: null,
-      open_url: "",
-    },
+    initialFileId: syntheticFileId,
+    initialPreviewFile: previewFile,
   };
+}
+
+function readCachedFavoriteHandouts(userId: number): FavoriteHandout[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(FAVORITE_HANDOUTS_CACHE_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as FavoriteHandoutsCache) : null;
+    return parsed?.userId === userId && Array.isArray(parsed.items) ? parsed.items : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedFavoriteHandouts(userId: number, items: FavoriteHandout[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      FAVORITE_HANDOUTS_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        userId,
+        items,
+        savedAt: new Date().toISOString(),
+      } satisfies FavoriteHandoutsCache),
+    );
+  } catch {
+    // Local cache is only a speed-up; failing to persist should not block the page.
+  }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function hashString(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function buildPreviewSearch(courseId: string, resourceId?: string | number | null, fileId?: string | number | null) {
+  const params = new URLSearchParams({ courseId });
+  const numericResourceId = Number(resourceId);
+  const numericFileId = Number(fileId);
+  if (Number.isFinite(numericResourceId) && numericResourceId > 0) {
+    params.set("resourceId", String(numericResourceId));
+  }
+  if (Number.isFinite(numericFileId) && numericFileId > 0) {
+    params.set("fileId", String(numericFileId));
+  }
+  return params.toString();
 }
 
 function ClassroomAssetIcon({ asset }: { asset: ClassroomFavoriteAsset }) {
@@ -518,11 +584,10 @@ export default function Collection() {
 
   const [activeTab, setActiveTab] = useState<CollectionTab>("All");
   const [favoriteCourses, setFavoriteCourses] = useState<Course[]>(DEFAULT_FAVORITE_COURSES);
-  const [favoriteHandouts, setFavoriteHandouts] = useState<FavoriteHandout[]>([]);
+  const [favoriteHandouts, setFavoriteHandouts] = useState<FavoriteHandout[]>(() => readCachedFavoriteHandouts(activeUserId));
   const [classroomFavoriteAssets, setClassroomFavoriteAssets] = useState<ClassroomFavoriteAsset[]>(() => getClassroomFavoriteAssets());
   const [favoriteTutorSessions, setFavoriteTutorSessions] = useState<FavoriteTutorSession[]>(() => getFavoriteTutorSessions());
   const [loadingHandouts, setLoadingHandouts] = useState(false);
-  const [favoriteLoadError, setFavoriteLoadError] = useState<string | null>(null);
   const [refreshingFavorites, setRefreshingFavorites] = useState(false);
   const [removingFavoriteId, setRemovingFavoriteId] = useState<string | null>(null);
   const [removingTutorSessionId, setRemovingTutorSessionId] = useState<string | null>(null);
@@ -553,30 +618,43 @@ export default function Collection() {
   }, []);
 
   const loadFavoriteHandouts = async (mode: "initial" | "refresh" = "initial") => {
+    const hasCachedHandouts = favoriteHandouts.length > 0;
     if (mode === "refresh") {
       setRefreshingFavorites(true);
-    } else {
+    } else if (!hasCachedHandouts) {
       setLoadingHandouts(true);
     }
-    setFavoriteLoadError(null);
 
-    try {
-      const response = await studentApi.listFavoriteResources(activeUserId);
-      setFavoriteHandouts(mapFavoriteResourcesToHandouts(response.items));
-      setFavoriteLoadError(null);
+    const syncFavorites = studentApi.listFavoriteResources(activeUserId, FAVORITE_HANDOUTS_BACKGROUND_TIMEOUT_MS).then((response) => {
+      const nextHandouts = mapFavoriteResourcesToHandouts(response.items);
+      setFavoriteHandouts(nextHandouts);
+      writeCachedFavoriteHandouts(activeUserId, nextHandouts);
       if (mode === "refresh") {
         showToast("收藏列表已刷新。");
       }
-    } catch (error) {
-      const nextError = error instanceof Error ? error.message : "收藏列表加载失败";
-      setFavoriteLoadError((mode === "refresh" || favoriteHandouts.length === 0) ? nextError : null);
+    }).catch((error: unknown) => {
       if (mode === "refresh") {
-        showToast("真实收藏刷新失败，请稍后再试。");
+        showToast(error instanceof Error && error.message === "Request timeout" ? "收藏同步超时，已保留当前列表。" : "收藏同步失败，已保留当前列表。");
+      } else if (!hasCachedHandouts) {
+        setFavoriteHandouts(readCachedFavoriteHandouts(activeUserId));
       }
-    } finally {
-      setLoadingHandouts(false);
+    });
+
+    if (mode === "refresh") {
+      await syncFavorites;
       setRefreshingFavorites(false);
+      return;
     }
+
+    const finishedQuickly = await Promise.race([
+      syncFavorites.then(() => true),
+      wait(FAVORITE_HANDOUTS_LOADING_GRACE_MS).then(() => false),
+    ]);
+    if (!finishedQuickly) {
+      setLoadingHandouts(false);
+      return;
+    }
+    setLoadingHandouts(false);
   };
 
   useEffect(() => {
@@ -619,10 +697,18 @@ export default function Collection() {
   const collectionAgentStatus = normalizedQuery
     ? `正在按“${searchQuery.trim()}”整理你的收藏`
     : "正在按课程与资料类型整理你的收藏";
+  const activeTabCount =
+    activeTab === "Courses"
+      ? filteredCourses.length
+      : activeTab === "Handouts"
+        ? filteredHandouts.length + filteredClassroomAssets.length + filteredTutorSessions.length
+        : filteredCourses.length + filteredHandouts.length + filteredClassroomAssets.length + filteredTutorSessions.length;
+  const reviewQueueCount = favoriteHandouts.length + classroomFavoriteAssets.length + favoriteTutorSessions.length;
+  const nextReviewTitle = topHandout?.title || classroomFavoriteAssets[0]?.title || favoriteTutorSessions[0]?.title || "先去资源中心收藏一份资料";
 
   const shouldShowEmpty =
     (activeTab === "Courses" && filteredCourses.length === 0) ||
-    (activeTab === "Handouts" && filteredHandouts.length === 0) ||
+    (activeTab === "Handouts" && !loadingHandouts && filteredHandouts.length === 0) ||
     (activeTab === "All" &&
       filteredCourses.length === 0 &&
       filteredHandouts.length === 0 &&
@@ -645,7 +731,11 @@ export default function Collection() {
     const numericResourceId = Number(target?.resourceId || "");
 
     if (!target || !Number.isFinite(numericResourceId)) {
-      setFavoriteHandouts((current) => current.filter((item) => item.id !== favoriteId));
+      setFavoriteHandouts((current) => {
+        const next = current.filter((item) => item.id !== favoriteId);
+        writeCachedFavoriteHandouts(activeUserId, next);
+        return next;
+      });
       showToast("当前资料缺少真实编号，已执行本地移除。");
       return;
     }
@@ -653,7 +743,11 @@ export default function Collection() {
     setRemovingFavoriteId(favoriteId);
     try {
       await studentApi.favoriteResource(numericResourceId, activeUserId);
-      setFavoriteHandouts((current) => current.filter((item) => item.id !== favoriteId));
+      setFavoriteHandouts((current) => {
+        const next = current.filter((item) => item.id !== favoriteId);
+        writeCachedFavoriteHandouts(activeUserId, next);
+        return next;
+      });
       showToast("已取消资料收藏。");
     } catch {
       showToast("取消收藏失败，当前先保留原列表。");
@@ -663,13 +757,8 @@ export default function Collection() {
   };
 
   const handleOpenHandout = (file: FavoriteHandout) => {
-    if (isPracticeWorkbenchResource(file.rawResource?.resource_type)) {
-      navigate(`/resources/preview?courseId=${file.courseId}&resourceId=${file.resourceId}&fileId=${file.fileId}`, {
-        state: buildPreviewFileState(file),
-      });
-      return;
-    }
-    navigate(`/resources/preview?courseId=${file.courseId}&resourceId=${file.resourceId}&fileId=${file.fileId}`, {
+    const previewSearch = buildPreviewSearch(file.courseId, file.resourceId || file.rawResource?.resource_id, file.fileId);
+    navigate(`/resources/preview?${previewSearch}`, {
       state: buildPreviewFileState(file),
     });
   };
@@ -681,8 +770,10 @@ export default function Collection() {
       return;
     }
     if (asset.itemType === "resource" && asset.kind) {
-      navigate(`/resources/preview?courseId=${asset.courseId}`, {
-        state: buildClassroomAssetPreviewState(asset),
+      const previewState = buildClassroomAssetPreviewState(asset);
+      const previewSearch = buildPreviewSearch(asset.courseId, previewState.initialResource.resource_id, previewState.initialFileId);
+      navigate(`/resources/preview?${previewSearch}`, {
+        state: previewState,
       });
       return;
     }
@@ -726,43 +817,48 @@ export default function Collection() {
 
   return (
     <div className="space-y-6 select-none" id="collection-workspace">
-      <section className="overflow-hidden rounded-[28px] border border-[#e7ebf0] bg-[linear-gradient(135deg,#ffffff_0%,#fff8fb_55%,#fff2f7_100%)] shadow-[0_18px_42px_rgba(15,23,42,0.05)]">
+      <section className="overflow-hidden rounded-[28px] border border-[#e7ebf0] bg-[linear-gradient(135deg,#ffffff_0%,#fff8fb_55%,#f4fbff_100%)] shadow-[0_18px_42px_rgba(15,23,42,0.05)]">
         <div className="relative p-5 lg:p-6">
           <div className="space-y-4 xl:pr-[340px]">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--project-primary-border)] bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--project-primary)]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--project-primary-border)] bg-white px-3 py-1 text-[10px] font-black text-[var(--project-primary)]">
                 <FolderHeart className="h-3.5 w-3.5" />
-                Personal Study Binder
+                学习收藏工作台
               </div>
-<h1 className="mt-3 text-[24px] font-black tracking-[-0.05em] text-[#171c22] lg:text-[32px]">我的学习收藏</h1>
+              <h1 className="mt-3 text-[24px] font-black tracking-[-0.05em] text-[#171c22] lg:text-[32px]">把要回看的内容收成一张复习清单</h1>
               <p className="mt-2 max-w-2xl text-[13px] leading-7 text-[#564145]">
-                把课程、讲义与附件整理成一个连续收藏列表。你可以在这里快速判断先学什么、先复习什么，以及哪些资料值得直接打开。
+                课程、资源、课堂生成内容和 AI 导师会话会沉淀到同一个列表里。这里不只是收藏夹，而是你下次继续学习时的入口。
               </p>
               <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#0f172a] px-3 py-1.5 text-[10px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]">
                 <span className="relative flex h-2.5 w-2.5 items-center justify-center">
                   <span className="absolute inline-flex h-2.5 w-2.5 animate-ping rounded-full bg-emerald-300 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
-                <span className="uppercase tracking-[0.16em] text-white/72">Collection Sync</span>
-                <span className="text-white">{normalizedQuery ? "已进入筛选整理模式" : "已进入智能归档模式"}</span>
+                <span className="text-white/72">同步状态</span>
+                <span className="text-white">{collectionAgentStatus}</span>
               </div>
             </div>
 
-<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[22px] border border-white/80 bg-white/88 px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">收藏总览</div>
+                <div className="text-[10px] font-black text-[#8a94a3]">收藏总览</div>
                 <div className="mt-1.5 text-[30px] font-black ui-tracking-tight text-[#171c22]">{totalFavorites}</div>
                 <div className="mt-1 text-xs text-[#5b6574]">课程与资料已放进同一收藏列表</div>
               </div>
               <div className="rounded-[22px] border border-white/80 bg-white/88 px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">优先课程</div>
+                <div className="text-[10px] font-black text-[#8a94a3]">当前筛选</div>
+                <div className="mt-1.5 text-[30px] font-black ui-tracking-tight text-[#171c22]">{activeTabCount}</div>
+                <div className="mt-1 text-xs text-[#5b6574]">{TAB_LABELS[activeTab]}可直接打开</div>
+              </div>
+              <div className="rounded-[22px] border border-white/80 bg-white/88 px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                <div className="text-[10px] font-black text-[#8a94a3]">优先课程</div>
                 <div className="mt-1.5 text-[15px] font-black leading-6 text-[#171c22]">{activeCourse?.title || "待整理"}</div>
                 <div className="mt-1 text-xs text-[#5b6574]">建议先回看主线课程，再进入资料复习</div>
               </div>
-              <div className="rounded-[22px] border border-white/80 bg-white/88 px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)] sm:col-span-2 xl:col-span-1">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">快速复习资料</div>
-                <div className="mt-1.5 text-[15px] font-black leading-6 text-[#171c22]">{topHandout?.title || "待同步"}</div>
-                <div className="mt-1 text-xs text-[#5b6574]">适合短时间复盘和临考前回看</div>
+              <div className="rounded-[22px] border border-white/80 bg-white/88 px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                <div className="text-[10px] font-black text-[#8a94a3]">复习队列</div>
+                <div className="mt-1.5 line-clamp-1 text-[15px] font-black leading-6 text-[#171c22]">{nextReviewTitle}</div>
+                <div className="mt-1 text-xs text-[#5b6574]">{reviewQueueCount} 项资料和会话可继续回看</div>
               </div>
             </div>
           </div>
@@ -831,13 +927,6 @@ export default function Collection() {
           </button>
         </div>
       </section>
-
-      {favoriteLoadError ? (
-        <section className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          真实收藏列表暂时不可用：{favoriteLoadError}。页面已保留本地展示，不影响继续浏览当前内容。
-        </section>
-      ) : null}
 
       <section className="space-y-8">
         {(activeTab === "All" || activeTab === "Courses") && (
