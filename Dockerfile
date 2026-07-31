@@ -1,4 +1,4 @@
-FROM openjdk:11.0-jre-buster
+FROM eclipse-temurin:17-jre-jammy
 LABEL maintainer="1752401825@qq.com"
 ENV JAVA_OPTS=""
 # 设定时区
