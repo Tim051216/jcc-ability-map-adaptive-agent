@@ -8,7 +8,7 @@
 - Docker Desktop（使用 Linux containers）
 - JDK 17
 - Node.js 20 LTS
-- Python 3.11 或 3.12
+- Python 3.12（项目使用 Python 3.12 语法）
 
 安装后重新打开 PowerShell，确认 Docker Desktop 已启动。
 

@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "a3-ai-python"
 version = "0.1.0"
 description = "A3 个性化学习多智能体 AI 服务"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [
   { name = "Tim051216 Team" }
 ]

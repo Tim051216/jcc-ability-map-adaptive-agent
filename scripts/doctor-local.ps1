@@ -50,20 +50,19 @@ $pythonReady = $false
 $pythonVersion = "missing"
 $pythonCandidates = @(
     @{ Command = "py"; Prefix = @("-3.12") },
-    @{ Command = "py"; Prefix = @("-3.11") },
     @{ Command = "python"; Prefix = @() },
     @{ Command = "python3"; Prefix = @() }
 )
 foreach ($candidate in $pythonCandidates) {
     if (-not (Get-Command $candidate.Command -ErrorAction SilentlyContinue)) { continue }
     $version = & $candidate.Command @($candidate.Prefix) -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $version -match '^(3\.1[1-9]|[4-9]\.)') {
+    if ($LASTEXITCODE -eq 0 -and $version -match '^(3\.1[2-9]|[4-9]\.)') {
         $pythonReady = $true
         $pythonVersion = $version
         break
     }
 }
-Report $pythonReady "Python version" "$pythonVersion (3.11+ required)"
+Report $pythonReady "Python version" "$pythonVersion (3.12+ required)"
 
 $requiredFiles = @(
     "a3-ai-python\.env",

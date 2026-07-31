@@ -2204,6 +2204,9 @@ class ResourceService:
         profile_pitfalls = "\n".join(f"- {item}" for item in (se_profile["pitfalls"] if se_profile else ["注意概念边界", "注意上下游关系", "注意真实落点"]))
         if len(source_excerpt) > 800:
             source_excerpt = source_excerpt[:800].rstrip() + "\n..."
+        reference_excerpt = source_excerpt or (
+            "\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u5728\u540e\u7eed\u751f\u6210\u4e2d\u7ee7\u7eed\u8865\u5145\u8bfe\u7a0b\u539f\u6587\u3002"
+        )
 
         if resource_type in {"lecture_note", "lecture_notes"}:
             return ResourceService._build_high_quality_handout_markdown(course_code, source_titles, source_excerpt)
@@ -2219,9 +2222,6 @@ class ResourceService:
             return ResourceService._build_high_quality_teaching_plan_markdown(course_code, source_titles, source_excerpt)
 
         if resource_type in {"mind_map", "mindmap"}:
-            reference_excerpt = source_excerpt or (
-                "\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u5728\u540e\u7eed\u751f\u6210\u4e2d\u7ee7\u7eed\u8865\u5145\u8bfe\u7a0b\u539f\u6587\u3002"
-            )
             return (
                 f"# {course_label} \u7ae0\u8282\u77e5\u8bc6\u5bfc\u56fe\n\n"
                 f"## \u4e2d\u5fc3\u4e3b\u9898\n- {profile_theme}\n\n"
@@ -2394,7 +2394,7 @@ class ResourceService:
                 "- \u989c\u8272\u5206\u4e09\u5c42\uff1a\u4e3b\u7ebf\u3001\u8f85\u52a9\u3001\u98ce\u9669\u63d0\u793a\u3002\n"
                 "- \u6bcf\u4e2a\u8282\u70b9\u53ea\u4fdd\u7559\u77ed\u8bed\uff0c\u907f\u514d\u5806\u6bb5\u843d\u3002\n"
                 "- \u6700\u53f3\u4fa7\u4fdd\u7559\u4e00\u5757\u201c\u771f\u5b9e\u8bfe\u5802\u573a\u666f\u201d\u7528\u4e8e\u843d\u5730\u8bf4\u660e\u3002\n\n"
-                f"## \u53c2\u8003\u7247\u6bb5\n{source_excerpt or '\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u6839\u636e\u672c\u8282\u77e5\u8bc6\u70b9\u7ee7\u7eed\u8865\u5145\u56fe\u793a\u8bf4\u660e\u3002'}"
+                f"## \u53c2\u8003\u7247\u6bb5\n{reference_excerpt}"
             )
 
         if resource_type == "micro_video":
@@ -2415,7 +2415,7 @@ class ResourceService:
                 "- \u5173\u952e\u8282\u70b9\u4f7f\u7528\u8f7b\u5fae\u653e\u5927\u6216\u8fde\u7ebf\u52a8\u753b\u3002\n"
                 "- \u6848\u4f8b\u9875\u5207\u6362\u4f7f\u7528\u5de6\u53f3\u4f4d\u79fb\u52a8\u753b\uff0c\u907f\u514d\u9875\u9762\u9759\u6b62\u3002\n"
                 "- \u7ed3\u5c3e\u7528\u9ad8\u4eae\u6846\u63d0\u793a\u201c\u4e0b\u4e00\u6b65\u770b\u4ec0\u4e48 / \u7ec3\u4ec0\u4e48\u201d\u3002\n\n"
-                f"## \u53c2\u8003\u7247\u6bb5\n{source_excerpt or '\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u6839\u636e\u8bfe\u7a0b\u6b63\u6587\u7ee7\u7eed\u6269\u5145\u65c1\u767d\u7d20\u6750\u3002'}"
+                f"## \u53c2\u8003\u7247\u6bb5\n{reference_excerpt}"
             )
 
         if resource_type == "subtitle_transcript":
@@ -2437,7 +2437,7 @@ class ResourceService:
                 "- \u5355\u884c\u5c3d\u91cf\u4e0d\u8d85\u8fc7 20 \u4e2a\u6c49\u5b57\u3002\n"
                 "- \u5173\u952e\u672f\u8bed\u7b2c\u4e00\u6b21\u51fa\u73b0\u65f6\u5355\u72ec\u6210\u884c\u3002\n"
                 "- \u590d\u6742\u6b65\u9aa4\u62c6\u6210\u4e24\u53e5\uff0c\u907f\u514d\u5b57\u5e55\u6324\u5728\u4e00\u8d77\u3002\n\n"
-                f"## \u53c2\u8003\u7247\u6bb5\n{source_excerpt or '\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u7ee7\u7eed\u8865\u5145\u6559\u5e08\u8bb2\u89e3\u539f\u6587\u751f\u6210\u66f4\u957f\u5b57\u5e55\u7a3f\u3002'}"
+                f"## \u53c2\u8003\u7247\u6bb5\n{reference_excerpt}"
             )
 
         if resource_type == "ocr_notes":
@@ -2481,7 +2481,7 @@ class ResourceService:
                 "- \u7528 3 \u5206\u949f\u628a\u9ed1\u677f\u5e03\u5c40\u91cd\u753b\u4e00\u904d\uff0c\u4e0d\u770b\u539f\u6587\u3002\n"
                 "- \u628a\u6bcf\u4e2a\u5173\u952e\u8bcd\u8865\u6210\u4e00\u53e5\u5b8c\u6574\u89e3\u91ca\u3002\n"
                 "- \u7528\u4e00\u4e2a\u8bfe\u5802\u6216\u9879\u76ee\u4f8b\u5b50\u8bf4\u660e\u8fd9\u5f20\u677f\u4e66\u4e3a\u4ec0\u4e48\u8fd9\u6837\u6392\u5e03\u3002\n\n"
-                f"## \u53c2\u8003\u7247\u6bb5\n{source_excerpt or '\u6682\u65e0\u539f\u59cb OCR \u7247\u6bb5\uff0c\u672c\u7a3f\u5df2\u6839\u636e\u8bfe\u7a0b\u8d44\u6599\u548c\u77e5\u8bc6\u70b9\u751f\u6210\u53ef\u76f4\u63a5\u590d\u4e60\u7684\u677f\u4e66\u7248\u672c\u3002'}"
+                f"## \u53c2\u8003\u7247\u6bb5\n{reference_excerpt}"
             )
 
         return (
@@ -2509,7 +2509,7 @@ class ResourceService:
             f"1. \u8bf7\u7528\u81ea\u5df1\u7684\u8bdd\u8bf4\u660e {focus_title} \u7684\u6838\u5fc3\u4f5c\u7528\u662f\u4ec0\u4e48\u3002\n"
             f"2. \u8bf7\u6bd4\u8f83 {focus_title} \u4e0e\u76f8\u90bb\u77e5\u8bc6\u70b9\u7684\u533a\u522b\u548c\u8054\u7cfb\u3002\n"
             "3. \u5982\u679c\u628a\u8fd9\u4e00\u8282\u5185\u5bb9\u653e\u5230\u771f\u5b9e\u4efb\u52a1\u91cc\uff0c\u4f60\u4f1a\u4f18\u5148\u5173\u6ce8\u54ea\u4e00\u6b65\uff0c\u4e3a\u4ec0\u4e48\uff1f\n\n"
-            f"## \u53c2\u8003\u7247\u6bb5\n{source_excerpt or '\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u5728\u540e\u7eed\u751f\u6210\u4e2d\u7ee7\u7eed\u8865\u5145\u8bfe\u7a0b\u539f\u6587\u3002'}"
+            f"## \u53c2\u8003\u7247\u6bb5\n{reference_excerpt}"
         )
 
     @staticmethod

@@ -36,16 +36,15 @@ function Copy-TemplateIfNeeded {
 function Get-PythonLauncher {
     $candidates = @(
         @{ Command = "py"; Prefix = @("-3.12") },
-        @{ Command = "py"; Prefix = @("-3.11") },
         @{ Command = "python"; Prefix = @() },
         @{ Command = "python3"; Prefix = @() }
     )
     foreach ($candidate in $candidates) {
         if (-not (Get-Command $candidate.Command -ErrorAction SilentlyContinue)) { continue }
         $version = & $candidate.Command @($candidate.Prefix) -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $version -match '^(3\.1[1-9]|[4-9]\.)') { return $candidate }
+        if ($LASTEXITCODE -eq 0 -and $version -match '^(3\.1[2-9]|[4-9]\.)') { return $candidate }
     }
-    throw "Python 3.11 or newer was not found. Install Python 3.11/3.12 and enable the py launcher or PATH entry."
+    throw "Python 3.12 or newer was not found. Install Python 3.12 and enable the py launcher or PATH entry."
 }
 
 function Install-NodeDependencies {
