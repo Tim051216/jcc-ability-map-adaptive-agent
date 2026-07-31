@@ -3,6 +3,7 @@ param(
     [switch]$RunAiMigrations = $false,
     [switch]$NoOpenPages = $false,
     [switch]$Strict = $false,
+    [switch]$SkipSetup = $false,
     [int]$StartupTimeoutSeconds = 240
 )
 
@@ -142,8 +143,19 @@ Set-Location $repoRoot
 Write-Host "A3 full local startup"
 Write-Host "Repository: $repoRoot"
 
+if (-not $SkipSetup) {
+    Write-Host "Checking first-run dependencies and local configuration..."
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Local setup failed. Run scripts\doctor-local.ps1 for details."
+    }
+}
+
 try {
     docker version --format "{{.Server.Version}}" *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker daemon is not ready."
+    }
 } catch {
     if (Test-Path $dockerDesktop) {
         Write-Host "Starting Docker Desktop..."
@@ -153,15 +165,24 @@ try {
     }
 }
 
-Wait-Command -Name "Docker daemon" -TimeoutSeconds 240 -Command {
+$dockerReady = Wait-Command -Name "Docker daemon" -TimeoutSeconds 240 -Command {
     docker version --format "{{.Server.Version}}" *> $null
     return $LASTEXITCODE -eq 0
-} | Out-Null
+}
+if (-not $dockerReady) {
+    throw "Docker daemon did not become ready. Start Docker Desktop and run this script again."
+}
 
 Write-Host "Starting dependency containers..."
 docker compose -f .\docker-compose.local.yml up -d
+if ($LASTEXITCODE -ne 0) {
+    throw "Docker Compose failed to start local dependency containers."
+}
 
-Wait-Command -Name "MySQL port 13306" -TimeoutSeconds 90 -Command { Test-Port 13306 } | Out-Null
+$mysqlReady = Wait-Command -Name "MySQL port 13306" -TimeoutSeconds 90 -Command { Test-Port 13306 }
+if (-not $mysqlReady) {
+    throw "MySQL did not become ready on port 13306. Check: docker compose -f docker-compose.local.yml ps"
+}
 
 if (-not $SkipMysqlInit) {
     Write-Host "Initializing MySQL schemas..."

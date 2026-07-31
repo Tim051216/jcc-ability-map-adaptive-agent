@@ -53,18 +53,19 @@ function preloadView(view: ViewType) {
 
 function scheduleViewWarmup() {
   const views: ViewType[] = ['overview', 'governance', 'operations', 'compliance', 'monitoring', 'management'];
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
   const warm = () => {
     views.forEach((view, index) => {
       window.setTimeout(() => preloadView(view), index * 120);
     });
   };
 
-  if ('requestIdleCallback' in window) {
-    const idleId = (window as Window & {
-      requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
-      cancelIdleCallback: (id: number) => void;
-    }).requestIdleCallback(warm, { timeout: 1200 });
-    return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    const idleId = idleWindow.requestIdleCallback(warm, { timeout: 1200 });
+    return () => idleWindow.cancelIdleCallback?.(idleId);
   }
 
   const timer = window.setTimeout(warm, 600);

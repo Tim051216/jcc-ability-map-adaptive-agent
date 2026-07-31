@@ -10,6 +10,19 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sqlDir = Join-Path $projectRoot "sql"
+$mysqlCommand = Get-Command $MysqlExe -ErrorAction SilentlyContinue
+$useDockerMysql = -not [bool]$mysqlCommand
+
+if ($useDockerMysql) {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Neither a local mysql client nor Docker was found. Install Docker Desktop or add mysql to PATH."
+    }
+    $containerRunning = (& docker inspect -f "{{.State.Running}}" a3-mysql 2>$null) -eq "true"
+    if (-not $containerRunning) {
+        throw "The a3-mysql container is not running. Start it with: docker compose -f docker-compose.local.yml up -d mysql"
+    }
+    Write-Host "Local mysql client not found; using the mysql client inside container a3-mysql."
+}
 
 $imports = @(
     @{ Database = "tj_auth"; File = "auth.sql" },
@@ -34,10 +47,17 @@ function Invoke-Mysql {
 
     $env:MYSQL_PWD = $Password
     try {
-        if ($null -ne $InputText) {
-            $InputText | & $MysqlExe @Arguments
+        if ($useDockerMysql) {
+            $dockerArguments = @("exec", "-i", "-e", "MYSQL_PWD=$Password", "a3-mysql", "mysql") + $Arguments
+            if ($null -ne $InputText) {
+                $InputText | & docker @dockerArguments
+            } else {
+                & docker @dockerArguments
+            }
+        } elseif ($null -ne $InputText) {
+            $InputText | & $mysqlCommand.Source @Arguments
         } else {
-            & $MysqlExe @Arguments
+            & $mysqlCommand.Source @Arguments
         }
         if ($LASTEXITCODE -ne 0) {
             throw "mysql command failed, exit code: $LASTEXITCODE"
@@ -70,7 +90,7 @@ foreach ($item in $imports) {
         throw "SQL file not found: $filePath"
     }
     Write-Host "Importing $($item.Database) <- $($item.File)"
-    $content = Get-Content -Path $filePath -Raw
+    $content = Get-Content -Path $filePath -Raw -Encoding UTF8
     Invoke-Mysql -Arguments @("-h", $DbHost, "-P", "$Port", "-u", $User, $item.Database) -InputText $content
 }
 

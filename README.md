@@ -2,6 +2,8 @@
 
 基于大模型的个性化学习多智能体系统，面向中国软件杯 A3 赛题场景，围绕“学习画像 -> 学习规划 -> 资源生成 -> AI 导师 -> 测评反馈 -> 复习提醒”构建完整学习闭环。
 
+> 团队成员第一次克隆仓库时，请直接按 [TEAM_SETUP.md](./TEAM_SETUP.md) 操作。它包含统一版本、自动初始化、一键启动和故障自检命令。
+
 ## Project Overview
 
 本仓库不是单一的聊天应用，而是一套由 `Java 学习业务服务 + Python AI 中台 + React 学生端/管理端` 组成的多智能体学习平台。
@@ -92,6 +94,7 @@ a3-learning-agent-system/
 Windows 本地完整启动推荐直接使用一键脚本：
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-full-local.ps1 -NoOpenPages
 ```
 

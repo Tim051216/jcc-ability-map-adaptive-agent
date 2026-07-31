@@ -1,2 +1,8 @@
-﻿Set-Location "F:\A3-cnsoftbei\a3-learning-agent-system\a3-student-react-web"
-npm run dev -- --host 127.0.0.1 --port 3002 1>"F:\A3-cnsoftbei\a3-learning-agent-system\student-dev.out.log" 2>"F:\A3-cnsoftbei\a3-learning-agent-system\student-dev.err.log"
+$ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$studentRoot = Join-Path $repoRoot "a3-student-react-web"
+$stdout = Join-Path $repoRoot "student-dev.out.log"
+$stderr = Join-Path $repoRoot "student-dev.err.log"
+
+Set-Location $studentRoot
+& npm.cmd run dev -- --host 127.0.0.1 --port 3002 1>$stdout 2>$stderr

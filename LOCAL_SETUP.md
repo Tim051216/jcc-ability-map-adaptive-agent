@@ -107,10 +107,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-gateway-local.ps1
 
 ```powershell
 cd .\a3-ai-python
-D:\Python\python.exe -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
 .\.venv\Scripts\python.exe -m pip install -e .[dev]
-Copy-Item .env.example .env
+Copy-Item .env.local.example .env
 ```
 
 推荐启动命令：
@@ -171,7 +171,7 @@ Invoke-RestMethod -Method Get http://127.0.0.1:18080/api/v1/admin/embedding/ping
 
 ```powershell
 cd .\a3-admin-web
-npm install
+npm ci
 npm run dev
 ```
 
@@ -181,7 +181,7 @@ npm run dev
 
 ```powershell
 cd .\a3-student-react-web
-npm install
+npm ci
 npm run dev
 ```
 
@@ -208,9 +208,11 @@ npm run dev
 
 ## 9. 可用脚本
 
-- [scripts/init-mysql.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/init-mysql.ps1)：初始化 MySQL
-- [scripts/init-local-demo-data.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/init-local-demo-data.ps1)：补充本地联调演示数据
-- [scripts/start-ai-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/start-ai-local.ps1)：使用项目 `.venv` 启动本地 AI 服务
-- [scripts/start-gateway-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/start-gateway-local.ps1)：启动本地网关
-- [scripts/start-learning-evaluation-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/start-learning-evaluation-local.ps1)：导入测评演示数据并重启学习服务
-- [scripts/verify-intelligent-tutoring-local.ps1](/F:/A3-cnsoftbei/a3-learning-agent-system/scripts/verify-intelligent-tutoring-local.ps1)：验证 AI 辅导链路
+- [scripts/setup-local.ps1](./scripts/setup-local.ps1)：首次克隆后生成配置并安装依赖
+- [scripts/doctor-local.ps1](./scripts/doctor-local.ps1)：检查开发环境与服务端口
+- [scripts/init-mysql.ps1](./scripts/init-mysql.ps1)：初始化 MySQL
+- [scripts/init-local-demo-data.ps1](./scripts/init-local-demo-data.ps1)：补充本地联调演示数据
+- [scripts/start-ai-local.ps1](./scripts/start-ai-local.ps1)：使用项目 `.venv` 启动本地 AI 服务
+- [scripts/start-gateway-local.ps1](./scripts/start-gateway-local.ps1)：启动本地网关
+- [scripts/start-learning-evaluation-local.ps1](./scripts/start-learning-evaluation-local.ps1)：导入测评演示数据并重启学习服务
+- [scripts/verify-intelligent-tutoring-local.ps1](./scripts/verify-intelligent-tutoring-local.ps1)：验证 AI 辅导链路

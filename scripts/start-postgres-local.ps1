@@ -6,7 +6,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $composeFile = Join-Path $repoRoot "docker-compose.local.yml"
-$dockerExe = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+$dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+$dockerExe = if ($dockerCommand) { $dockerCommand.Source } else { $null }
 $venvPython = Join-Path $repoRoot "a3-ai-python\.venv\Scripts\python.exe"
 $aiRoot = Join-Path $repoRoot "a3-ai-python"
 $aiStdout = Join-Path $aiRoot ".codex-uvicorn.out.log"
@@ -16,8 +17,8 @@ if (-not (Test-Path $composeFile)) {
     throw "Cannot find compose file: $composeFile"
 }
 
-if (-not (Test-Path $dockerExe)) {
-    throw "Cannot find docker executable: $dockerExe"
+if (-not $dockerExe) {
+    throw "Cannot find docker on PATH. Install and start Docker Desktop first."
 }
 
 Write-Host "Starting local PostgreSQL container..."

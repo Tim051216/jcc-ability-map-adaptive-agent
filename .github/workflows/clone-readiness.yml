@@ -1,0 +1,65 @@
+name: Clone Readiness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend-builds:
+    name: Build ${{ matrix.app }} from lock file
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [a3-student-react-web, a3-admin-web]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
+
+  ai-install-and-test:
+    name: Install and test AI service from a fresh checkout
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: a3-ai-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: a3-ai-python/pyproject.toml
+      - run: cp .env.local.example .env
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -c "from app.main import app; print(app.title)"
+      - run: >-
+          python -m pytest
+          app/tests/test_semantic_chunk_splitter.py
+          app/tests/test_tutoring_short_term_memory.py
+          app/tests/test_mcp_langchain_tool_agent.py
+          -q
+
+  java-build:
+    name: Build core Java services with Maven Wrapper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - run: chmod +x mvnw
+      - run: ./mvnw -pl a3-learning,a3-gateway -am -DskipTests package
