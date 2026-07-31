@@ -9,6 +9,8 @@ from typing import Any
 from app.core.logging import logger
 from app.db.repositories.admin_repository import AgentRuntimeRepository
 from app.db.session import async_session_factory
+from app.harness.runtime import get_current_run_id
+from app.harness.runtime import span as harness_span
 
 
 class AgentRuntimeLoggingService:
@@ -43,6 +45,13 @@ class AgentRuntimeLoggingService:
         payload: dict[str, Any] | None = None,
     ) -> None:
         now_iso = self._now_iso()
+        compact_payload = self._compact_payload(payload)
+        harness_run_id = get_current_run_id()
+        if harness_run_id:
+            compact_payload = {
+                **(compact_payload or {}),
+                "harness_run_id": harness_run_id,
+            }
         try:
             await asyncio.wait_for(
                 self._write_log(
@@ -50,7 +59,7 @@ class AgentRuntimeLoggingService:
                     status=status,
                     message=message,
                     level=level,
-                    payload=self._compact_payload(payload),
+                    payload=compact_payload,
                     now_iso=now_iso,
                 ),
                 timeout=0.8,
@@ -99,32 +108,41 @@ class AgentRuntimeLoggingService:
         success_message_factory: Callable[[], str] | None = None,
         error_message: str | None = None,
     ):
-        await self.log(
-            agent_name=agent_name,
-            status="in_progress",
-            level="info",
-            message=start_message,
-            payload=start_payload,
-        )
-        try:
-            yield
-        except Exception as exc:
+        async with harness_span(
+            agent_name,
+            kind="agent",
+            attributes=self._compact_payload(start_payload),
+        ):
             await self.log(
                 agent_name=agent_name,
-                status="error",
-                level="error",
-                message=error_message or f"{agent_name} execution failed",
-                payload={"error": str(exc), **(start_payload or {})},
-            )
-            raise
-        else:
-            success_payload = success_payload_factory() if success_payload_factory else start_payload
-            success_status = success_status_factory() if success_status_factory else "ok"
-            resolved_success_message = success_message_factory() if success_message_factory else success_message
-            await self.log(
-                agent_name=agent_name,
-                status=success_status,
+                status="in_progress",
                 level="info",
-                message=resolved_success_message,
-                payload=success_payload,
+                message=start_message,
+                payload=start_payload,
             )
+            try:
+                yield
+            except Exception as exc:
+                await self.log(
+                    agent_name=agent_name,
+                    status="error",
+                    level="error",
+                    message=error_message or f"{agent_name} execution failed",
+                    payload={"error": str(exc), **(start_payload or {})},
+                )
+                raise
+            else:
+                success_payload = (
+                    success_payload_factory() if success_payload_factory else start_payload
+                )
+                success_status = success_status_factory() if success_status_factory else "ok"
+                resolved_success_message = (
+                    success_message_factory() if success_message_factory else success_message
+                )
+                await self.log(
+                    agent_name=agent_name,
+                    status=success_status,
+                    level="info",
+                    message=resolved_success_message,
+                    payload=success_payload,
+                )

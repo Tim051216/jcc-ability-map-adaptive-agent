@@ -173,6 +173,8 @@ class OpenAICompatProvider(BaseLLMProvider):
                         headers=self._build_headers(),
                         json=payload,
                     ) as response:
+                        if response.is_error:
+                            await response.aread()
                         response.raise_for_status()
                         logger.info("LLM model stream request succeeded", model=model_name)
                         async for line in response.aiter_lines():

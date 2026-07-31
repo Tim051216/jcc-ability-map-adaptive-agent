@@ -1,0 +1,1 @@
+{"id":"prompt-echo","prompt":"请解释函数的输入和输出。","must_contain":["输入","输出"],"must_not_contain":["未找到答案"]}

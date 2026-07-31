@@ -9,6 +9,7 @@ class LocalRuntimeStore:
     _resource_file = _base_dir / "resource_store.json"
     _notification_file = _base_dir / "notification_store.json"
     _admin_session_file = _base_dir / "admin_session_store.json"
+    _rag_eval_file = _base_dir / "rag_eval_store.json"
 
     @classmethod
     def load_evaluation_store(cls) -> dict[str, Any]:
@@ -70,6 +71,22 @@ class LocalRuntimeStore:
     @classmethod
     def save_admin_session_store(cls, payload: dict[str, Any]) -> None:
         cls._write_json(cls._admin_session_file, payload)
+
+    @classmethod
+    def load_rag_eval_store(cls) -> dict[str, Any]:
+        return cls._read_json(
+            cls._rag_eval_file,
+            {
+                "next_run_id": 1,
+                "next_correction_id": 1,
+                "runs": [],
+                "corrections": [],
+            },
+        )
+
+    @classmethod
+    def save_rag_eval_store(cls, payload: dict[str, Any]) -> None:
+        cls._write_json(cls._rag_eval_file, payload)
 
     @classmethod
     def _read_json(cls, path: Path, default: dict[str, Any]) -> dict[str, Any]:

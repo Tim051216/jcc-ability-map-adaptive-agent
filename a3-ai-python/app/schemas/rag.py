@@ -14,3 +14,8 @@ class RagSearchResponse(BaseModel):
     course_code: str
     hits: list[KnowledgeHit] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
+    retrieval_mode: str = "legacy"
+    vector_backend: str = "none"
+    intent: str = "general"
+    candidate_count: int = 0
+    latency_ms: float = 0.0

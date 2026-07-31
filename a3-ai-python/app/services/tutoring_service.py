@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 import secrets
 import time
@@ -20,6 +21,7 @@ from app.db.models.tutoring import (
     TutoringFavorite,
     TutoringQuestion,
     TutoringSession,
+    TutoringSessionMemory,
 )
 from app.schemas.tutoring import (
     AnswerEvaluationRequest,
@@ -34,9 +36,11 @@ from app.schemas.tutoring import (
     TutoringQuestionResponse,
 )
 from app.services.guardrail_service import GuardrailContext, GuardrailService, GuardrailViolationError
+from app.services.course_service import CourseService
 from app.services.llm_health_service import LLMHealthService
 from app.services.profile_service import ProfileService
 from app.services.tutoring_sensitive import assert_tutoring_text_allowed
+from app.services.tutoring_short_term_memory_service import TutoringShortTermMemoryService
 
 EmitFn = Callable[[dict[str, Any]], Awaitable[None]]
 PERSONA_PREFIX_RE = r"^\[(haibara|usagi)\]\s*"
@@ -67,18 +71,21 @@ class TutoringService:
 
         tables = [
             TutoringSession.__table__,
+            TutoringSessionMemory.__table__,
             TutoringQuestion.__table__,
             TutoringAnswer.__table__,
             EscalationRecord.__table__,
             TutoringFavorite.__table__,
         ]
         for table in tables:
-            await self.db.run_sync(
+            result = self.db.run_sync(
                 lambda sync_session, table=table: table.create(
                     sync_session.connection(),
                     checkfirst=True,
                 )
             )
+            if inspect.isawaitable(result):
+                await result
 
     @staticmethod
     def _generate_id() -> int:
@@ -555,8 +562,8 @@ class TutoringService:
         )
         reviewed_answer_text, safety_review, hallucination_review = await self._review_answer_content(
             answer_text=repaired_answer_text,
-            course_id=question.course_id,
-            user_id=question.user_id,
+            course_id=getattr(question, "course_id", None),
+            user_id=getattr(question, "user_id", None),
             reference_sources=self._repair_mojibake_payload(result.get("reference_sources")),
         )
 
@@ -703,6 +710,7 @@ class TutoringService:
                 return await self.build_answer_payload(question=question, answer=existing)
 
         coordinator = TutoringCoordinator()
+        memory_service = TutoringShortTermMemoryService(self.db)
         try:
             user_profile = await asyncio.wait_for(self._load_user_profile(user_id), timeout=1.2)
         except TimeoutError:
@@ -712,6 +720,21 @@ class TutoringService:
         try:
             raw_question_text = str(getattr(question, "question_text", "") or "")
             persona, clean_question_text = self._extract_persona_and_clean_text(raw_question_text)
+            try:
+                conversation_context = await asyncio.wait_for(
+                    memory_service.build_context(
+                        session_id=question.session_id,
+                        user_id=user_id,
+                    ),
+                    timeout=10.0,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "tutoring.memory_load_skipped",
+                    question_id=question_id,
+                    error=repr(exc),
+                )
+                conversation_context = ""
             result = await asyncio.wait_for(
                 coordinator.run(
                     question_text=clean_question_text,
@@ -719,6 +742,7 @@ class TutoringService:
                     course_id=getattr(question, "course_id", None),
                     user_profile=user_profile,
                     persona=persona,
+                    conversation_context=conversation_context,
                     on_event=on_event,
                 ),
                 timeout=TUTORING_GENERATION_TIMEOUT_SECONDS,

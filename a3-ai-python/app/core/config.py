@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     app_debug: bool = Field(default=False, alias="APP_DEBUG")
     local_demo_sqlite_only: bool = Field(default=True, alias="LOCAL_DEMO_SQLITE_ONLY")
     rag_local_markdown_first: bool = Field(default=True, alias="RAG_LOCAL_MARKDOWN_FIRST")
-    auth_bearer_tokens: str = Field(default="student-demo:1001,admin-demo:9001", alias="AUTH_BEARER_TOKENS")
+    auth_bearer_tokens: str = Field(
+        default="student-demo:1001,admin-demo:9001", alias="AUTH_BEARER_TOKENS"
+    )
 
     postgres_dsn: str = Field(alias="POSTGRES_DSN")
     local_postgres_dsn: str | None = Field(default=None, alias="LOCAL_POSTGRES_DSN")
@@ -40,18 +42,27 @@ class Settings(BaseSettings):
     object_storage_secret_key: str | None = Field(default=None, alias="OBJECT_STORAGE_SECRET_KEY")
     object_storage_secure: bool | None = Field(default=None, alias="OBJECT_STORAGE_SECURE")
     object_storage_region: str | None = Field(default=None, alias="OBJECT_STORAGE_REGION")
-    object_storage_virtual_hosted_style: bool | None = Field(default=None, alias="OBJECT_STORAGE_VIRTUAL_HOSTED_STYLE")
+    object_storage_virtual_hosted_style: bool | None = Field(
+        default=None, alias="OBJECT_STORAGE_VIRTUAL_HOSTED_STYLE"
+    )
     object_storage_bucket: str | None = Field(default=None, alias="OBJECT_STORAGE_BUCKET")
-    object_storage_public_base_url: str | None = Field(default=None, alias="OBJECT_STORAGE_PUBLIC_BASE_URL")
+    object_storage_public_base_url: str | None = Field(
+        default=None, alias="OBJECT_STORAGE_PUBLIC_BASE_URL"
+    )
     object_storage_presign_days: int = Field(default=7, alias="OBJECT_STORAGE_PRESIGN_DAYS")
-    resource_source_file_storage_enabled: bool = Field(default=False, alias="RESOURCE_SOURCE_FILE_STORAGE_ENABLED")
-    resource_source_file_presign_days: int = Field(default=7, alias="RESOURCE_SOURCE_FILE_PRESIGN_DAYS")
+    resource_source_file_storage_enabled: bool = Field(
+        default=False, alias="RESOURCE_SOURCE_FILE_STORAGE_ENABLED"
+    )
+    resource_source_file_presign_days: int = Field(
+        default=7, alias="RESOURCE_SOURCE_FILE_PRESIGN_DAYS"
+    )
 
     java_gateway_base_url: str = Field(alias="JAVA_GATEWAY_BASE_URL")
     java_internal_token: str = Field(alias="JAVA_INTERNAL_TOKEN")
 
     llm_provider: str = Field(alias="LLM_PROVIDER")
     llm_model: str = Field(alias="LLM_MODEL")
+    llm_fast_model: str = Field(default="qwen-turbo", alias="LLM_FAST_MODEL")
     llm_fallback_models: str = Field(default="", alias="LLM_FALLBACK_MODELS")
     llm_vision_model: str | None = Field(default=None, alias="LLM_VISION_MODEL")
     llm_vision_fallback_models: str = Field(default="", alias="LLM_VISION_FALLBACK_MODELS")
@@ -59,7 +70,9 @@ class Settings(BaseSettings):
     llm_base_url: str = Field(alias="LLM_BASE_URL")
     llm_timeout_seconds: int = Field(default=30, alias="LLM_TIMEOUT_SECONDS")
     llm_prefer_ocr_over_vision: bool = Field(default=True, alias="LLM_PREFER_OCR_OVER_VISION")
-    llm_ocr_min_chars_for_text_only: int = Field(default=24, alias="LLM_OCR_MIN_CHARS_FOR_TEXT_ONLY")
+    llm_ocr_min_chars_for_text_only: int = Field(
+        default=24, alias="LLM_OCR_MIN_CHARS_FOR_TEXT_ONLY"
+    )
 
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
@@ -68,21 +81,47 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: int = Field(default=30, alias="EMBEDDING_TIMEOUT_SECONDS")
 
     # 智能辅导：敏感词过滤（逗号分隔，空则不拦截）
-    tutoring_sensitive_filter_enabled: bool = Field(default=True, alias="TUTORING_SENSITIVE_FILTER_ENABLED")
+    tutoring_sensitive_filter_enabled: bool = Field(
+        default=True, alias="TUTORING_SENSITIVE_FILTER_ENABLED"
+    )
     tutoring_sensitive_words: str = Field(default="", alias="TUTORING_SENSITIVE_WORDS")
+    tutoring_memory_max_tokens: int = Field(default=3200, alias="TUTORING_MEMORY_MAX_TOKENS")
+    tutoring_memory_trigger_ratio: float = Field(
+        default=0.75, alias="TUTORING_MEMORY_TRIGGER_RATIO"
+    )
+    tutoring_memory_recent_turns: int = Field(default=3, alias="TUTORING_MEMORY_RECENT_TURNS")
+    tutoring_memory_summary_max_tokens: int = Field(
+        default=600, alias="TUTORING_MEMORY_SUMMARY_MAX_TOKENS"
+    )
     guardrails_enabled: bool = Field(default=True, alias="GUARDRAILS_ENABLED")
     guardrails_block_on_input: bool = Field(default=True, alias="GUARDRAILS_BLOCK_ON_INPUT")
     guardrails_block_on_output: bool = Field(default=True, alias="GUARDRAILS_BLOCK_ON_OUTPUT")
-    guardrails_hallucination_enabled: bool = Field(default=True, alias="GUARDRAILS_HALLUCINATION_ENABLED")
+    guardrails_hallucination_enabled: bool = Field(
+        default=True, alias="GUARDRAILS_HALLUCINATION_ENABLED"
+    )
     guardrails_sensitive_words: str = Field(default="", alias="GUARDRAILS_SENSITIVE_WORDS")
     xfyun_content_safety_enabled: bool = Field(default=False, alias="XFYUN_CONTENT_SAFETY_ENABLED")
     xfyun_content_safety_base_url: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_BASE_URL")
     xfyun_content_safety_app_id: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_APP_ID")
     xfyun_content_safety_api_key: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_API_KEY")
-    xfyun_content_safety_api_secret: str = Field(default="", alias="XFYUN_CONTENT_SAFETY_API_SECRET")
+    xfyun_content_safety_api_secret: str = Field(
+        default="", alias="XFYUN_CONTENT_SAFETY_API_SECRET"
+    )
 
     firecrawl_api_key: str = Field(default="", alias="FIRECRAWL_API_KEY")
-    firecrawl_base_url: str = Field(default="https://api.firecrawl.dev/v2", alias="FIRECRAWL_BASE_URL")
+    firecrawl_base_url: str = Field(
+        default="https://api.firecrawl.dev/v2", alias="FIRECRAWL_BASE_URL"
+    )
+
+    agent_step_timeout_seconds: float = Field(default=12.0, alias="AGENT_STEP_TIMEOUT_SECONDS")
+    agent_max_steps: int = Field(default=4, alias="AGENT_MAX_STEPS")
+    agent_max_replans: int = Field(default=2, alias="AGENT_MAX_REPLANS")
+    mcp_tool_timeout_seconds: float = Field(default=10.0, alias="MCP_TOOL_TIMEOUT_SECONDS")
+    mcp_tool_retry_attempts: int = Field(default=2, alias="MCP_TOOL_RETRY_ATTEMPTS")
+    mcp_tool_retry_backoff_ms: int = Field(default=250, alias="MCP_TOOL_RETRY_BACKOFF_MS")
+    mcp_tool_retry_backoff_multiplier: float = Field(
+        default=2.0, alias="MCP_TOOL_RETRY_BACKOFF_MULTIPLIER"
+    )
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -60,8 +60,18 @@ def _p95_ms(values: list[float]) -> float:
 
 def test_get_answer_performance_smoke(monkeypatch: object) -> None:
     class Q:
+        id = 77
+        session_id = 10001
         user_id = 1001
+        course_id = 1
+        question_text = "性能烟测问题"
+        question_images = []
+        question_type = None
+        knowledge_points = []
+        difficulty_level = None
         has_answer = False
+        question_status = 0
+        is_escalated = False
 
     async def fake_get_question(self, qid: int):
         assert qid == 77
@@ -80,8 +90,12 @@ def test_get_answer_performance_smoke(monkeypatch: object) -> None:
             "should_escalate": False,
         }
 
+    async def fake_background_generate(qid: int, uid: int):
+        assert qid == 77 and uid == 1001
+
     monkeypatch.setattr(TutoringService, "_get_question", fake_get_question)
     monkeypatch.setattr(TutoringService, "generate_answer", fake_generate)
+    monkeypatch.setattr("app.api.v1.tutoring._generate_db_answer", fake_background_generate)
 
     latencies: list[float] = []
     for _ in range(40):
@@ -89,7 +103,7 @@ def test_get_answer_performance_smoke(monkeypatch: object) -> None:
         response = client.get("/api/v1/tutoring/answer/77")
         latencies.append(perf_counter() - started)
         assert response.status_code == 200
-        assert response.json()["status"] == "completed"
+        assert response.json()["status"] == "processing"
 
     assert _p95_ms(latencies) < 120.0
 
@@ -98,17 +112,30 @@ def test_websocket_stream_performance_smoke(monkeypatch: object) -> None:
     _patch_ws_db_session(monkeypatch)
 
     class Q:
+        id = 42
+        session_id = 10002
         user_id = 1001
+        course_id = 1
+        question_text = "已有答案性能烟测问题"
+        question_images = []
+        question_type = None
+        knowledge_points = []
+        difficulty_level = None
         has_answer = True
+        question_status = 1
+        is_escalated = False
 
     class A:
         id = 99
+        question_id = 42
+        session_id = 10002
         answer_text = "已有解答"
         answer_diagrams = []
         answer_videos = []
         reference_sources = []
         confidence_score = 70.0
         generation_time = 50
+        view_count = 0
 
     async def fake_get_question(self, qid: int):
         assert qid == 42

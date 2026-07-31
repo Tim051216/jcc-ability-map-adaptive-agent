@@ -4,10 +4,12 @@
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
+import asyncio
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 from typing import Any
 
+from app.harness.runtime import emit, span
 from app.integrations.llm.base import LLMMessage
 from app.integrations.llm.provider_factory import get_llm_provider
 
@@ -25,10 +27,33 @@ class LLMClient:
         temperature: float = 0.2,
         max_tokens: int | None = None,
         model: str | None = None,
+        timeout: float | None = None,
     ) -> Any:
-        provider = get_llm_provider()
-        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=m.get("content", "")) for m in messages]
-        text = await provider.generate(llm_messages, temperature=temperature, max_tokens=max_tokens, model=model)
+        attributes = {
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "timeout": timeout,
+            "message_count": len(messages),
+            "input_chars": sum(len(str(message.get("content", ""))) for message in messages),
+        }
+        async with span("llm.chat_completion", kind="llm", attributes=attributes):
+            provider = get_llm_provider()
+            llm_messages = [
+                LLMMessage(
+                    role=str(message.get("role", "user")),
+                    content=message.get("content", ""),
+                )
+                for message in messages
+            ]
+            request = provider.generate(
+                llm_messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+            )
+            text = await asyncio.wait_for(request, timeout=timeout) if timeout else await request
+            emit("llm_result", model=model, output_chars=len(text))
         msg = CompatNamespace(content=text)
         choice = CompatNamespace(message=msg)
         return CompatNamespace(content=text, choices=[choice])
@@ -41,11 +66,34 @@ class LLMClient:
         max_tokens: int | None = None,
         model: str | None = None,
     ) -> AsyncIterator[str]:
-        provider = get_llm_provider()
-        llm_messages = [LLMMessage(role=str(m.get("role", "user")), content=m.get("content", "")) for m in messages]
-        async for chunk in provider.generate_stream(llm_messages, temperature=temperature, max_tokens=max_tokens, model=model):
-            if chunk:
-                yield chunk
+        attributes = {
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "message_count": len(messages),
+            "input_chars": sum(len(str(message.get("content", ""))) for message in messages),
+        }
+        async with span("llm.chat_completion_stream", kind="llm", attributes=attributes):
+            provider = get_llm_provider()
+            llm_messages = [
+                LLMMessage(
+                    role=str(message.get("role", "user")),
+                    content=message.get("content", ""),
+                )
+                for message in messages
+            ]
+            output_chars = 0
+            chunks = provider.generate_stream(
+                llm_messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+            )
+            async for chunk in chunks:
+                if chunk:
+                    output_chars += len(chunk)
+                    yield chunk
+            emit("llm_result", model=model, output_chars=output_chars, streaming=True)
 
 
 def get_llm_client() -> LLMClient:

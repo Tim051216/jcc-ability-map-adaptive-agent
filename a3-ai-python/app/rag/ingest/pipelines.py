@@ -78,6 +78,7 @@ class KnowledgeIngestPipeline:
                         "source_name": item.get("source_name"),
                         "source_path": item.get("source_path"),
                         "tags": item.get("tags", []),
+                        "table_headers": item.get("table_headers", []),
                     },
                 )
                 session.add(chunk_entity)

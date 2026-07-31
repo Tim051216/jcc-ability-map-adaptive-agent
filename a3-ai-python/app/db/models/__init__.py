@@ -31,6 +31,7 @@ from app.db.models.tutoring import (
     TutoringFavorite,
     TutoringQuestion,
     TutoringSession,
+    TutoringSessionMemory,
 )
 from app.db.models.user_profile import UserProfileSnapshot
 from app.db.models.video_danmaku import VideoDanmaku
@@ -77,6 +78,7 @@ __all__ = [
     "TutoringFavorite",
     "TutoringQuestion",
     "TutoringSession",
+    "TutoringSessionMemory",
     "UserInbox",
     "UserProfileSnapshot",
     "VideoDanmaku",

@@ -125,6 +125,10 @@ class EmbeddingService:
             # 真实模型不可用时退回稳定向量，保证本地开发和演示链路不中断。
             return self._hash_embedding(text)
 
+    async def embed_text_strict(self, text: str) -> list[float]:
+        """Return a semantic embedding and surface provider failures to callers."""
+        return await self._request_remote_embedding(text)
+
     async def ping(self) -> dict:
         if not self._remote_enabled():
             return {

@@ -59,3 +59,16 @@ docs/course-materials/
 .codex/
 a3-ai-python/.run/
 a3-ai-python/local_tools/
+harness/artifacts/
+a3-ai-python/.runtime/harness/
+
+# Browser verification and generated report artifacts
+.playwright-cli/
+outputs/
+/tmp-*.jpg
+a3-student-react-web/.playwright-cli/
+a3-student-react-web/*-check.png
+a3-student-react-web/*-check@2x.png
+a3-student-react-web/output-*.png
+a3-student-react-web/tmp_*.json
+a3-student-react-web/tmp_*.png

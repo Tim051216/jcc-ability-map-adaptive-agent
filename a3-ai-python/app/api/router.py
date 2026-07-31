@@ -20,6 +20,7 @@ for module_name, prefix, tags in [
     ("student_portal", "/v1/student-portal", ["student-portal"]),
     ("chat", "/v1/chat", ["chat"]),
     ("web_tools", "/v1/web-tools", ["web-tools"]),
+    ("mcp_tools", "/v1/mcp", ["mcp-tools"]),
     ("course", "/v1/course", ["course"]),
     ("course_comment", "/v1/course-comments", ["course-comments"]),
     ("inbox", "/v1/inboxes", ["inboxes"]),

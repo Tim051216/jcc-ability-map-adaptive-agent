@@ -5,6 +5,8 @@ import httpx
 
 from app.agents.graph import build_learning_graph
 from app.core.config import settings
+from app.harness.runtime import emit as harness_emit
+from app.harness.runtime import run_scope
 from app.integrations.java_clients.course_client import CourseClient
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.common import Citation
@@ -12,7 +14,11 @@ from app.schemas.rag import RagSearchRequest
 from app.schemas.web_tools import WebSearchRequest
 from app.services.answer_service import AnswerService
 from app.services.course_context_service import CourseContextService, ResolvedCourseContext
-from app.services.guardrail_service import GuardrailContext, GuardrailService, GuardrailViolationError
+from app.services.guardrail_service import (
+    GuardrailContext,
+    GuardrailService,
+    GuardrailViolationError,
+)
 from app.services.rag_service import RagService
 from app.services.web_tool_service import WebToolService
 
@@ -78,18 +84,24 @@ class ChatService:
             course_code=request.course_code,
         )
         course_name = await self._resolve_course_name(course_context)
-        state = await build_learning_graph().ainvoke(
-            {
-                "user_id": request.user_id,
-                "course_id": course_context.course_id,
-                "course_code": course_context.course_code,
-                "course_name": course_name,
-                "scene": request.scene,
-                "user_input": request.message,
-                "messages": [request.message],
-                "execution_trace": [],
-            }
-        )
+        input_state = {
+            "user_id": request.user_id,
+            "course_id": course_context.course_id,
+            "course_code": course_context.course_code,
+            "course_name": course_name,
+            "scene": request.scene,
+            "user_input": request.message,
+            "messages": [request.message],
+            "execution_trace": [],
+        }
+        async with run_scope(
+            kind="learning_graph",
+            input_data=input_state,
+            metadata={"service": "chat"},
+        ) as recorder:
+            state = await build_learning_graph().ainvoke(input_state)
+            state["harness_run_id"] = recorder.run_id
+            harness_emit("agent_output", output=state)
         return self._response_from_state(state)
 
     async def _resolve_course_name(self, course_context: ResolvedCourseContext) -> str:

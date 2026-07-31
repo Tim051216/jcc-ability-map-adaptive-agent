@@ -838,7 +838,7 @@ def test_upload_image_validation_returns_400(monkeypatch: object) -> None:
     assert response.status_code == 400
 
 
-def test_upload_image_storage_returns_503(monkeypatch: object) -> None:
+def test_upload_image_storage_falls_back_to_data_url(monkeypatch: object) -> None:
     def fail_upload(*_a, **_k):
         raise RuntimeError("minio refused")
 
@@ -850,7 +850,9 @@ def test_upload_image_storage_returns_503(monkeypatch: object) -> None:
         "/api/v1/tutoring/upload-image",
         files={"file": ("a.png", b"x", "image/png")},
     )
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["url"] == "data:image/png;base64,eA=="
+    assert response.json()["extracted_text"] is None
 
 
 def test_remove_favorite_not_found_returns_404() -> None:

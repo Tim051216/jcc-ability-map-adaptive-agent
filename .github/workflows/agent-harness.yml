@@ -1,0 +1,73 @@
+name: Agent Harness Regression
+
+on:
+  pull_request:
+    paths:
+      - "harness/**"
+      - "a3-ai-python/app/agents/**"
+      - "a3-ai-python/app/harness/**"
+      - "a3-ai-python/app/main.py"
+      - "a3-ai-python/app/integrations/llm/client.py"
+      - "a3-ai-python/app/services/agent_runtime_logging_service.py"
+      - "a3-ai-python/app/services/chat_service.py"
+      - "a3-ai-python/app/services/mcp_tool_runtime.py"
+      - "a3-ai-python/app/tests/test_harness_*.py"
+      - "a3-ai-python/app/api/v1/tutoring.py"
+      - "a3-ai-python/app/services/tutoring*.py"
+      - ".github/workflows/agent-harness.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "harness/**"
+      - "a3-ai-python/app/agents/**"
+      - "a3-ai-python/app/harness/**"
+      - "a3-ai-python/app/main.py"
+      - "a3-ai-python/app/integrations/llm/client.py"
+      - "a3-ai-python/app/services/agent_runtime_logging_service.py"
+      - "a3-ai-python/app/services/chat_service.py"
+      - "a3-ai-python/app/services/mcp_tool_runtime.py"
+      - "a3-ai-python/app/tests/test_harness_*.py"
+      - "a3-ai-python/app/api/v1/tutoring.py"
+      - "a3-ai-python/app/services/tutoring*.py"
+      - ".github/workflows/agent-harness.yml"
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run deterministic harness suite
+        run: python -m harness.run
+      - name: Run harness unit tests
+        run: python -m unittest discover -s harness/tests
+      - name: Upload harness traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-harness-traces
+          path: harness/artifacts/
+
+  runtime-harness:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: a3-ai-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: a3-ai-python/pyproject.toml
+      - name: Install AI service and test dependencies
+        run: pip install -e ".[dev]"
+      - name: Run runtime Harness tests
+        run: >-
+          python -m pytest
+          app/tests/test_harness_runtime.py
+          app/tests/test_harness_evaluation.py
+          app/tests/test_harness_replay.py
+          -q

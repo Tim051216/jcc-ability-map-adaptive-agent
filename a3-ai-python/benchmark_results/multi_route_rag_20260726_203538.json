@@ -1,0 +1,406 @@
+{
+  "generated_at": "2026-07-26T20:35:38.082282+08:00",
+  "course_code": "software_engineering_4th",
+  "case_count": 15,
+  "top_k": 3,
+  "vector_backend": "none",
+  "embedding_provider": "openai_compat",
+  "embedding_model": "text-embedding-v4",
+  "ttft_model": "qwen-turbo",
+  "cold_start_ms": 21.48,
+  "legacy": {
+    "top1_hit_rate_pct": 6.67,
+    "over_retrieval_rate_pct": 84.44,
+    "context_precision_pct": 15.56,
+    "mean_retrieval_latency_ms": 17.49
+  },
+  "multi_route": {
+    "top1_hit_rate_pct": 100.0,
+    "over_retrieval_rate_pct": 0.0,
+    "context_precision_pct": 100.0,
+    "mean_retrieval_latency_ms": 19.63
+  },
+  "delta": {
+    "top1_hit_rate_points": 93.33,
+    "over_retrieval_rate_points": -84.44,
+    "context_precision_points": 84.44
+  },
+  "ttft": {
+    "status": "measured",
+    "queries": [
+      "BiliLearn 本地开发需要启动哪些服务",
+      "课堂学习页面包含哪些功能",
+      "后台怎样导入课程知识库"
+    ],
+    "samples_ms": [
+      2592.54,
+      2594.6,
+      2334.74
+    ],
+    "mean_ms": 2507.29
+  },
+  "legacy_cases": [
+    {
+      "query": "如何启动 BiliLearn 本地服务",
+      "relevant": [
+        "section_20_bililearn_local_startup"
+      ],
+      "sources": [
+        "section_04",
+        "section_05",
+        "section_12"
+      ],
+      "latency_ms": 24.21
+    },
+    {
+      "query": "学生端课堂页面怎么用",
+      "relevant": [
+        "section_21_bililearn_student_pages"
+      ],
+      "sources": [
+        "section_16_teaching_method",
+        "section_17_labs_projects_and_tools",
+        "section_04"
+      ],
+      "latency_ms": 16.83
+    },
+    {
+      "query": "管理端知识库如何入库",
+      "relevant": [
+        "section_22_bililearn_admin_and_rag"
+      ],
+      "sources": [
+        "00_overview",
+        "section_01",
+        "section_04"
+      ],
+      "latency_ms": 18.17
+    },
+    {
+      "query": "两个学生端端口冲突怎么办",
+      "relevant": [
+        "section_23_bililearn_troubleshooting"
+      ],
+      "sources": [
+        "section_16_teaching_method",
+        "section_01",
+        "section_04"
+      ],
+      "latency_ms": 16.6
+    },
+    {
+      "query": "系统使用文档索引",
+      "relevant": [
+        "section_24_bililearn_usage_index"
+      ],
+      "sources": [
+        "section_01",
+        "section_05",
+        "section_09"
+      ],
+      "latency_ms": 17.1
+    },
+    {
+      "query": "课程有哪些章节",
+      "relevant": [
+        "section_15_chapter_map"
+      ],
+      "sources": [
+        "00_overview",
+        "section_01",
+        "section_04"
+      ],
+      "latency_ms": 17.05
+    },
+    {
+      "query": "教学进度如何安排",
+      "relevant": [
+        "section_14_teaching_schedule"
+      ],
+      "sources": [
+        "section_14_teaching_schedule",
+        "section_16_teaching_method",
+        "section_01"
+      ],
+      "latency_ms": 15.5
+    },
+    {
+      "query": "课程采用什么教学方法",
+      "relevant": [
+        "section_16_teaching_method"
+      ],
+      "sources": [
+        "section_04",
+        "section_16_teaching_method",
+        "section_01"
+      ],
+      "latency_ms": 16.5
+    },
+    {
+      "query": "有哪些实验和建模工具",
+      "relevant": [
+        "section_17_labs_projects_and_tools"
+      ],
+      "sources": [
+        "section_08",
+        "section_11",
+        "section_17_labs_projects_and_tools"
+      ],
+      "latency_ms": 18.05
+    },
+    {
+      "query": "课程如何考核",
+      "relevant": [
+        "section_18_assessment_and_outcomes"
+      ],
+      "sources": [
+        "section_16_teaching_method",
+        "section_04",
+        "section_18_assessment_and_outcomes"
+      ],
+      "latency_ms": 16.43
+    },
+    {
+      "query": "课程面向哪些专业学生",
+      "relevant": [
+        "section_13_course_profile"
+      ],
+      "sources": [
+        "section_01",
+        "section_04",
+        "section_05"
+      ],
+      "latency_ms": 17.72
+    },
+    {
+      "query": "手机应用开发资料",
+      "relevant": [
+        "section_02"
+      ],
+      "sources": [
+        "00_overview",
+        "section_12",
+        "section_17_labs_projects_and_tools"
+      ],
+      "latency_ms": 17.57
+    },
+    {
+      "query": "视频扩展资源",
+      "relevant": [
+        "section_03"
+      ],
+      "sources": [
+        "00_overview",
+        "section_03",
+        "section_12"
+      ],
+      "latency_ms": 17.35
+    },
+    {
+      "query": "实验报告样例",
+      "relevant": [
+        "section_07"
+      ],
+      "sources": [
+        "00_overview",
+        "section_07",
+        "section_08"
+      ],
+      "latency_ms": 16.53
+    },
+    {
+      "query": "复习题答案",
+      "relevant": [
+        "section_09"
+      ],
+      "sources": [
+        "00_overview",
+        "section_09",
+        "section_12"
+      ],
+      "latency_ms": 16.77
+    }
+  ],
+  "multi_route_cases": [
+    {
+      "query": "如何启动 BiliLearn 本地服务",
+      "relevant": [
+        "section_20_bililearn_local_startup"
+      ],
+      "sources": [
+        "section_20_bililearn_local_startup"
+      ],
+      "latency_ms": 18.23,
+      "intent": "system_usage",
+      "candidate_count": 11
+    },
+    {
+      "query": "学生端课堂页面怎么用",
+      "relevant": [
+        "section_21_bililearn_student_pages"
+      ],
+      "sources": [
+        "section_21_bililearn_student_pages"
+      ],
+      "latency_ms": 19.79,
+      "intent": "system_usage",
+      "candidate_count": 12
+    },
+    {
+      "query": "管理端知识库如何入库",
+      "relevant": [
+        "section_22_bililearn_admin_and_rag"
+      ],
+      "sources": [
+        "section_22_bililearn_admin_and_rag"
+      ],
+      "latency_ms": 21.06,
+      "intent": "system_usage",
+      "candidate_count": 12
+    },
+    {
+      "query": "两个学生端端口冲突怎么办",
+      "relevant": [
+        "section_23_bililearn_troubleshooting"
+      ],
+      "sources": [
+        "section_23_bililearn_troubleshooting"
+      ],
+      "latency_ms": 22.06,
+      "intent": "system_usage",
+      "candidate_count": 12
+    },
+    {
+      "query": "系统使用文档索引",
+      "relevant": [
+        "section_24_bililearn_usage_index"
+      ],
+      "sources": [
+        "section_24_bililearn_usage_index"
+      ],
+      "latency_ms": 19.79,
+      "intent": "system_usage",
+      "candidate_count": 12
+    },
+    {
+      "query": "课程有哪些章节",
+      "relevant": [
+        "section_15_chapter_map"
+      ],
+      "sources": [
+        "section_15_chapter_map"
+      ],
+      "latency_ms": 18.78,
+      "intent": "course_structure",
+      "candidate_count": 12
+    },
+    {
+      "query": "教学进度如何安排",
+      "relevant": [
+        "section_14_teaching_schedule"
+      ],
+      "sources": [
+        "section_14_teaching_schedule"
+      ],
+      "latency_ms": 18.46,
+      "intent": "course_structure",
+      "candidate_count": 10
+    },
+    {
+      "query": "课程采用什么教学方法",
+      "relevant": [
+        "section_16_teaching_method"
+      ],
+      "sources": [
+        "section_16_teaching_method"
+      ],
+      "latency_ms": 19.05,
+      "intent": "course_structure",
+      "candidate_count": 12
+    },
+    {
+      "query": "有哪些实验和建模工具",
+      "relevant": [
+        "section_17_labs_projects_and_tools"
+      ],
+      "sources": [
+        "section_17_labs_projects_and_tools"
+      ],
+      "latency_ms": 19.62,
+      "intent": "practice",
+      "candidate_count": 12
+    },
+    {
+      "query": "课程如何考核",
+      "relevant": [
+        "section_18_assessment_and_outcomes"
+      ],
+      "sources": [
+        "section_18_assessment_and_outcomes"
+      ],
+      "latency_ms": 18.59,
+      "intent": "assessment",
+      "candidate_count": 12
+    },
+    {
+      "query": "课程面向哪些专业学生",
+      "relevant": [
+        "section_13_course_profile"
+      ],
+      "sources": [
+        "section_13_course_profile"
+      ],
+      "latency_ms": 19.03,
+      "intent": "course_structure",
+      "candidate_count": 12
+    },
+    {
+      "query": "手机应用开发资料",
+      "relevant": [
+        "section_02"
+      ],
+      "sources": [
+        "section_02"
+      ],
+      "latency_ms": 19.26,
+      "intent": "resource",
+      "candidate_count": 12
+    },
+    {
+      "query": "视频扩展资源",
+      "relevant": [
+        "section_03"
+      ],
+      "sources": [
+        "section_03"
+      ],
+      "latency_ms": 20.32,
+      "intent": "resource",
+      "candidate_count": 12
+    },
+    {
+      "query": "实验报告样例",
+      "relevant": [
+        "section_07"
+      ],
+      "sources": [
+        "section_07"
+      ],
+      "latency_ms": 21.9,
+      "intent": "practice",
+      "candidate_count": 12
+    },
+    {
+      "query": "复习题答案",
+      "relevant": [
+        "section_09"
+      ],
+      "sources": [
+        "section_09"
+      ],
+      "latency_ms": 18.46,
+      "intent": "assessment",
+      "candidate_count": 9
+    }
+  ]
+}

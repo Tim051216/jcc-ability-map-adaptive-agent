@@ -15,6 +15,7 @@ import httpx
 from app.core.logging import logger
 from app.integrations.llm.client import get_llm_client
 from app.schemas.rag import RagSearchRequest
+from app.services.intent_tree_service import IntentTreeService
 from app.services.rag_service import RagService
 from app.services.tutoring_ocr_service import extract_text_from_base64_image
 
@@ -100,6 +101,7 @@ class QuestionAnalyzerAgent:
     def __init__(self) -> None:
         self.llm_client = get_llm_client()
         self.rag_service = RagService()
+        self.intent_tree = IntentTreeService()
 
     @staticmethod
     def _normalize(text: str) -> str:
@@ -256,7 +258,19 @@ class QuestionAnalyzerAgent:
         if not question_images and not self._looks_like_course_question(question_text):
             light_intent = await self._classify_light_conversation_intent(question_text)
             if light_intent in self._LIGHT_INTENT_TO_RESULT:
+                intent_decision = await self.intent_tree.classify(question_text, allow_llm=False)
                 result = self._build_light_intent_result(light_intent)
+                result.update(
+                    {
+                        "intent_tree": intent_decision.as_dict(),
+                        "intent": intent_decision.intent,
+                        "intent_confidence": intent_decision.confidence,
+                        "intent_route": intent_decision.route,
+                        "needs_clarification": intent_decision.needs_clarification,
+                        "clarification_question": intent_decision.clarification_question,
+                        "tool_name": intent_decision.tool_name,
+                    }
+                )
                 logger.info(
                     "question_analyzer.completed",
                     question_type=result.get("question_type"),
@@ -268,6 +282,7 @@ class QuestionAnalyzerAgent:
 
         image_context = await self._extract_image_context(question_images)
         effective_question_text = self._build_effective_question_text(question_text, image_context)
+        intent_decision = await self.intent_tree.classify(effective_question_text)
 
         understanding = self._heuristic_understanding(effective_question_text, question_images)
         classification = self._heuristic_classification(effective_question_text, understanding)
@@ -278,6 +293,13 @@ class QuestionAnalyzerAgent:
             **classification,
             **expansion,
             "image_context": image_context,
+            "intent_tree": intent_decision.as_dict(),
+            "intent": intent_decision.intent,
+            "intent_confidence": intent_decision.confidence,
+            "intent_route": intent_decision.route,
+            "needs_clarification": intent_decision.needs_clarification,
+            "clarification_question": intent_decision.clarification_question,
+            "tool_name": intent_decision.tool_name,
         }
 
         logger.info(

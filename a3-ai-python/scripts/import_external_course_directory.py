@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import mimetypes
 import re
 import zipfile
@@ -18,6 +17,7 @@ from app.db.models.generated_resource import GeneratedResource
 from app.db.models.knowledge_document import KnowledgeChunk, KnowledgeDocument
 from app.db.models.resource_source_file import ResourceSourceFile
 from app.db.session import async_session_factory, engine
+from app.rag.ingest.splitters import estimate_tokens
 from app.rag.retrieve.vector_store import MilvusVectorStore
 from app.services.embedding_service import EmbeddingService
 
@@ -502,7 +502,13 @@ def build_study_suggestion(resource_type: str) -> str:
     return suggestions.get(resource_type, "Use this package as a structured reference for the course.")
 
 
-def split_text_chunks(title: str, text: str, *, chunk_size: int = 1400, overlap: int = 180) -> list[str]:
+def split_text_chunks(
+    title: str,
+    text: str,
+    *,
+    chunk_size: int = 512,
+    overlap: int = 128,
+) -> list[str]:
     cleaned = re.sub(r"\r\n?", "\n", text or "").strip()
     if not cleaned:
         return []
@@ -518,13 +524,13 @@ def split_text_chunks(title: str, text: str, *, chunk_size: int = 1400, overlap:
 
     for paragraph in paragraphs:
         candidate = f"{current}\n\n{paragraph}".strip() if current else paragraph
-        if len(candidate) <= chunk_size:
+        if estimate_tokens(candidate) <= chunk_size:
             current = candidate
             continue
 
         if current:
             push_chunk(current)
-        if len(paragraph) <= chunk_size:
+        if estimate_tokens(paragraph) <= chunk_size:
             current = paragraph
             continue
 

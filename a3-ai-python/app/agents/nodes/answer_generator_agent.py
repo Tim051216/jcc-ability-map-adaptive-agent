@@ -20,6 +20,8 @@ from app.core.logging import logger
 from app.db.models.tutoring import TutoringAnswer, TutoringQuestion
 from app.db.session import async_session_factory
 from app.integrations.llm.client import get_llm_client
+from app.agents.langchain_tool_agent import LangChainToolCallingAgent
+from app.agents.react_conversation_agent import ReActConversationAgent
 from app.schemas.rag import RagSearchRequest
 from app.services.rag_service import RagService
 from app.services.realtime_tool_service import RealtimeToolService
@@ -75,6 +77,8 @@ class AnswerGeneratorAgent:
         self.llm_client = get_llm_client()
         self.rag_service = RagService()
         self.realtime_tool_service = RealtimeToolService()
+        self.tool_calling_agent = LangChainToolCallingAgent()
+        self.react_conversation_agent = ReActConversationAgent()
 
     async def _emit_answer_chunk(
         self,
@@ -748,6 +752,7 @@ class AnswerGeneratorAgent:
         user_profile: dict[str, Any] | None = None,
         course_id: int | None = None,
         persona: str | None = None,
+        conversation_context: str | None = None,
         on_answer_chunk: Callable[[str], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         logger.info(
@@ -851,10 +856,29 @@ class AnswerGeneratorAgent:
         if realtime_answer is not None:
             return realtime_answer
 
+        react_answer = await self.react_conversation_agent.run(
+            self._question_with_memory(question_text, conversation_context),
+            course_id=course_id,
+            user_profile=user_profile,
+            max_steps=3,
+        )
+        if react_answer is not None:
+            await self._emit_full_text_naturally(on_answer_chunk, react_answer.answer_text)
+            return {
+                "answer_text": react_answer.answer_text,
+                "reference_sources": react_answer.reference_sources,
+                "confidence_score": react_answer.confidence_score,
+                "tool_calls": [call.model_dump() for call in react_answer.tool_calls],
+                "tool_results": [result.model_dump() for result in react_answer.tool_results],
+                "react_trace": [step.model_dump() for step in react_answer.react_trace],
+                "agent_mode": react_answer.agent_mode,
+            }
+
         light_answer = await self._try_generate_light_answer(
             question_text,
             question_analysis,
             persona=persona,
+            conversation_context=conversation_context,
             on_answer_chunk=on_answer_chunk,
         )
         if light_answer is not None:
@@ -866,7 +890,7 @@ class AnswerGeneratorAgent:
 
         retrieved_knowledge = await self._retrieve_knowledge(question_text, question_analysis, course_id)
         answer_text = await self._generate_learning_answer_text(
-            question_text,
+            self._question_with_memory(question_text, conversation_context),
             question_analysis,
             question_images,
             retrieved_knowledge,
@@ -887,11 +911,24 @@ class AnswerGeneratorAgent:
             "confidence_score": confidence_score,
         }
 
+    @staticmethod
+    def _question_with_memory(question_text: str, conversation_context: str | None) -> str:
+        if not conversation_context:
+            return question_text
+        return (
+            "[会话记忆]\n"
+            f"{conversation_context}\n\n"
+            "[当前用户问题]\n"
+            f"{question_text}\n\n"
+            "请以当前问题为主，仅在承接指代、偏好或前文结论时使用会话记忆。"
+        )
+
     async def _try_generate_light_answer(
         self,
         question_text: str,
         question_analysis: dict[str, Any],
         persona: str | None = None,
+        conversation_context: str | None = None,
         on_answer_chunk: Callable[[str], Awaitable[None]] | None = None,
     ) -> str | None:
         if self._build_attachment_context_answer_v2(question_text):
@@ -974,7 +1011,8 @@ class AnswerGeneratorAgent:
                 "content": (
                     f"{question_type_label}{question_type or light_question_type}\n"
                     f"{persona_hint_label}{social_hint}\n"
-                    f"{user_question_label}{question_text}"
+                    f"{user_question_label}"
+                    f"{self._question_with_memory(question_text, conversation_context)}"
                 ),
             },
         ]
@@ -1659,6 +1697,7 @@ class AnswerGeneratorAgent:
                 messages=messages,
                 temperature=0.3,
                 max_tokens=900,
+                model=settings.llm_fast_model,
             ):
                 chunks.append(chunk)
                 await self._emit_answer_chunk(on_answer_chunk, chunk)
@@ -1676,6 +1715,7 @@ class AnswerGeneratorAgent:
                     messages=messages,
                     temperature=0.3,
                     max_tokens=900,
+                    model=settings.llm_fast_model,
                 ),
                 timeout=self.LLM_STEP_TIMEOUT_SECONDS,
             )

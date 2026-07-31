@@ -29,6 +29,32 @@ class TutoringSession(Base):
     )
 
 
+class TutoringSessionMemory(Base):
+    """Persistent compressed conversational memory for a tutoring session."""
+
+    __tablename__ = "tutoring_session_memory"
+
+    session_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("tutoring_session.id"),
+        primary_key=True,
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    summary_text: Mapped[str] = mapped_column(Text, default="")
+    summarized_through_question_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+    summary_token_count: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.now,
+        onupdate=datetime.now,
+    )
+
+
 class TutoringQuestion(Base):
     """问题表"""
     __tablename__ = "tutoring_question"

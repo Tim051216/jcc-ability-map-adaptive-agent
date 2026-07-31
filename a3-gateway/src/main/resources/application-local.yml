@@ -27,10 +27,28 @@ management:
       show-details: always
 
 a3:
+  fair-limit:
+    enabled: true
+    fail-open: true
+    poll-interval: 200ms
+    rules:
+      - key: ai
+        path: /ai/**
+        permits: 2
+        queue-limit: 80
+        max-wait: 8s
+        lease: 45s
+      - key: resource-generation
+        path: /cs/**
+        permits: 3
+        queue-limit: 120
+        max-wait: 10s
+        lease: 60s
   auth:
     jwk-fetch-enabled: false
     # Keep local AI route debugging independent from auth-service/JWKS startup.
     exclude-path:
+      - GET:/fair-limit/**
       - GET:/ai/**
       - POST:/ai/**
       - PUT:/ai/**

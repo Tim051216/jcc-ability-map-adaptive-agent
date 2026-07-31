@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "project": "a3-learning-agent-system",
+  "adapters": {
+    "offline": {
+      "network": false,
+      "purpose": "deterministic CI smoke checks"
+    },
+    "http": {
+      "network": true,
+      "purpose": "generic JSON endpoint evaluation"
+    },
+    "a3-tutor": {
+      "network": true,
+      "purpose": "A3 asynchronous tutoring task evaluation"
+    }
+  },
+  "suites": {
+    "smoke": {
+      "cases": "harness/cases/smoke.jsonl",
+      "adapter": "offline",
+      "required_pass_rate": 1.0
+    },
+    "tutor-regression": {
+      "cases": "harness/cases/tutor_regression.jsonl",
+      "adapter": "a3-tutor",
+      "required_pass_rate": 1.0
+    }
+  },
+  "artifacts": "harness/artifacts"
+}

@@ -1,0 +1,3 @@
+{"id":"software-requirements-output","prompt":"软件工程中需求分析阶段的主要产物是什么？请简要说明。","course_id":1,"must_contain":["需求"],"must_contain_any":[["文档","说明书","SRS"]],"must_not_contain":["无法回答","系统错误"],"min_confidence":70,"max_llm_calls":4,"max_latency_ms":60000}
+{"id":"process-thread-comparison","prompt":"请比较进程和线程的区别，并说明它们之间的关系。","course_id":1,"must_contain":["进程","线程"],"must_not_contain":["无法回答","系统错误"],"min_confidence":70,"max_llm_calls":4,"max_latency_ms":60000}
+{"id":"overfitting-explanation","prompt":"什么是机器学习中的过拟合？应如何缓解？","course_id":1,"must_contain":["训练"],"must_contain_any":[["泛化","新数据","测试数据"]],"must_not_contain":["无法回答","系统错误"],"min_confidence":70,"max_llm_calls":4,"max_latency_ms":60000}

@@ -15,6 +15,8 @@ from app.agents.nodes.diagram_generator_agent import DiagramGeneratorAgent
 from app.agents.nodes.question_analyzer_agent import QuestionAnalyzerAgent
 from app.agents.nodes.video_recommender_agent import VideoRecommenderAgent
 from app.core.logging import logger
+from app.harness.runtime import emit as harness_emit
+from app.harness.runtime import run_scope
 from app.services.agent_runtime_logging_service import AgentRuntimeLoggingService
 
 EmitFn = Callable[[dict[str, Any]], Awaitable[None]] | None
@@ -31,6 +33,7 @@ class TutoringCoordinator:
         self._runtime_logger = AgentRuntimeLoggingService()
 
     async def _emit(self, on_event: EmitFn, payload: dict[str, Any]) -> None:
+        harness_emit("stream_event", payload=payload)
         if on_event:
             await on_event(payload)
 
@@ -220,6 +223,51 @@ class TutoringCoordinator:
         course_id: int | None,
         user_profile: dict[str, Any] | None = None,
         persona: str | None = None,
+        conversation_context: str | None = None,
+        on_event: EmitFn = None,
+        harness_run_id: str | None = None,
+        harness_parent_run_id: str | None = None,
+        harness_metadata: dict[str, Any] | None = None,
+        harness_trace_dir: str | None = None,
+    ) -> dict[str, Any]:
+        input_data = {
+            "question_text": question_text,
+            "question_images": question_images or [],
+            "course_id": course_id,
+            "user_profile": user_profile,
+            "persona": persona,
+            "conversation_context": conversation_context,
+        }
+        async with run_scope(
+            kind="tutoring",
+            input_data=input_data,
+            run_id=harness_run_id,
+            parent_run_id=harness_parent_run_id,
+            metadata=harness_metadata,
+            trace_dir=harness_trace_dir,
+        ) as recorder:
+            result = await self._run_impl(
+                question_text=question_text,
+                question_images=question_images,
+                course_id=course_id,
+                user_profile=user_profile,
+                persona=persona,
+                conversation_context=conversation_context,
+                on_event=on_event,
+            )
+            result["harness_run_id"] = recorder.run_id
+            harness_emit("agent_output", output=result)
+            return result
+
+    async def _run_impl(
+        self,
+        *,
+        question_text: str,
+        question_images: list[str] | None,
+        course_id: int | None,
+        user_profile: dict[str, Any] | None = None,
+        persona: str | None = None,
+        conversation_context: str | None = None,
         on_event: EmitFn = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
@@ -269,6 +317,40 @@ class TutoringCoordinator:
                         course_id=course_id,
                     )
 
+            if analysis.get("needs_clarification"):
+                clarification = analysis.get("clarification_question") or "这个问题还需要再明确一下：你想问课程知识、查实时资料，还是让我调用工具处理？"
+                confidence = float(analysis.get("intent_confidence") or 0)
+                merged: dict[str, Any] = {
+                    "answer_text": clarification,
+                    "reference_sources": [],
+                    "answer_diagrams": [],
+                    "answer_videos": [],
+                    "confidence_score": confidence,
+                    "question_analysis": analysis,
+                    "should_escalate": False,
+                    "generation_time_ms": int((time.perf_counter() - t0) * 1000),
+                }
+                await self._emit(
+                    on_event,
+                    {
+                        "chunk_type": "complete",
+                        "content": {
+                            "answer_text": clarification,
+                            "diagrams": [],
+                            "videos": [],
+                            "reference_sources": [],
+                            "confidence_score": confidence,
+                            "should_escalate": False,
+                        },
+                    },
+                )
+                logger.info(
+                    "tutoring.coordinator.clarification",
+                    intent=analysis.get("intent"),
+                    intent_confidence=confidence,
+                )
+                return merged
+
             should_short_circuit = (
                 preclassified_light
                 or preclassified_realtime
@@ -300,6 +382,7 @@ class TutoringCoordinator:
                         user_profile=user_profile,
                         course_id=course_id,
                         persona=persona,
+                        conversation_context=conversation_context,
                         on_answer_chunk=lambda chunk: self._emit_answer_text_delta(on_event, chunk),
                     )
 
@@ -378,6 +461,7 @@ class TutoringCoordinator:
                         user_profile=user_profile,
                         course_id=course_id,
                         persona=persona,
+                        conversation_context=conversation_context,
                         on_answer_chunk=lambda chunk: self._emit_answer_text_delta(on_event, chunk),
                     )
 

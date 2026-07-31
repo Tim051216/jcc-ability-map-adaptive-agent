@@ -27,9 +27,27 @@ management:
       show-details: always
 
 a3:
+  fair-limit:
+    enabled: ${FAIR_LIMIT_ENABLED:true}
+    fail-open: ${FAIR_LIMIT_FAIL_OPEN:false}
+    poll-interval: ${FAIR_LIMIT_POLL_INTERVAL:200ms}
+    rules:
+      - key: ai
+        path: /ai/**
+        permits: ${FAIR_LIMIT_AI_PERMITS:8}
+        queue-limit: ${FAIR_LIMIT_AI_QUEUE_LIMIT:500}
+        max-wait: ${FAIR_LIMIT_AI_MAX_WAIT:12s}
+        lease: ${FAIR_LIMIT_AI_LEASE:60s}
+      - key: resource-generation
+        path: /cs/**
+        permits: ${FAIR_LIMIT_RESOURCE_PERMITS:12}
+        queue-limit: ${FAIR_LIMIT_RESOURCE_QUEUE_LIMIT:800}
+        max-wait: ${FAIR_LIMIT_RESOURCE_MAX_WAIT:15s}
+        lease: ${FAIR_LIMIT_RESOURCE_LEASE:90s}
   auth:
     jwk-fetch-enabled: false
     exclude-path:
+      - GET:/fair-limit/**
       - GET:/ai/**
       - POST:/ai/**
       - PUT:/ai/**
