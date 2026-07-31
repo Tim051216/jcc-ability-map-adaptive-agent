@@ -72,3 +72,6 @@ a3-student-react-web/*-check@2x.png
 a3-student-react-web/output-*.png
 a3-student-react-web/tmp_*.json
 a3-student-react-web/tmp_*.png
+a3-student-react-web/tmp-resource-debug*/
+courselearning_head.tsx
+head_courselearning_snapshot.txt

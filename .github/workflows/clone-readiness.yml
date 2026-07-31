@@ -7,6 +7,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  repository-guides:
+    name: Verify fresh-clone entry points
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical setup files
+        shell: bash
+        run: |
+          test -s README.md
+          test -s AGENTS.md
+          test -s AI_START_HERE.md
+          test -s TEAM_SETUP.md
+          test -s scripts/setup-local.ps1
+          test -s scripts/start-full-local.ps1
+          test -s scripts/doctor-local.ps1
+          grep -q 'AI_START_HERE.md' README.md
+          grep -q 'AI_START_HERE.md' AGENTS.md
+
   frontend-builds:
     name: Build ${{ matrix.app }} from lock file
     runs-on: ubuntu-latest

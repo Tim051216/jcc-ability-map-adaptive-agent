@@ -2,6 +2,12 @@
 
 这份说明面向第一次克隆仓库的 Windows 开发者。项目不会提交 `.env`、数据库文件、`node_modules` 或 Python 虚拟环境；初始化脚本会在本机生成它们。
 
+## 交给 AI 启动
+
+仓库根目录的 [AI_START_HERE.md](./AI_START_HERE.md) 是统一的 AI 启动协议，[AGENTS.md](./AGENTS.md) 也会要求代码助手优先读取它。可以直接把下面这句话发给同伴使用的 AI：
+
+> 请先读取仓库根目录的 `AI_START_HERE.md` 和 `AGENTS.md`，严格按标准流程检查环境、初始化、启动并运行最终健康检查。不要覆盖 `.env`、不要删除数据库或 Docker 数据卷；遇到错误请根据 doctor 和日志定位并修复，直到 `doctor-local.ps1 -RequireServices` 返回 0。
+
 ## 1. 安装一次性前置软件
 
 - Git for Windows

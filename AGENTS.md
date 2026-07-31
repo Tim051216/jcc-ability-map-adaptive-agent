@@ -1,5 +1,24 @@
 # A3 Repository Guide for Coding Agents
 
+## First-Clone Startup
+
+When the user asks to install, start, run, verify, or troubleshoot this repository,
+read and follow [`AI_START_HERE.md`](./AI_START_HERE.md) before inspecting legacy
+or service-specific startup notes. It is the canonical local startup protocol.
+
+On Windows, the normal flow is:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-full-local.ps1 -NoOpenPages
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1 -RequireServices
+```
+
+Do not bypass version checks, overwrite an existing `.env`, reset databases, or
+delete Docker volumes to make startup pass. A successful startup requires the
+final service doctor to exit with code `0`.
+
 ## Scope
 
 This repository is a multi-service personalized learning system. Keep changes

@@ -2,7 +2,7 @@
 
 基于大模型的个性化学习多智能体系统，面向中国软件杯 A3 赛题场景，围绕“学习画像 -> 学习规划 -> 资源生成 -> AI 导师 -> 测评反馈 -> 复习提醒”构建完整学习闭环。
 
-> 团队成员第一次克隆仓库时，请直接按 [TEAM_SETUP.md](./TEAM_SETUP.md) 操作。它包含统一版本、自动初始化、一键启动和故障自检命令。
+> 团队成员第一次克隆仓库时，请按 [TEAM_SETUP.md](./TEAM_SETUP.md) 操作。让 AI 帮助启动时，请让它先读取 [AI_START_HERE.md](./AI_START_HERE.md)。
 
 ## Project Overview
 
@@ -49,8 +49,6 @@ AI 运行时依赖：
   当前默认学生端入口，开发端口 `3002`
 - `a3-admin-web`
   当前默认管理端入口，开发端口 `3004`
-- `a3-portal-web`
-  legacy 学生端，仅保留作历史参考
 
 ## Current Demo Scope
 
@@ -91,36 +89,21 @@ a3-learning-agent-system/
 
 ## Quick Start
 
-Windows 本地完整启动推荐直接使用一键脚本：
+安装 Git、Docker Desktop、JDK 17、Node.js 20 和 Python 3.12 后，在 Windows PowerShell 执行：
 
 ```powershell
+git clone https://github.com/Tim051216/jcc-ability-map-adaptive-agent.git
+cd jcc-ability-map-adaptive-agent
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-full-local.ps1 -NoOpenPages
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1 -RequireServices
 ```
 
-脚本会启动依赖容器、初始化 MySQL、启动 `a3-learning`、`a3-ai-python`、`a3-gateway`、学生端和管理端，并在必需健康检查通过后返回 `0`。
+脚本会生成本地配置、安装锁定依赖、启动基础设施与应用，并执行健康检查。完整说明见：
 
-建议按下面顺序启动本地环境：
-
-1. 启动依赖容器
-2. 初始化数据库
-3. 启动 Java 学习服务
-4. 启动 Java 网关
-5. 启动 Python AI 服务
-6. 启动学生端和管理端前端
-
-示例：
-
-```powershell
-docker compose -f .\docker-compose.local.yml up -d
-powershell -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-local.ps1
-```
-
-更完整的本地启动说明见：
-
+- [AI_START_HERE.md](./AI_START_HERE.md)：供 AI 严格执行的启动与验收协议
+- [TEAM_SETUP.md](./TEAM_SETUP.md)：团队成员首次安装说明
 - [LOCAL_SETUP.md](./LOCAL_SETUP.md)
-- [AI_SERVICE_LOCAL_SETUP.md](./AI_SERVICE_LOCAL_SETUP.md)
 
 ## Local Ports
 
