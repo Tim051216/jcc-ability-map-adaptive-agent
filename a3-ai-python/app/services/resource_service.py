@@ -2219,6 +2219,9 @@ class ResourceService:
             return ResourceService._build_high_quality_teaching_plan_markdown(course_code, source_titles, source_excerpt)
 
         if resource_type in {"mind_map", "mindmap"}:
+            reference_excerpt = source_excerpt or (
+                "\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u5728\u540e\u7eed\u751f\u6210\u4e2d\u7ee7\u7eed\u8865\u5145\u8bfe\u7a0b\u539f\u6587\u3002"
+            )
             return (
                 f"# {course_label} \u7ae0\u8282\u77e5\u8bc6\u5bfc\u56fe\n\n"
                 f"## \u4e2d\u5fc3\u4e3b\u9898\n- {profile_theme}\n\n"
@@ -2235,7 +2238,7 @@ class ResourceService:
                 "1. \u5148\u8bfb\u4e2d\u5fc3\u4e3b\u9898\u4e0e\u6982\u5ff5\u5b9a\u4f4d\uff0c\u5f04\u6e05\u672c\u8282\u7a76\u7adf\u5728\u89e3\u51b3\u4ec0\u4e48\u95ee\u9898\u3002\n"
                 "2. \u518d\u770b\u7ed3\u6784\u7ec4\u6210\u548c\u4e8c\u5c42\u5c55\u5f00\uff0c\u628a\u6a21\u5757\u5173\u7cfb\u4e32\u6210\u4e00\u6761\u56e0\u679c\u94fe\u3002\n"
                 "3. \u6700\u540e\u7ed3\u5408\u6848\u4f8b\u4e0e\u7ec3\u4e60\u56de\u770b\u6613\u9519\u70b9\uff0c\u5b8c\u6210\u77e5\u8bc6\u8fc1\u79fb\u3002\n\n"
-                f"## \u53c2\u8003\u7247\u6bb5\n{source_excerpt or '\u6682\u65e0\u53c2\u8003\u7247\u6bb5\uff0c\u53ef\u5728\u540e\u7eed\u751f\u6210\u4e2d\u7ee7\u7eed\u8865\u5145\u8bfe\u7a0b\u539f\u6587\u3002'}"
+                f"## \u53c2\u8003\u7247\u6bb5\n{reference_excerpt}"
             )
 
         if resource_type in {"quiz_set", "practice_set"}:
