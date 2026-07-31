@@ -66,9 +66,35 @@ function Start-BackgroundPowerShell {
     )
 
     $logPath = Join-Path $repoRoot $LogFile
-    $psCommand = "Set-Location '$repoRoot'; $Command *>> '$logPath'"
+    $errorLogPath = Join-Path $repoRoot ($LogFile -replace '\.log$', '.err.log')
+    $escapedRepoRoot = $repoRoot.Replace("'", "''")
+    $psCommand = @"
+`$ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(`$false)
+`$OutputEncoding = [Console]::OutputEncoding
+Set-Location -LiteralPath '$escapedRepoRoot'
+$Command
+"@
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($psCommand))
+
+    Set-Content -Path $logPath -Value "" -Encoding UTF8
+    Set-Content -Path $errorLogPath -Value "" -Encoding UTF8
     Write-Host "Starting $Name..."
-    Start-Process -FilePath powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $psCommand -WindowStyle Hidden
+    $process = Start-Process `
+        -FilePath powershell.exe `
+        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedCommand `
+        -RedirectStandardOutput $logPath `
+        -RedirectStandardError $errorLogPath `
+        -WindowStyle Hidden `
+        -PassThru
+    Write-Host "Started $Name (PID $($process.Id)); logs: $LogFile, $(Split-Path -Leaf $errorLogPath)"
+}
+
+function Invoke-MysqlInitialization {
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1
+    if ($LASTEXITCODE -ne 0) {
+        throw "MySQL initialization exited with code $LASTEXITCODE."
+    }
 }
 
 function Start-BackgroundCmd {
@@ -179,19 +205,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "Docker Compose failed to start local dependency containers."
 }
 
-$mysqlReady = Wait-Command -Name "MySQL port 13306" -TimeoutSeconds 90 -Command { Test-Port 13306 }
+$mysqlReady = Wait-Command -Name "MySQL server" -TimeoutSeconds 120 -Command {
+    docker exec -e MYSQL_PWD=a3mysql123 a3-mysql mysqladmin ping -h 127.0.0.1 -uroot --silent *> $null
+    return $LASTEXITCODE -eq 0
+}
 if (-not $mysqlReady) {
-    throw "MySQL did not become ready on port 13306. Check: docker compose -f docker-compose.local.yml ps"
+    throw "MySQL did not become ready. Check: docker compose -f docker-compose.local.yml ps"
 }
 
 if (-not $SkipMysqlInit) {
     Write-Host "Initializing MySQL schemas..."
     try {
-        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1
+        Invoke-MysqlInitialization
     } catch {
-        Write-Warning "MySQL init failed once. Waiting 15 seconds and retrying..."
+        Write-Warning "MySQL init failed once: $($_.Exception.Message) Waiting 15 seconds and retrying..."
         Start-Sleep -Seconds 15
-        powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\init-mysql.ps1
+        Invoke-MysqlInitialization
     }
 }
 
@@ -300,6 +329,13 @@ if (-not $NoOpenPages) {
 
 Write-Host ""
 if (($missingRequired.Count -gt 0) -or ($failedRequiredChecks.Count -gt 0)) {
+    if ($missingRequired -contains "ai") {
+        Write-Warning "AI service failed to start. Last error output:"
+        $aiErrorLog = Join-Path $repoRoot "ai-live.err.log"
+        if (Test-Path $aiErrorLog) {
+            Get-Content $aiErrorLog -Tail 30 | Write-Warning
+        }
+    }
     Write-Error ("Startup finished with required service failures. Missing ports: {0}; failed checks: {1}. See *-live.log files in {2}." -f ($missingRequired -join ", "), ($failedRequiredChecks -join ", "), $repoRoot)
     exit 1
 }
