@@ -78,7 +78,7 @@ class StudentPortalService:
 
     async def get_dashboard(self, *, user_id: int, course_id: int | None = None) -> PortalDashboardResponse:
         featured_courses = await CourseService().list_recommend_courses("best")
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         profile_summary = await self._get_profile_summary(user_id)
         evaluation_trend = await self._get_evaluation_trend(user_id=user_id, course_id=current_course.id if current_course else None)
         latest_evaluations = await self._get_latest_evaluations(user_id=user_id, course_id=current_course.id if current_course else None)
@@ -112,7 +112,7 @@ class StudentPortalService:
         )
 
     async def get_capability_profile(self, *, user_id: int, course_id: int | None = None) -> CapabilityProfileResponse:
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         profile_summary = await self._get_profile_summary(user_id)
         evaluation_trend = await self._get_evaluation_trend(user_id=user_id, course_id=current_course.id if current_course else None)
         latest_plan = await self._get_latest_plan(
@@ -144,7 +144,7 @@ class StudentPortalService:
         )
 
     async def get_study_report(self, *, user_id: int, course_id: int | None = None) -> StudyReportResponse:
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         profile_summary = await self._get_profile_summary(user_id)
         evaluation_trend = await self._get_evaluation_trend(user_id=user_id, course_id=current_course.id if current_course else None)
         latest_plan = await self._get_latest_plan(
@@ -180,7 +180,7 @@ class StudentPortalService:
         user_id: int,
         course_id: int,
     ) -> JobLearningOverviewResponse:
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         if current_course is None:
             raise ValueError("course not found")
 
@@ -238,7 +238,10 @@ class StudentPortalService:
         self,
         request: JobLearningGoalUpdateRequest,
     ) -> JobLearningGoalResponse:
-        current_course = await self._resolve_current_course(request.course_id)
+        current_course = await self._resolve_current_course(
+            request.course_id,
+            user_id=request.user_id,
+        )
         if current_course is None:
             raise ValueError("course not found")
         now = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -467,10 +470,15 @@ class StudentPortalService:
             reason="已有诊断和学习路径，继续完成当前阶段任务。",
         )
 
-    async def _resolve_current_course(self, course_id: int | None) -> LearningCourseDetailResponse | None:
+    async def _resolve_current_course(
+        self,
+        course_id: int | None,
+        *,
+        user_id: int,
+    ) -> LearningCourseDetailResponse | None:
         if course_id is None:
             course_id = 401
-        return await CourseService().get_learning_course_detail(course_id, user_id=self.DEFAULT_USER_ID)
+        return await CourseService().get_learning_course_detail(course_id, user_id=user_id)
 
     async def _get_profile_summary(self, user_id: int) -> ProfileSummary | None:
         async with async_session_factory() as session:

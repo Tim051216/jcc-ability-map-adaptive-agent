@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -164,6 +166,50 @@ def test_update_job_learning_goal_returns_persisted_goal(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["student_goal"] == "备战软件开发技能竞赛"
+
+
+def test_job_learning_rejects_non_positive_identifiers() -> None:
+    overview_response = client.get(
+        "/api/v1/student-portal/job-learning",
+        params={"user_id": 0, "course_id": 401},
+    )
+    goal_response = client.put(
+        "/api/v1/student-portal/job-learning/goal",
+        json={
+            "user_id": 1001,
+            "course_id": 0,
+            "student_goal": "备战软件开发技能竞赛",
+            "goal_scene": "competition",
+        },
+    )
+
+    assert overview_response.status_code == 422
+    assert goal_response.status_code == 422
+
+
+def test_resolve_current_course_uses_requested_user(monkeypatch) -> None:
+    requested: dict[str, int] = {}
+
+    async def fake_get_learning_course_detail(
+        self,
+        course_id: int,
+        user_id: int | None = None,
+    ):
+        requested["course_id"] = course_id
+        requested["user_id"] = user_id or 0
+        return None
+
+    monkeypatch.setattr(
+        "app.services.student_portal_service.CourseService.get_learning_course_detail",
+        fake_get_learning_course_detail,
+    )
+
+    result = asyncio.run(
+        StudentPortalService()._resolve_current_course(401, user_id=2002)
+    )
+
+    assert result is None
+    assert requested == {"course_id": 401, "user_id": 2002}
 
 
 def test_job_ability_dimensions_do_not_invent_scores_without_assessment() -> None:

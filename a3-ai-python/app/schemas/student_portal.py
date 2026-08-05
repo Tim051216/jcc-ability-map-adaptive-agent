@@ -80,8 +80,8 @@ AbilityAssessmentStatus = Literal["measured", "derived", "not_assessed"]
 
 
 class JobLearningGoalUpdateRequest(BaseModel):
-    user_id: int = 1001
-    course_id: int = 401
+    user_id: int = Field(default=1001, ge=1)
+    course_id: int = Field(default=401, ge=1)
     student_goal: str = Field(min_length=2, max_length=200)
     goal_scene: JobGoalScene
 
