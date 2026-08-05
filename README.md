@@ -121,6 +121,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1 -
 
 ## Core Documents
 
+- [XA_202603_COMPETITION_ADAPTATION.md](./XA_202603_COMPETITION_ADAPTATION.md)
+  科大讯飞 XA-202603 赛题定位、评分对齐、页面改造与后续执行基线
 - [A3_DEMO_RUNBOOK.md](./A3_DEMO_RUNBOOK.md)
   演示顺序、现场检查与兜底方案
 - [A3_ARCHITECTURE.md](./A3_ARCHITECTURE.md)
