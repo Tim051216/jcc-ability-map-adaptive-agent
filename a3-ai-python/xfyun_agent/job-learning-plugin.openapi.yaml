@@ -1,0 +1,145 @@
+openapi: 3.0.3
+info:
+  title: 软件开发岗位能力学习插件
+  version: 1.0.0
+  description: 获取学生的软件开发岗位能力诊断、薄弱项、推荐路径、资源、安全提示和下一步动作。
+servers:
+  - url: https://REPLACE_WITH_PUBLIC_API_DOMAIN
+    description: 部署后替换为星辰云端可访问的 HTTPS 地址
+paths:
+  /api/v1/student-portal/job-learning:
+    get:
+      operationId: getJobLearningOverview
+      summary: 获取岗位能力学习概览
+      description: 返回软件开发工程师岗位五维能力数据。没有测评时分数为 null，不会生成固定雷达图分数。
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: 学生用户 ID，比赛演示账号使用 1001。
+          schema:
+            type: integer
+            default: 1001
+        - name: course_id
+          in: query
+          required: false
+          description: 课程 ID，软件工程演示课程使用 401。
+          schema:
+            type: integer
+            default: 401
+      responses:
+        "200":
+          description: 岗位能力学习概览
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobLearningOverview"
+        "422":
+          description: 参数校验失败
+components:
+  schemas:
+    JobAbilityDimension:
+      type: object
+      required: [code, label, benchmark, assessment_status, evidence]
+      properties:
+        code:
+          type: string
+          enum:
+            - requirement_analysis
+            - system_design
+            - coding_implementation
+            - software_testing
+            - project_collaboration
+        label:
+          type: string
+        score:
+          type: number
+          nullable: true
+        benchmark:
+          type: number
+        assessment_status:
+          type: string
+          enum: [measured, derived, not_assessed]
+        evidence:
+          type: array
+          items:
+            type: string
+    JobLearningOverview:
+      type: object
+      required:
+        - user_id
+        - course_id
+        - professional_group
+        - job_name
+        - student_goal
+        - goal_scene
+        - ability_dimensions
+        - weak_abilities
+        - recommended_path
+        - recommended_resources
+        - citations
+        - safety_notices
+        - ai_generated
+        - next_action
+      properties:
+        user_id:
+          type: integer
+        course_id:
+          type: integer
+        course_code:
+          type: string
+        course_name:
+          type: string
+        professional_group:
+          type: string
+          example: 软件技术专业群
+        job_name:
+          type: string
+          example: 软件开发工程师
+        student_goal:
+          type: string
+        goal_scene:
+          type: string
+          enum: [course, training, competition, internship]
+        assessment_id:
+          type: string
+          nullable: true
+        assessment_updated_at:
+          type: string
+          nullable: true
+        ability_dimensions:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/JobAbilityDimension"
+        weak_abilities:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recommended_path:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recommended_resources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        citations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        safety_notices:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        ai_generated:
+          type: boolean
+        next_action:
+          type: object
+          additionalProperties: true
