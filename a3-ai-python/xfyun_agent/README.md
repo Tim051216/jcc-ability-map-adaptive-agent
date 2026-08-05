@@ -54,3 +54,23 @@
 - [ ] 发布工作流并记录版本号、体验地址和截图。
 
 本地 `127.0.0.1:18080` 不能直接作为星辰云端插件地址。未看到真实插件 Trace 前，不得在申报材料中写“星辰已调用项目后端”。
+
+## 只读插件网关
+
+`plugin_gateway.py` 只对外暴露健康检查和岗位能力查询，不暴露完整后端文档。
+
+```powershell
+cd a3-ai-python
+$env:PLUGIN_BACKEND_BASE_URL = "http://127.0.0.1:18080"
+$env:PLUGIN_CACHE_TTL_SECONDS = "300"
+.\.venv\Scripts\python.exe -m uvicorn xfyun_agent.plugin_gateway:app --host 127.0.0.1 --port 18081
+```
+
+首次请求会从真实后端聚合数据，成功后按 `(user_id, course_id)` 缓存 5 分钟。比赛演示前应先在本机调用一次插件接口预热，星辰调用即可快速命中真实缓存。响应头 `X-Plugin-Cache` 可用于区分 `miss`、`hit` 和上游异常时的 `stale`。
+
+2026-08-05 星辰插件草稿：
+
+- 名称：软件开发岗位能力插件
+- 插件编号：`9697`
+- 平台真实调试：成功，返回课程、诊断、五维能力、安全提示和下一步行动
+- 当前状态：草稿，尚未发布；发布后才能在工作流的“个人插件”中选择
