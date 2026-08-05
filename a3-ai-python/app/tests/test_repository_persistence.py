@@ -12,8 +12,11 @@ from app.db.repositories.admin_repository import (
     SystemConfigRepository,
 )
 from app.db.repositories.chat_ticket_repository import ChatTicketRepository
-from app.db.repositories.evaluation_repository import EvaluationRepository
 from app.db.repositories.evaluation_paper_repository import EvaluationPaperRepository
+from app.db.repositories.evaluation_repository import EvaluationRepository
+from app.db.repositories.personalized_learning_state_repository import (
+    PersonalizedLearningStateRepository,
+)
 from app.db.repositories.plan_progress_repository import PlanProgressRepository
 from app.db.repositories.profile_repository import ProfileRepository
 from app.db.repositories.resource_repository import ResourceRepository
@@ -127,6 +130,44 @@ async def test_resource_repository_filters_archive_and_favorites(db_session) -> 
         user_id=1001,
         resource_id=active_resource.id,
     ) is None
+
+
+@pytest.mark.asyncio
+async def test_personalized_learning_state_repository_persists_job_goal(db_session) -> None:
+    repository = PersonalizedLearningStateRepository()
+    now = "2026-08-05T10:00:00+08:00"
+
+    created = await repository.update_job_goal(
+        db_session,
+        user_id=1001,
+        course_id=401,
+        student_goal="完成软件开发岗位实习准备",
+        goal_scene="internship",
+        job_name="软件开发工程师",
+        created_at=now,
+        updated_at=now,
+    )
+    await db_session.commit()
+
+    assert created.student_goal == "完成软件开发岗位实习准备"
+    assert created.goal_scene == "internship"
+    assert created.job_name == "软件开发工程师"
+
+    updated = await repository.update_job_goal(
+        db_session,
+        user_id=1001,
+        course_id=401,
+        student_goal="备战软件开发技能竞赛",
+        goal_scene="competition",
+        job_name="软件开发工程师",
+        created_at=now,
+        updated_at="2026-08-05T10:05:00+08:00",
+    )
+    await db_session.commit()
+
+    assert updated.id == created.id
+    assert updated.student_goal == "备战软件开发技能竞赛"
+    assert updated.goal_scene == "competition"
 
 
 @pytest.mark.asyncio

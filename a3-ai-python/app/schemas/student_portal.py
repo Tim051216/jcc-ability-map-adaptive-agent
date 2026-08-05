@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.schemas.course import CourseCardResponse, LearningCourseDetailResponse
@@ -71,3 +73,99 @@ class StudyReportResponse(BaseModel):
     metrics: list[PortalMetricItem] = Field(default_factory=list)
     diagnosis_feed: list[PortalActivityItem] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+
+
+JobGoalScene = Literal["course", "training", "competition", "internship"]
+AbilityAssessmentStatus = Literal["measured", "derived", "not_assessed"]
+
+
+class JobLearningGoalUpdateRequest(BaseModel):
+    user_id: int = 1001
+    course_id: int = 401
+    student_goal: str = Field(min_length=2, max_length=200)
+    goal_scene: JobGoalScene
+
+
+class JobLearningGoalResponse(BaseModel):
+    user_id: int
+    course_id: int
+    job_name: str
+    student_goal: str
+    goal_scene: JobGoalScene
+    updated_at: str | None = None
+
+
+class JobAbilityDimension(BaseModel):
+    code: str
+    label: str
+    score: int | None = Field(default=None, ge=0, le=100)
+    benchmark: int = Field(default=70, ge=0, le=100)
+    assessment_status: AbilityAssessmentStatus = "not_assessed"
+    evidence: list[str] = Field(default_factory=list)
+
+
+class JobWeakAbility(BaseModel):
+    code: str
+    label: str
+    score: int | None = Field(default=None, ge=0, le=100)
+    reason: str
+    recommended_action: str
+
+
+class JobLearningPathItem(BaseModel):
+    step_id: str
+    title: str
+    status: str
+    duration_minutes: int = 45
+    ability_codes: list[str] = Field(default_factory=list)
+    path_reason: str | None = None
+
+
+class JobLearningResourceItem(BaseModel):
+    resource_id: int | None = None
+    title: str
+    resource_type: str
+    reason: str
+    open_url: str | None = None
+    ability_codes: list[str] = Field(default_factory=list)
+
+
+class JobCitationItem(BaseModel):
+    title: str
+    locator: str | None = None
+    excerpt: str | None = None
+    source_type: str = "course_material"
+
+
+class JobSafetyNotice(BaseModel):
+    code: str
+    content: str
+    severity: Literal["info", "warning", "critical"] = "warning"
+
+
+class JobNextAction(BaseModel):
+    action_type: str
+    label: str
+    route: str
+    reason: str
+
+
+class JobLearningOverviewResponse(BaseModel):
+    user_id: int
+    course_id: int
+    course_code: str
+    course_name: str
+    professional_group: str = "软件技术专业群"
+    job_name: str = "软件开发工程师"
+    student_goal: str
+    goal_scene: JobGoalScene
+    assessment_id: str | None = None
+    assessment_updated_at: str | None = None
+    ability_dimensions: list[JobAbilityDimension] = Field(default_factory=list)
+    weak_abilities: list[JobWeakAbility] = Field(default_factory=list)
+    recommended_path: list[JobLearningPathItem] = Field(default_factory=list)
+    recommended_resources: list[JobLearningResourceItem] = Field(default_factory=list)
+    citations: list[JobCitationItem] = Field(default_factory=list)
+    safety_notices: list[JobSafetyNotice] = Field(default_factory=list)
+    ai_generated: bool = False
+    next_action: JobNextAction

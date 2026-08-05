@@ -51,3 +51,39 @@ class PersonalizedLearningStateRepository:
         current.updated_at = updated_at
         await session.flush()
         return current
+
+    async def update_job_goal(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        course_id: int,
+        student_goal: str,
+        goal_scene: str,
+        job_name: str,
+        created_at: str,
+        updated_at: str,
+    ) -> PersonalizedLearningState:
+        current = await self.get_by_user_course(session, user_id=user_id, course_id=course_id)
+        if current is None:
+            current = PersonalizedLearningState(
+                user_id=user_id,
+                course_id=course_id,
+                total_watched_seconds=0,
+                completed_sections=[],
+                last_event_type="goal_updated",
+                student_goal=student_goal,
+                goal_scene=goal_scene,
+                job_name=job_name,
+                created_at=created_at,
+                updated_at=updated_at,
+            )
+            session.add(current)
+        else:
+            current.student_goal = student_goal
+            current.goal_scene = goal_scene
+            current.job_name = job_name
+            current.last_event_type = "goal_updated"
+            current.updated_at = updated_at
+        await session.flush()
+        return current

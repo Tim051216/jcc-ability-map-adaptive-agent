@@ -7,6 +7,7 @@ from fastapi.responses import ORJSONResponse
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
+from app.db.session import ensure_sqlite_schema
 from app.harness.runtime import emit as harness_emit
 from app.harness.runtime import run_scope
 
@@ -17,6 +18,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("ai_service.starting", env=settings.app_env)
+    await ensure_sqlite_schema()
     yield
     logger.info("ai_service.stopping")
 
