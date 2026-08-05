@@ -12,6 +12,26 @@ app.include_router(student_portal.router, prefix="/api/v1/student-portal")
 client = TestClient(app)
 
 
+def _coaching_record_payload(**overrides):
+    payload = {
+        "id": 1,
+        "user_id": 1001,
+        "course_id": 401,
+        "source": "xfyun_workflow",
+        "user_question": "如何提升系统设计能力？",
+        "advice_summary": "先完成模块划分练习，再进行接口设计复盘。",
+        "recommended_actions": ["完成模块划分练习", "复盘接口设计"],
+        "status": "planned",
+        "helpful": None,
+        "rating": None,
+        "feedback_note": None,
+        "created_at": "2026-08-05T16:20:00+08:00",
+        "updated_at": "2026-08-05T16:20:00+08:00",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_get_student_dashboard_returns_payload(monkeypatch) -> None:
     async def fake_get_dashboard(self, *, user_id: int, course_id: int | None = None):
         assert user_id == 1001
@@ -210,6 +230,106 @@ def test_resolve_current_course_uses_requested_user(monkeypatch) -> None:
 
     assert result is None
     assert requested == {"course_id": 401, "user_id": 2002}
+
+
+def test_create_job_coaching_record(monkeypatch) -> None:
+    async def fake_create(self, request):
+        assert request.user_id == 1001
+        assert request.recommended_actions == ["完成模块划分练习", "复盘接口设计"]
+        return _coaching_record_payload()
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "create_job_coaching_record",
+        fake_create,
+    )
+
+    response = client.post(
+        "/api/v1/student-portal/job-learning/coaching-records",
+        json={
+            "user_id": 1001,
+            "course_id": 401,
+            "user_question": "如何提升系统设计能力？",
+            "advice_summary": "先完成模块划分练习，再进行接口设计复盘。",
+            "recommended_actions": ["完成模块划分练习", "复盘接口设计"],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "planned"
+
+
+def test_list_job_coaching_records(monkeypatch) -> None:
+    async def fake_list(self, *, user_id: int, course_id: int, limit: int):
+        assert (user_id, course_id, limit) == (1001, 401, 5)
+        return {"total": 1, "items": [_coaching_record_payload()]}
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "list_job_coaching_records",
+        fake_list,
+    )
+
+    response = client.get(
+        "/api/v1/student-portal/job-learning/coaching-records",
+        params={"user_id": 1001, "course_id": 401, "limit": 5},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["recommended_actions"]
+
+
+def test_update_job_coaching_feedback(monkeypatch) -> None:
+    async def fake_update(self, *, record_id: int, request):
+        assert record_id == 1
+        assert request.user_id == 1001
+        assert request.rating == 5
+        return _coaching_record_payload(
+            status="completed",
+            helpful=True,
+            rating=5,
+            feedback_note="建议可执行，已经完成。",
+        )
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "update_job_coaching_feedback",
+        fake_update,
+    )
+
+    response = client.patch(
+        "/api/v1/student-portal/job-learning/coaching-records/1/feedback",
+        json={
+            "user_id": 1001,
+            "status": "completed",
+            "helpful": True,
+            "rating": 5,
+            "feedback_note": "建议可执行，已经完成。",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["rating"] == 5
+
+
+def test_update_job_coaching_feedback_returns_404(monkeypatch) -> None:
+    async def fake_update(self, *, record_id: int, request):
+        return None
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "update_job_coaching_feedback",
+        fake_update,
+    )
+
+    response = client.patch(
+        "/api/v1/student-portal/job-learning/coaching-records/999/feedback",
+        json={"user_id": 1001, "status": "completed"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_job_ability_dimensions_do_not_invent_scores_without_assessment() -> None:

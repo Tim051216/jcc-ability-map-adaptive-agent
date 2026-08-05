@@ -77,6 +77,7 @@ class StudyReportResponse(BaseModel):
 
 JobGoalScene = Literal["course", "training", "competition", "internship"]
 AbilityAssessmentStatus = Literal["measured", "derived", "not_assessed"]
+JobCoachingStatus = Literal["planned", "in_progress", "completed", "abandoned"]
 
 
 class JobLearningGoalUpdateRequest(BaseModel):
@@ -93,6 +94,44 @@ class JobLearningGoalResponse(BaseModel):
     student_goal: str
     goal_scene: JobGoalScene
     updated_at: str | None = None
+
+
+class JobCoachingRecordCreateRequest(BaseModel):
+    user_id: int = Field(default=1001, ge=1)
+    course_id: int = Field(default=401, ge=1)
+    source: str = Field(default="xfyun_workflow", min_length=2, max_length=32)
+    user_question: str = Field(min_length=2, max_length=1000)
+    advice_summary: str = Field(min_length=2, max_length=5000)
+    recommended_actions: list[str] = Field(default_factory=list, max_length=10)
+
+
+class JobCoachingFeedbackRequest(BaseModel):
+    user_id: int = Field(default=1001, ge=1)
+    status: JobCoachingStatus
+    helpful: bool | None = None
+    rating: int | None = Field(default=None, ge=1, le=5)
+    feedback_note: str | None = Field(default=None, max_length=500)
+
+
+class JobCoachingRecordResponse(BaseModel):
+    id: int
+    user_id: int
+    course_id: int
+    source: str
+    user_question: str
+    advice_summary: str
+    recommended_actions: list[str] = Field(default_factory=list)
+    status: JobCoachingStatus
+    helpful: bool | None = None
+    rating: int | None = None
+    feedback_note: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class JobCoachingRecordListResponse(BaseModel):
+    total: int
+    items: list[JobCoachingRecordResponse] = Field(default_factory=list)
 
 
 class JobAbilityDimension(BaseModel):

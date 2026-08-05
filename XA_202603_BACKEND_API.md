@@ -101,7 +101,73 @@ Content-Type: application/json
 
 目标保存在 `personalized_learning_state`，刷新页面后再次获取聚合数据应返回最新目标。
 
-## 4. 前端联调规则
+## 4. 保存智能体建议
+
+前端收到星辰或本地智能体的完整回答后，保存一次建议记录：
+
+```http
+POST /api/v1/student-portal/job-learning/coaching-records
+Content-Type: application/json
+```
+
+```json
+{
+  "user_id": 1001,
+  "course_id": 401,
+  "source": "xfyun_workflow",
+  "user_question": "如何提升系统设计能力？",
+  "advice_summary": "先完成模块划分练习，再进行接口设计复盘。",
+  "recommended_actions": ["完成模块划分练习", "复盘接口设计"]
+}
+```
+
+创建成功返回 `201` 和完整记录，初始 `status` 为 `planned`。
+
+## 5. 查询历史建议
+
+```http
+GET /api/v1/student-portal/job-learning/coaching-records?user_id=1001&course_id=401&limit=20
+```
+
+响应按创建时间倒序返回：
+
+```json
+{
+  "total": 1,
+  "items": [
+    {
+      "id": 1,
+      "status": "planned",
+      "helpful": null,
+      "rating": null,
+      "feedback_note": null
+    }
+  ]
+}
+```
+
+实际记录还包含创建请求中的全部字段和 `created_at`、`updated_at`。
+
+## 6. 提交执行反馈
+
+```http
+PATCH /api/v1/student-portal/job-learning/coaching-records/1/feedback
+Content-Type: application/json
+```
+
+```json
+{
+  "user_id": 1001,
+  "status": "completed",
+  "helpful": true,
+  "rating": 5,
+  "feedback_note": "建议可执行，已经完成。"
+}
+```
+
+`status` 允许值：`planned`、`in_progress`、`completed`、`abandoned`。记录按 `user_id` 校验归属，其他学生不能修改该记录。
+
+## 7. 前端联调规则
 
 1. 所有页面使用本契约的能力代码，不自行翻译成新的内部代码。
 2. `score=null` 表示尚未测评，不得显示固定雷达图分数。
@@ -109,3 +175,4 @@ Content-Type: application/json
 4. `ai_generated=true` 时显示明显的“AI 生成内容”标识。
 5. 路由字段由后端返回相对路径，前端负责站内跳转。
 6. 新增或修改字段必须先更新本文件，再同步三个前端负责人。
+7. 智能体给出正式建议后调用第 4 节接口；学生执行或放弃后调用第 6 节接口，形成可展示的学习反馈闭环。

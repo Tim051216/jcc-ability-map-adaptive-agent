@@ -23,6 +23,7 @@ from app.db.models.generated_resource import (
     ResourceFavoriteHistory,
 )
 from app.db.models.generation_task import GenerationTask
+from app.db.models.job_coaching_record import JobCoachingRecord
 from app.db.models.knowledge_document import KnowledgeChunk, KnowledgeDocument
 from app.db.models.learning_interaction import LearningNote, LearningQuestion, LearningReply
 from app.db.models.learning_plan import LearningPlan
@@ -70,6 +71,7 @@ __all__ = [
     "GeneratedResource",
     "KnowledgeChunk",
     "KnowledgeDocument",
+    "JobCoachingRecord",
     "LearningNote",
     "LearningQuestion",
     "LearningReply",

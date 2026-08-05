@@ -4,6 +4,10 @@ from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.models.job_coaching_record import JobCoachingRecord
+from app.db.repositories.job_coaching_record_repository import (
+    JobCoachingRecordRepository,
+)
 from app.db.repositories.personalized_learning_state_repository import (
     PersonalizedLearningStateRepository,
 )
@@ -17,6 +21,10 @@ from app.schemas.student_portal import (
     CapabilityAxisItem,
     CapabilityProfileResponse,
     JobAbilityDimension,
+    JobCoachingFeedbackRequest,
+    JobCoachingRecordCreateRequest,
+    JobCoachingRecordListResponse,
+    JobCoachingRecordResponse,
     JobLearningGoalResponse,
     JobLearningGoalUpdateRequest,
     JobLearningOverviewResponse,
@@ -264,6 +272,100 @@ class StudentPortalService:
             student_goal=state.student_goal or self.DEFAULT_STUDENT_GOAL,
             goal_scene=state.goal_scene or self.DEFAULT_GOAL_SCENE,
             updated_at=state.updated_at,
+        )
+
+    async def create_job_coaching_record(
+        self,
+        request: JobCoachingRecordCreateRequest,
+    ) -> JobCoachingRecordResponse:
+        current_course = await self._resolve_current_course(
+            request.course_id,
+            user_id=request.user_id,
+        )
+        if current_course is None:
+            raise ValueError("course not found")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        actions = [item.strip() for item in request.recommended_actions if item.strip()]
+        async with async_session_factory() as session:
+            record = await JobCoachingRecordRepository().create(
+                session,
+                user_id=request.user_id,
+                course_id=current_course.id,
+                source=request.source.strip(),
+                user_question=request.user_question.strip(),
+                advice_summary=request.advice_summary.strip(),
+                recommended_actions=actions,
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+        return self._to_job_coaching_response(record)
+
+    async def list_job_coaching_records(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+        limit: int,
+    ) -> JobCoachingRecordListResponse:
+        async with async_session_factory() as session:
+            records, total = await JobCoachingRecordRepository().list_by_user_course(
+                session,
+                user_id=user_id,
+                course_id=course_id,
+                limit=limit,
+            )
+        return JobCoachingRecordListResponse(
+            total=total,
+            items=[self._to_job_coaching_response(item) for item in records],
+        )
+
+    async def update_job_coaching_feedback(
+        self,
+        *,
+        record_id: int,
+        request: JobCoachingFeedbackRequest,
+    ) -> JobCoachingRecordResponse | None:
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        async with async_session_factory() as session:
+            repository = JobCoachingRecordRepository()
+            record = await repository.get_by_id_user(
+                session,
+                record_id=record_id,
+                user_id=request.user_id,
+            )
+            if record is None:
+                return None
+            record = await repository.update_feedback(
+                session,
+                record=record,
+                status=request.status,
+                helpful=request.helpful,
+                rating=request.rating,
+                feedback_note=(request.feedback_note or "").strip() or None,
+                updated_at=now,
+            )
+            await session.commit()
+        return self._to_job_coaching_response(record)
+
+    @staticmethod
+    def _to_job_coaching_response(
+        record: JobCoachingRecord,
+    ) -> JobCoachingRecordResponse:
+        return JobCoachingRecordResponse(
+            id=record.id,
+            user_id=record.user_id,
+            course_id=record.course_id,
+            source=record.source,
+            user_question=record.user_question,
+            advice_summary=record.advice_summary,
+            recommended_actions=record.recommended_actions or [],
+            status=record.status,
+            helpful=record.helpful,
+            rating=record.rating,
+            feedback_note=record.feedback_note,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
         )
 
     async def _get_job_goal(self, *, user_id: int, course_id: int) -> dict[str, str]:
