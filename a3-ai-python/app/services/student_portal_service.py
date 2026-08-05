@@ -20,13 +20,16 @@ from app.schemas.student_portal import (
     CapabilityAchievementItem,
     CapabilityAxisItem,
     CapabilityProfileResponse,
+    JobAbilityChange,
     JobAbilityDimension,
     JobCoachingFeedbackRequest,
+    JobCoachingOutcomeSummary,
     JobCoachingRecordCreateRequest,
     JobCoachingRecordListResponse,
     JobCoachingRecordResponse,
     JobLearningGoalResponse,
     JobLearningGoalUpdateRequest,
+    JobLearningOutcomeResponse,
     JobLearningOverviewResponse,
     JobLearningPathItem,
     JobLearningResourceItem,
@@ -242,6 +245,74 @@ class StudentPortalService:
             ),
         )
 
+    async def get_job_learning_outcomes(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+    ) -> JobLearningOutcomeResponse:
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
+        if current_course is None:
+            raise ValueError("course not found")
+
+        history = await EvaluationHistoryService().list_history(
+            user_id=user_id,
+            course_id=current_course.id,
+            limit=100,
+        )
+        evaluations = history.items
+        latest = evaluations[0] if evaluations else None
+        baseline = evaluations[-1] if len(evaluations) >= 2 else None
+
+        async with async_session_factory() as session:
+            coaching_values = (
+                await JobCoachingRecordRepository().summarize_by_user_course(
+                    session,
+                    user_id=user_id,
+                    course_id=current_course.id,
+                )
+            )
+        coaching = JobCoachingOutcomeSummary(**coaching_values)
+        status = (
+            "comparable"
+            if len(evaluations) >= 2
+            else "baseline_only"
+            if evaluations
+            else "insufficient_data"
+        )
+        baseline_score = float(baseline.overall_score) if baseline else None
+        latest_score = float(latest.overall_score) if latest else None
+        score_change = (
+            round(latest_score - baseline_score, 2)
+            if latest_score is not None and baseline_score is not None
+            else None
+        )
+        return JobLearningOutcomeResponse(
+            user_id=user_id,
+            course_id=current_course.id,
+            status=status,
+            assessment_count=len(evaluations),
+            baseline_assessment_id=(
+                f"assessment-{baseline.record_id}" if baseline else None
+            ),
+            latest_assessment_id=(
+                f"assessment-{latest.record_id}" if latest else None
+            ),
+            baseline_score=baseline_score,
+            latest_score=latest_score,
+            score_change=score_change,
+            ability_changes=self._build_job_ability_changes(
+                baseline=baseline,
+                latest=latest,
+            ),
+            coaching=coaching,
+            summary=self._build_job_outcome_summary(
+                status=status,
+                score_change=score_change,
+                coaching=coaching,
+            ),
+        )
+
     async def update_job_learning_goal(
         self,
         request: JobLearningGoalUpdateRequest,
@@ -430,6 +501,62 @@ class StudentPortalService:
                 )
             )
         return dimensions
+
+    @classmethod
+    def _build_job_ability_changes(
+        cls,
+        *,
+        baseline: EvaluationHistoryItem | None,
+        latest: EvaluationHistoryItem | None,
+    ) -> list[JobAbilityChange]:
+        before_dimensions = cls._build_job_ability_dimensions(
+            latest_evaluation=baseline,
+            evaluation_trend=None,
+        )
+        after_dimensions = cls._build_job_ability_dimensions(
+            latest_evaluation=latest,
+            evaluation_trend=None,
+        )
+        before_by_code = {item.code: item for item in before_dimensions}
+        changes: list[JobAbilityChange] = []
+        for after in after_dimensions:
+            before = before_by_code[after.code]
+            change = (
+                after.score - before.score
+                if after.score is not None and before.score is not None
+                else None
+            )
+            changes.append(
+                JobAbilityChange(
+                    code=after.code,
+                    label=after.label,
+                    before_score=before.score,
+                    after_score=after.score,
+                    change=change,
+                    assessment_status=(
+                        "derived" if after.score is not None else "not_assessed"
+                    ),
+                )
+            )
+        return changes
+
+    @staticmethod
+    def _build_job_outcome_summary(
+        *,
+        status: str,
+        score_change: float | None,
+        coaching: JobCoachingOutcomeSummary,
+    ) -> str:
+        if status == "insufficient_data":
+            return "尚无岗位能力测评，暂不能判断学习效果。"
+        if status == "baseline_only":
+            return "已形成首次测评基线，完成学习任务后请再次测评以查看变化。"
+        direction = "提升" if (score_change or 0) > 0 else "下降" if (score_change or 0) < 0 else "持平"
+        change_text = abs(score_change or 0)
+        return (
+            f"前后测总分{direction} {change_text:g} 分；"
+            f"已完成 {coaching.completed}/{coaching.total} 条智能体建议。"
+        )
 
     @classmethod
     def _build_job_weak_abilities(

@@ -154,6 +154,58 @@ def test_get_job_learning_overview_returns_shared_contract(monkeypatch) -> None:
     assert payload["ability_dimensions"][0]["assessment_status"] == "derived"
 
 
+def test_get_job_learning_outcomes_returns_measured_change(monkeypatch) -> None:
+    async def fake_get_outcomes(self, *, user_id: int, course_id: int):
+        assert (user_id, course_id) == (1001, 401)
+        return {
+            "user_id": user_id,
+            "course_id": course_id,
+            "status": "comparable",
+            "assessment_count": 2,
+            "baseline_assessment_id": "assessment-17",
+            "latest_assessment_id": "assessment-18",
+            "baseline_score": 62,
+            "latest_score": 78,
+            "score_change": 16,
+            "ability_changes": [
+                {
+                    "code": "system_design",
+                    "label": "系统设计",
+                    "before_score": 62,
+                    "after_score": 78,
+                    "change": 16,
+                    "assessment_status": "derived",
+                }
+            ],
+            "coaching": {
+                "total": 2,
+                "completed": 1,
+                "completion_rate": 50,
+                "helpful_count": 1,
+                "rated_count": 1,
+                "average_rating": 5,
+            },
+            "summary": "前后测总分提升 16 分；已完成 1/2 条智能体建议。",
+        }
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "get_job_learning_outcomes",
+        fake_get_outcomes,
+    )
+
+    response = client.get(
+        "/api/v1/student-portal/job-learning/outcomes",
+        params={"user_id": 1001, "course_id": 401},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "comparable"
+    assert payload["score_change"] == 16
+    assert payload["coaching"]["completion_rate"] == 50
+
+
 def test_update_job_learning_goal_returns_persisted_goal(monkeypatch) -> None:
     async def fake_update_job_learning_goal(self, request):
         assert request.user_id == 1001
@@ -369,4 +421,51 @@ def test_job_ability_dimensions_derive_transparently_from_real_evaluation() -> N
     assert by_code["software_testing"].score < 78
     assert by_code["system_design"].score == 78
     assert all(item.assessment_status == "derived" for item in dimensions)
-    assert any("薄弱点命中" in evidence for evidence in by_code["requirement_analysis"].evidence)
+    assert any(
+        "薄弱点命中" in evidence
+        for evidence in by_code["requirement_analysis"].evidence
+    )
+
+
+def test_job_ability_changes_compare_two_real_assessments() -> None:
+    baseline = EvaluationHistoryItem(
+        record_id=17,
+        course_code="SE-401",
+        overall_score=60,
+        weak_points=[],
+    )
+    latest = EvaluationHistoryItem(
+        record_id=18,
+        course_code="SE-401",
+        overall_score=75,
+        weak_points=[],
+    )
+
+    changes = StudentPortalService._build_job_ability_changes(
+        baseline=baseline,
+        latest=latest,
+    )
+
+    assert len(changes) == 5
+    assert all(item.before_score == 60 for item in changes)
+    assert all(item.after_score == 75 for item in changes)
+    assert all(item.change == 15 for item in changes)
+    assert all(item.assessment_status == "derived" for item in changes)
+
+
+def test_job_ability_changes_do_not_claim_change_from_one_assessment() -> None:
+    latest = EvaluationHistoryItem(
+        record_id=18,
+        course_code="SE-401",
+        overall_score=75,
+        weak_points=[],
+    )
+
+    changes = StudentPortalService._build_job_ability_changes(
+        baseline=None,
+        latest=latest,
+    )
+
+    assert all(item.before_score is None for item in changes)
+    assert all(item.after_score == 75 for item in changes)
+    assert all(item.change is None for item in changes)

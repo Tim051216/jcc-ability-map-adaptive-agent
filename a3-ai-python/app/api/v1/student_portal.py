@@ -8,6 +8,7 @@ from app.schemas.student_portal import (
     JobCoachingRecordResponse,
     JobLearningGoalResponse,
     JobLearningGoalUpdateRequest,
+    JobLearningOutcomeResponse,
     JobLearningOverviewResponse,
     PortalDashboardResponse,
     StudyReportResponse,
@@ -50,6 +51,23 @@ async def get_job_learning_overview(
         user_id=user_id,
         course_id=course_id,
     )
+
+
+@router.get(
+    "/job-learning/outcomes",
+    response_model=JobLearningOutcomeResponse,
+)
+async def get_job_learning_outcomes(
+    user_id: int = Query(default=1001, ge=1),
+    course_id: int = Query(default=401, ge=1),
+) -> JobLearningOutcomeResponse:
+    try:
+        return await StudentPortalService().get_job_learning_outcomes(
+            user_id=user_id,
+            course_id=course_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.put("/job-learning/goal", response_model=JobLearningGoalResponse)

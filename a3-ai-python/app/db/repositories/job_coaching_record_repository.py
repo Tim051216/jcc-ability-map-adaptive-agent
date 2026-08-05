@@ -70,6 +70,53 @@ class JobCoachingRecordRepository:
         )
         return result.scalar_one_or_none()
 
+    async def summarize_by_user_course(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        course_id: int,
+    ) -> dict[str, int | float | None]:
+        result = await session.execute(
+            select(
+                JobCoachingRecord.status,
+                JobCoachingRecord.helpful,
+                JobCoachingRecord.rating,
+            ).where(
+                JobCoachingRecord.user_id == user_id,
+                JobCoachingRecord.course_id == course_id,
+            )
+        )
+        rows = result.all()
+        status_counts = {
+            "planned": 0,
+            "in_progress": 0,
+            "completed": 0,
+            "abandoned": 0,
+        }
+        ratings: list[int] = []
+        helpful_count = 0
+        for status, helpful, rating in rows:
+            if status in status_counts:
+                status_counts[status] += 1
+            if helpful is True:
+                helpful_count += 1
+            if rating is not None:
+                ratings.append(int(rating))
+        total = len(rows)
+        return {
+            "total": total,
+            **status_counts,
+            "completion_rate": round(status_counts["completed"] * 100 / total, 1)
+            if total
+            else 0.0,
+            "helpful_count": helpful_count,
+            "rated_count": len(ratings),
+            "average_rating": round(sum(ratings) / len(ratings), 2)
+            if ratings
+            else None,
+        }
+
     async def update_feedback(
         self,
         session: AsyncSession,

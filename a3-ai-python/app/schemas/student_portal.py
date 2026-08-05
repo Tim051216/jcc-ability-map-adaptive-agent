@@ -78,6 +78,7 @@ class StudyReportResponse(BaseModel):
 JobGoalScene = Literal["course", "training", "competition", "internship"]
 AbilityAssessmentStatus = Literal["measured", "derived", "not_assessed"]
 JobCoachingStatus = Literal["planned", "in_progress", "completed", "abandoned"]
+JobOutcomeStatus = Literal["insufficient_data", "baseline_only", "comparable"]
 
 
 class JobLearningGoalUpdateRequest(BaseModel):
@@ -132,6 +133,44 @@ class JobCoachingRecordResponse(BaseModel):
 class JobCoachingRecordListResponse(BaseModel):
     total: int
     items: list[JobCoachingRecordResponse] = Field(default_factory=list)
+
+
+class JobCoachingOutcomeSummary(BaseModel):
+    total: int = 0
+    planned: int = 0
+    in_progress: int = 0
+    completed: int = 0
+    abandoned: int = 0
+    completion_rate: float = Field(default=0, ge=0, le=100)
+    helpful_count: int = 0
+    rated_count: int = 0
+    average_rating: float | None = Field(default=None, ge=1, le=5)
+
+
+class JobAbilityChange(BaseModel):
+    code: str
+    label: str
+    before_score: int | None = Field(default=None, ge=0, le=100)
+    after_score: int | None = Field(default=None, ge=0, le=100)
+    change: int | None = None
+    assessment_status: AbilityAssessmentStatus = "not_assessed"
+
+
+class JobLearningOutcomeResponse(BaseModel):
+    user_id: int
+    course_id: int
+    status: JobOutcomeStatus
+    assessment_count: int = 0
+    baseline_assessment_id: str | None = None
+    latest_assessment_id: str | None = None
+    baseline_score: float | None = Field(default=None, ge=0, le=100)
+    latest_score: float | None = Field(default=None, ge=0, le=100)
+    score_change: float | None = None
+    ability_changes: list[JobAbilityChange] = Field(default_factory=list)
+    coaching: JobCoachingOutcomeSummary = Field(
+        default_factory=JobCoachingOutcomeSummary
+    )
+    summary: str
 
 
 class JobAbilityDimension(BaseModel):

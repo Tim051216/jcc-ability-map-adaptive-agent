@@ -55,6 +55,11 @@ def test_job_coaching_record_repository_round_trip() -> None:
                 updated_at="2026-08-05T17:00:00+08:00",
             )
             await session.commit()
+            summary = await repository.summarize_by_user_course(
+                session,
+                user_id=1001,
+                course_id=401,
+            )
 
         await engine.dispose()
 
@@ -63,5 +68,16 @@ def test_job_coaching_record_repository_round_trip() -> None:
         assert hidden is None
         assert updated.status == "completed"
         assert updated.rating == 5
+        assert summary == {
+            "total": 1,
+            "planned": 0,
+            "in_progress": 0,
+            "completed": 1,
+            "abandoned": 0,
+            "completion_rate": 100.0,
+            "helpful_count": 1,
+            "rated_count": 1,
+            "average_rating": 5.0,
+        }
 
     asyncio.run(run())

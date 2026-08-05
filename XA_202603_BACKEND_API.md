@@ -167,7 +167,59 @@ Content-Type: application/json
 
 `status` 允许值：`planned`、`in_progress`、`completed`、`abandoned`。记录按 `user_id` 校验归属，其他学生不能修改该记录。
 
-## 7. 前端联调规则
+## 7. 查询学习效果
+
+前端 B 的岗位胜任度报告使用该接口展示前后测变化和建议执行情况：
+
+```http
+GET /api/v1/student-portal/job-learning/outcomes?user_id=1001&course_id=401
+```
+
+```json
+{
+  "user_id": 1001,
+  "course_id": 401,
+  "status": "comparable",
+  "assessment_count": 2,
+  "baseline_assessment_id": "assessment-17",
+  "latest_assessment_id": "assessment-18",
+  "baseline_score": 62.0,
+  "latest_score": 78.0,
+  "score_change": 16.0,
+  "ability_changes": [
+    {
+      "code": "system_design",
+      "label": "系统设计",
+      "before_score": 62,
+      "after_score": 78,
+      "change": 16,
+      "assessment_status": "derived"
+    }
+  ],
+  "coaching": {
+    "total": 2,
+    "planned": 1,
+    "in_progress": 0,
+    "completed": 1,
+    "abandoned": 0,
+    "completion_rate": 50.0,
+    "helpful_count": 1,
+    "rated_count": 1,
+    "average_rating": 5.0
+  },
+  "summary": "前后测总分提升 16 分；已完成 1/2 条智能体建议。"
+}
+```
+
+`status` 的含义：
+
+- `insufficient_data`：没有测评，不展示变化结论。
+- `baseline_only`：只有一次测评，仅展示当前分数并提示完成后测。
+- `comparable`：至少两次测评，可展示前后测变化。
+
+总分来自真实测评记录；五项 `ability_changes` 是基于相同规则推导的岗位能力变化，因此明确标记为 `derived`。前端不得将推导分数标记为直接测量结果。
+
+## 8. 前端联调规则
 
 1. 所有页面使用本契约的能力代码，不自行翻译成新的内部代码。
 2. `score=null` 表示尚未测评，不得显示固定雷达图分数。
