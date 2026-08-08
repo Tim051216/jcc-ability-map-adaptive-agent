@@ -219,7 +219,41 @@ GET /api/v1/student-portal/job-learning/outcomes?user_id=1001&course_id=401
 
 总分来自真实测评记录；五项 `ability_changes` 是基于相同规则推导的岗位能力变化，因此明确标记为 `derived`。前端不得将推导分数标记为直接测量结果。
 
-## 8. 前端联调规则
+## 8. 收集真实试用反馈
+
+试用者完成比赛主链路后提交反馈：
+
+```http
+POST /api/v1/student-portal/job-learning/trial-feedback
+Content-Type: application/json
+```
+
+```json
+{
+  "user_id": 1001,
+  "course_id": 401,
+  "participant_role": "student",
+  "identity_description": "软件技术专业二年级学生",
+  "trial_task": "完成岗位诊断并执行一条学习建议",
+  "strengths": "步骤清晰，能看到薄弱项。",
+  "problems": "首次进入时不清楚从哪里开始。",
+  "improvement_suggestions": "突出显示开始诊断按钮。",
+  "overall_rating": 4,
+  "consent_to_quote": true
+}
+```
+
+`participant_role` 允许值：`student`、`teacher`、`enterprise_mentor`。`consent_to_quote=true` 仅表示允许在脱敏后的比赛材料中引用，不得据此公开姓名、账号或联系方式。
+
+本人查询已提交反馈：
+
+```http
+GET /api/v1/student-portal/job-learning/trial-feedback?user_id=1001&course_id=401&limit=20
+```
+
+明细按 `user_id` 和 `course_id` 隔离。比赛材料需要 2-3 名真实目标用户实际试用后提交，不得用测试数据或团队编写内容冒充真实反馈。
+
+## 9. 前端联调规则
 
 1. 所有页面使用本契约的能力代码，不自行翻译成新的内部代码。
 2. `score=null` 表示尚未测评，不得显示固定雷达图分数。

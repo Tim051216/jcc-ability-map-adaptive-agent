@@ -32,6 +32,26 @@ def _coaching_record_payload(**overrides):
     return payload
 
 
+def _trial_feedback_payload(**overrides):
+    payload = {
+        "id": 1,
+        "user_id": 1001,
+        "course_id": 401,
+        "participant_role": "student",
+        "identity_description": "软件技术专业二年级学生",
+        "trial_task": "完成岗位诊断并执行一条学习建议",
+        "strengths": "步骤清晰，能看到薄弱项。",
+        "problems": "首次进入时不清楚从哪里开始。",
+        "improvement_suggestions": "突出显示开始诊断按钮。",
+        "overall_rating": 4,
+        "consent_to_quote": True,
+        "created_at": "2026-08-08T16:00:00+08:00",
+        "updated_at": "2026-08-08T16:00:00+08:00",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_get_student_dashboard_returns_payload(monkeypatch) -> None:
     async def fake_get_dashboard(self, *, user_id: int, course_id: int | None = None):
         assert user_id == 1001
@@ -382,6 +402,73 @@ def test_update_job_coaching_feedback_returns_404(monkeypatch) -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_create_job_trial_feedback(monkeypatch) -> None:
+    async def fake_create(self, request):
+        assert request.participant_role == "student"
+        assert request.consent_to_quote is True
+        return _trial_feedback_payload()
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "create_job_trial_feedback",
+        fake_create,
+    )
+    response = client.post(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        json={
+            "user_id": 1001,
+            "course_id": 401,
+            "participant_role": "student",
+            "identity_description": "软件技术专业二年级学生",
+            "trial_task": "完成岗位诊断并执行一条学习建议",
+            "strengths": "步骤清晰，能看到薄弱项。",
+            "problems": "首次进入时不清楚从哪里开始。",
+            "improvement_suggestions": "突出显示开始诊断按钮。",
+            "overall_rating": 4,
+            "consent_to_quote": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["overall_rating"] == 4
+
+
+def test_list_job_trial_feedback(monkeypatch) -> None:
+    async def fake_list(self, *, user_id: int, course_id: int, limit: int):
+        assert (user_id, course_id, limit) == (1001, 401, 10)
+        return {"total": 1, "items": [_trial_feedback_payload()]}
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "list_job_trial_feedback",
+        fake_list,
+    )
+    response = client.get(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        params={"user_id": 1001, "course_id": 401, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_job_trial_feedback_validates_role_and_rating() -> None:
+    response = client.post(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        json={
+            "participant_role": "anonymous",
+            "identity_description": "测试人员",
+            "trial_task": "完成岗位诊断",
+            "strengths": "流程清晰",
+            "problems": "入口不明显",
+            "improvement_suggestions": "突出入口",
+            "overall_rating": 6,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_job_ability_dimensions_do_not_invent_scores_without_assessment() -> None:

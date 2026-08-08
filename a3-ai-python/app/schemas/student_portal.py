@@ -79,6 +79,7 @@ JobGoalScene = Literal["course", "training", "competition", "internship"]
 AbilityAssessmentStatus = Literal["measured", "derived", "not_assessed"]
 JobCoachingStatus = Literal["planned", "in_progress", "completed", "abandoned"]
 JobOutcomeStatus = Literal["insufficient_data", "baseline_only", "comparable"]
+TrialParticipantRole = Literal["student", "teacher", "enterprise_mentor"]
 
 
 class JobLearningGoalUpdateRequest(BaseModel):
@@ -171,6 +172,40 @@ class JobLearningOutcomeResponse(BaseModel):
         default_factory=JobCoachingOutcomeSummary
     )
     summary: str
+
+
+class JobTrialFeedbackCreateRequest(BaseModel):
+    user_id: int = Field(default=1001, ge=1)
+    course_id: int = Field(default=401, ge=1)
+    participant_role: TrialParticipantRole
+    identity_description: str = Field(min_length=2, max_length=200)
+    trial_task: str = Field(min_length=2, max_length=1000)
+    strengths: str = Field(min_length=2, max_length=2000)
+    problems: str = Field(min_length=2, max_length=2000)
+    improvement_suggestions: str = Field(min_length=2, max_length=2000)
+    overall_rating: int = Field(ge=1, le=5)
+    consent_to_quote: bool = False
+
+
+class JobTrialFeedbackResponse(BaseModel):
+    id: int
+    user_id: int
+    course_id: int
+    participant_role: TrialParticipantRole
+    identity_description: str
+    trial_task: str
+    strengths: str
+    problems: str
+    improvement_suggestions: str
+    overall_rating: int
+    consent_to_quote: bool
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class JobTrialFeedbackListResponse(BaseModel):
+    total: int
+    items: list[JobTrialFeedbackResponse] = Field(default_factory=list)
 
 
 class JobAbilityDimension(BaseModel):

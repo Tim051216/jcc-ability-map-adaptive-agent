@@ -10,6 +10,9 @@ from app.schemas.student_portal import (
     JobLearningGoalUpdateRequest,
     JobLearningOutcomeResponse,
     JobLearningOverviewResponse,
+    JobTrialFeedbackCreateRequest,
+    JobTrialFeedbackListResponse,
+    JobTrialFeedbackResponse,
     PortalDashboardResponse,
     StudyReportResponse,
 )
@@ -122,3 +125,33 @@ async def update_job_coaching_feedback(
     if record is None:
         raise HTTPException(status_code=404, detail="coaching record not found")
     return record
+
+
+@router.post(
+    "/job-learning/trial-feedback",
+    response_model=JobTrialFeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_job_trial_feedback(
+    request: JobTrialFeedbackCreateRequest,
+) -> JobTrialFeedbackResponse:
+    try:
+        return await StudentPortalService().create_job_trial_feedback(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/job-learning/trial-feedback",
+    response_model=JobTrialFeedbackListResponse,
+)
+async def list_job_trial_feedback(
+    user_id: int = Query(default=1001, ge=1),
+    course_id: int = Query(default=401, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> JobTrialFeedbackListResponse:
+    return await StudentPortalService().list_job_trial_feedback(
+        user_id=user_id,
+        course_id=course_id,
+        limit=limit,
+    )

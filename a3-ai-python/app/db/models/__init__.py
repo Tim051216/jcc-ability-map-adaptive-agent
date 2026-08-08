@@ -24,6 +24,7 @@ from app.db.models.generated_resource import (
 )
 from app.db.models.generation_task import GenerationTask
 from app.db.models.job_coaching_record import JobCoachingRecord
+from app.db.models.job_trial_feedback import JobTrialFeedback
 from app.db.models.knowledge_document import KnowledgeChunk, KnowledgeDocument
 from app.db.models.learning_interaction import LearningNote, LearningQuestion, LearningReply
 from app.db.models.learning_plan import LearningPlan
@@ -72,6 +73,7 @@ __all__ = [
     "KnowledgeChunk",
     "KnowledgeDocument",
     "JobCoachingRecord",
+    "JobTrialFeedback",
     "LearningNote",
     "LearningQuestion",
     "LearningReply",

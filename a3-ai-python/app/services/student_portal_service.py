@@ -5,8 +5,12 @@ from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models.job_coaching_record import JobCoachingRecord
+from app.db.models.job_trial_feedback import JobTrialFeedback
 from app.db.repositories.job_coaching_record_repository import (
     JobCoachingRecordRepository,
+)
+from app.db.repositories.job_trial_feedback_repository import (
+    JobTrialFeedbackRepository,
 )
 from app.db.repositories.personalized_learning_state_repository import (
     PersonalizedLearningStateRepository,
@@ -35,6 +39,9 @@ from app.schemas.student_portal import (
     JobLearningResourceItem,
     JobNextAction,
     JobSafetyNotice,
+    JobTrialFeedbackCreateRequest,
+    JobTrialFeedbackListResponse,
+    JobTrialFeedbackResponse,
     JobWeakAbility,
     PortalActivityItem,
     PortalDashboardResponse,
@@ -419,6 +426,55 @@ class StudentPortalService:
             await session.commit()
         return self._to_job_coaching_response(record)
 
+    async def create_job_trial_feedback(
+        self,
+        request: JobTrialFeedbackCreateRequest,
+    ) -> JobTrialFeedbackResponse:
+        current_course = await self._resolve_current_course(
+            request.course_id,
+            user_id=request.user_id,
+        )
+        if current_course is None:
+            raise ValueError("course not found")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        async with async_session_factory() as session:
+            feedback = await JobTrialFeedbackRepository().create(
+                session,
+                user_id=request.user_id,
+                course_id=current_course.id,
+                participant_role=request.participant_role,
+                identity_description=request.identity_description.strip(),
+                trial_task=request.trial_task.strip(),
+                strengths=request.strengths.strip(),
+                problems=request.problems.strip(),
+                improvement_suggestions=request.improvement_suggestions.strip(),
+                overall_rating=request.overall_rating,
+                consent_to_quote=request.consent_to_quote,
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+        return self._to_job_trial_feedback_response(feedback)
+
+    async def list_job_trial_feedback(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+        limit: int,
+    ) -> JobTrialFeedbackListResponse:
+        async with async_session_factory() as session:
+            records, total = await JobTrialFeedbackRepository().list_by_user_course(
+                session,
+                user_id=user_id,
+                course_id=course_id,
+                limit=limit,
+            )
+        return JobTrialFeedbackListResponse(
+            total=total,
+            items=[self._to_job_trial_feedback_response(item) for item in records],
+        )
+
     @staticmethod
     def _to_job_coaching_response(
         record: JobCoachingRecord,
@@ -437,6 +493,26 @@ class StudentPortalService:
             feedback_note=record.feedback_note,
             created_at=record.created_at,
             updated_at=record.updated_at,
+        )
+
+    @staticmethod
+    def _to_job_trial_feedback_response(
+        feedback: JobTrialFeedback,
+    ) -> JobTrialFeedbackResponse:
+        return JobTrialFeedbackResponse(
+            id=feedback.id,
+            user_id=feedback.user_id,
+            course_id=feedback.course_id,
+            participant_role=feedback.participant_role,
+            identity_description=feedback.identity_description,
+            trial_task=feedback.trial_task,
+            strengths=feedback.strengths,
+            problems=feedback.problems,
+            improvement_suggestions=feedback.improvement_suggestions,
+            overall_rating=feedback.overall_rating,
+            consent_to_quote=feedback.consent_to_quote,
+            created_at=feedback.created_at,
+            updated_at=feedback.updated_at,
         )
 
     async def _get_job_goal(self, *, user_id: int, course_id: int) -> dict[str, str]:
