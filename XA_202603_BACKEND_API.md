@@ -249,9 +249,10 @@ Content-Type: application/json
 
 ```http
 GET /api/v1/student-portal/job-learning/trial-feedback?user_id=1001&course_id=401&limit=20
+X-User-Id: 1001
 ```
 
-明细按 `user_id` 和 `course_id` 隔离。比赛材料需要 2-3 名真实目标用户实际试用后提交，不得用测试数据或团队编写内容冒充真实反馈。
+提交和查询均要求登录身份与 `user_id` 一致，否则返回 `403`。本地联调通过 `X-User-Id` 传入身份，正式环境使用 Bearer Token 或网关注入身份。明细按 `user_id` 和 `course_id` 隔离。比赛材料需要 2-3 名真实目标用户实际试用后提交，不得用测试数据或团队编写内容冒充真实反馈。
 
 本地联调演示数据：
 

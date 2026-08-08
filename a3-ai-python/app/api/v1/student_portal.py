@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.deps import get_authenticated_user_id
 from app.schemas.student_portal import (
     CapabilityProfileResponse,
     JobCoachingFeedbackRequest,
@@ -134,7 +135,10 @@ async def update_job_coaching_feedback(
 )
 async def create_job_trial_feedback(
     request: JobTrialFeedbackCreateRequest,
+    current_user_id: int = Depends(get_authenticated_user_id),
 ) -> JobTrialFeedbackResponse:
+    if request.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="cannot submit feedback for another user")
     try:
         return await StudentPortalService().create_job_trial_feedback(request)
     except ValueError as exc:
@@ -149,7 +153,10 @@ async def list_job_trial_feedback(
     user_id: int = Query(default=1001, ge=1),
     course_id: int = Query(default=401, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    current_user_id: int = Depends(get_authenticated_user_id),
 ) -> JobTrialFeedbackListResponse:
+    if user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="cannot read feedback for another user")
     return await StudentPortalService().list_job_trial_feedback(
         user_id=user_id,
         course_id=course_id,

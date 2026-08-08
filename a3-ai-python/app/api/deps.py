@@ -92,6 +92,18 @@ async def get_current_user_id(
     )
 
 
+async def get_authenticated_user_id(
+    x_user_id: int | None = Header(None, alias="X-User-Id"),
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> int:
+    """Resolve identity without accepting a user-controlled query parameter."""
+    return resolve_current_user_id(
+        x_user_id=x_user_id,
+        authorization=authorization,
+        query_user_id=None,
+    )
+
+
 def get_websocket_user_id(websocket: WebSocket) -> int:
     query_user_id = websocket.query_params.get("user_id")
     access_token = websocket.query_params.get("access_token")
