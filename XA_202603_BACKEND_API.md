@@ -253,6 +253,15 @@ GET /api/v1/student-portal/job-learning/trial-feedback?user_id=1001&course_id=40
 
 明细按 `user_id` 和 `course_id` 隔离。比赛材料需要 2-3 名真实目标用户实际试用后提交，不得用测试数据或团队编写内容冒充真实反馈。
 
+本地联调演示数据：
+
+```powershell
+cd a3-ai-python
+python scripts/seed_job_trial_feedback_demo.py
+```
+
+脚本只写入本地 SQLite，使用演示账号 `9901`、`9902`、`9903`，重复执行不会重复插入，也不会删除真实数据。返回的 `identity_description` 以“演示数据：”开头；这些记录只能用于前端联调，不能写入比赛材料作为真实用户反馈证据。
+
 ## 9. 前端联调规则
 
 1. 所有页面使用本契约的能力代码，不自行翻译成新的内部代码。
