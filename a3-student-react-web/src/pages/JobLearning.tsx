@@ -59,6 +59,8 @@ export default function JobLearning() {
         <SummaryList title="推荐学习资源" items={data.recommended_resources} empty="完成诊断后生成岗位匹配资源。" />
       </section>
 
+      <section className="border-t border-[#dfe3e8] pt-6"><h2 className="text-xl font-black text-[#141414]">继续主流程</h2><div className="mt-4 grid gap-3 sm:grid-cols-3"><FlowLink to="/evaluation" title="岗位能力诊断" detail="完成一次真实测评" /><FlowLink to="/profile" title="岗位能力画像" detail="查看能力证据和标签" /><FlowLink to="/report" title="学习报告" detail="回顾学习和测评结果" /></div></section>
+
       <section className="border-t border-[#dfe3e8] pt-6"><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-[#e4002b]" /><h2 className="text-xl font-black text-[#141414]">下一步</h2></div><div className="mt-3 border-l-2 border-[#e4002b] bg-[#fafafa] p-4"><p className="font-bold text-[#141414]">{data.next_action?.label || "完成岗位诊断"}</p><p className="mt-1 text-sm text-[#69717a]">{data.next_action?.reason || "完成真实测评后，系统会生成可核验的岗位学习建议。"}</p>{data.next_action?.route ? <Link className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#e4002b]" to={data.next_action.route}>立即进入 <ArrowRight size={15} /></Link> : null}</div></section>
     </main>
   );
@@ -69,3 +71,4 @@ function PageState({ children }: { children: React.ReactNode }) { return <main c
 function SummaryList({ title, items, empty }: { title: string; items: Array<Record<string, unknown>>; empty: string }) {
   return <div className="border border-[#dfe3e8] p-5"><h2 className="text-lg font-black text-[#141414]">{title}</h2>{items.length ? <ul className="mt-3 divide-y divide-[#edf0f2]">{items.slice(0, 4).map((item, index) => <li key={`${String(item.id || item.step_id || item.resource_id || index)}`} className="py-3"><div className="font-bold text-[#141414]">{String(item.title || item.name || `岗位学习任务 ${index + 1}`)}</div><div className="mt-1 text-xs text-[#69717a]">{String(item.reason || item.path_reason || item.status || "岗位能力提升内容")}</div></li>)}</ul> : <p className="mt-3 text-sm text-[#69717a]">{empty}</p>}</div>;
 }
+function FlowLink({ to, title, detail }: { to: string; title: string; detail: string }) { return <Link to={to} className="group border border-[#dfe3e8] p-4 hover:border-[#e4002b]"><div className="font-bold text-[#141414] group-hover:text-[#e4002b]">{title}</div><div className="mt-1 text-xs text-[#69717a]">{detail}</div><ArrowRight size={15} className="mt-3 text-[#e4002b]" /></Link>; }
