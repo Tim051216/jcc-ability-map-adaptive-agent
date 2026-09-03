@@ -1612,14 +1612,24 @@ export default function Overview({ user }: OverviewProps = {}) {
                     <p className="text-[12px] font-bold text-[#5f6b7a]">
                       已联动学习路径、资源推荐和 AI 导师问答，后续学习行为会继续刷新画像判断。
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => navigate("/profile")}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d9e8fb] bg-white px-4 py-2.5 text-xs font-black text-[#0b5f85] shadow-sm transition-transform hover:-translate-y-0.5"
-                    >
-                      查看完整画像
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/trial-feedback?${new URLSearchParams({ courseId: currentCourseId }).toString()}`)}
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-[#fb7299] px-4 py-2.5 text-xs font-black text-white shadow-[0_10px_22px_rgba(251,114,153,0.2)] transition-transform hover:-translate-y-0.5"
+                      >
+                        提交试用反馈
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate("/profile")}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d9e8fb] bg-white px-4 py-2.5 text-xs font-black text-[#0b5f85] shadow-sm transition-transform hover:-translate-y-0.5"
+                      >
+                        查看完整画像
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </section>
 
