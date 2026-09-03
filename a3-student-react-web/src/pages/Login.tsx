@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -550,7 +550,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         <div className="fixed bottom-20 right-5 z-[80] w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-[24px] border border-[#ffd5e2] bg-white/96 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl xl:hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[#f3e2e9] px-4 py-3">
             <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">AI Tutor</div>
+              <div className="text-[10px] font-black tracking-[0.18em] text-[#fb7299]">岗位实训导师</div>
               <div className="text-sm font-black text-[#111827]">入口页小助手</div>
             </div>
             <button
@@ -721,7 +721,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <div className="rounded-full border border-white/70 bg-white/72 px-3 py-1 text-[10px] font-black uppercase ui-ui-tracking-tight ui-text-secondary shadow-sm" style={{ animation: "loginRibbonFloat 8s ease-in-out infinite" }}>
-                        AI Tutor Runtime
+                        岗位实训导师运行中
                       </div>
                       <div className="rounded-full border border-white/70 bg-white/72 px-3 py-1 text-[10px] font-black uppercase ui-ui-tracking-tight ui-text-secondary shadow-sm" style={{ animation: "loginRibbonFloat 8s ease-in-out infinite 0.5s" }}>
                         Personal Learning Graph
@@ -769,7 +769,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       <div className="absolute right-[calc(100%+16px)] top-[118px] z-[80] w-[min(360px,calc(100vw-2rem))] max-w-[360px] overflow-hidden rounded-[24px] border border-[#ffd5e2] bg-white/96 text-left shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl">
                         <div className="flex items-center justify-between gap-3 border-b border-[#f3e2e9] px-4 py-3">
                           <div>
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">AI Tutor</div>
+                            <div className="text-[10px] font-black tracking-[0.18em] text-[#fb7299]">岗位实训导师</div>
                             <div className="text-sm font-black text-[#111827]">入口页小助手</div>
                           </div>
                           <button
