@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -30,6 +30,7 @@ import {
   ThumbsUp,
   Presentation,
   Video,
+  ExternalLink,
 } from "lucide-react";
 import { COURSES } from "../constants";
 import { getCurrentLoggedInUserId, getCurrentLoggedInUserName } from "../lib/currentUser";
@@ -65,6 +66,9 @@ import { OPEN_TUTOR_PANEL_EVENT, openTutorPanel, saveActiveTutorContext } from "
 import { getCourseVideoInsightMeta, getCourseVideoPlaylist } from "../lib/videoCatalog";
 import { getGeneratedResourceIcon, getGeneratedResourceUiMeta } from "../lib/generatedResourceUi";
 import { beginUiProgress, finishUiProgress, setUiProgress } from "../lib/uiProgress";
+import JobLearningContextBar from "../components/job-learning/JobLearningContextBar";
+import JobStageTaskWorkbench from "../components/job-learning/JobStageTaskWorkbench";
+import { getJobLearningProfile } from "../lib/jobLearningCatalog";
 
 const HorizontalMindmap = lazy(() => import("../components/HorizontalMindmap"));
 const AILoadingLottie = lazy(() => import("../components/AILoadingLottie"));
@@ -545,7 +549,7 @@ function buildTopicKeywords(courseTitle: string, sectionTitle: string, resourceL
     "学习闭环",
     "课堂资源",
     "测评反馈",
-    "AI 导师",
+    "岗位实训导师",
   ];
   const matched = candidates.filter((item) => source.toLowerCase().includes(item.toLowerCase()));
   return (matched.length ? matched : ["问题背景", "结构拆解", "场景落地", "复盘迁移"]).slice(0, 4);
@@ -647,7 +651,7 @@ function parseTeachingPlanSlides(resources: ResourceCard[], courseTitle: string,
       kind: "ending" as const,
       title: "课后行动",
       subtitle: "形成学习闭环",
-      bullets: ["回看讲义主线", "结合导图复盘结构关系", "完成练习并继续追问 AI 导师"],
+    bullets: ["回看讲义主线", "结合导图复盘结构关系", "完成练习并继续追问岗位实训导师"],
     },
   ];
 }
@@ -1860,7 +1864,7 @@ function InlinePreviewContent({
                   value={practiceShortAnswers[question.id] || ""}
                   onChange={(event) => onPracticeShortAnswerChange(question.id, event.target.value)}
                   rows={4}
-                  placeholder="写下你的思路，提交后可继续交给 AI 导师讲解。"
+                    placeholder="写下你的思路，提交后可继续交给岗位实训导师讲解。"
                   className="mt-3 w-full rounded-2xl border border-[#DCE6F2] bg-[#FCFDFE] px-3 py-3 text-sm leading-6 ui-text-ink outline-none transition focus:border-[#171717]"
                 />
               ) : (
@@ -2005,8 +2009,8 @@ function buildLocalGeneratedResource(
     source_titles: [`${titleSuffix}即时整理`],
     study_suggestion:
       resourceType === "practice_set"
-        ? "建议先独立完成一轮，再让 AI 导师讲解你的思路漏洞。"
-        : "建议先顺着当前内容快速通读一遍，再继续问 AI 导师补细节。",
+        ? "建议先独立完成一轮，再让岗位实训导师讲解你的思路漏洞。"
+        : "建议先顺着当前内容快速通读一遍，再继续问岗位实训导师补细节。",
     source_file_count: 0,
     source_files: [],
   };
@@ -2239,6 +2243,15 @@ export default function CourseLearning() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const courseId = searchParams.get("courseId") || "series-2"; // default to Advanced React Patterns
+  const routeRole = searchParams.get("role") || searchParams.get("job") || searchParams.get("position") || "";
+  const roleProfile = getJobLearningProfile(routeRole);
+  const requestedRoleStageIndex = Math.max(
+    0,
+    Math.min(roleProfile.stages.length - 1, Number(searchParams.get("stageId") || "1") - 1),
+  );
+  const selectedRoleStage = roleProfile.stages[requestedRoleStageIndex] || roleProfile.stages[0];
+  const routeTask = searchParams.get("task") || selectedRoleStage.task;
+  const routeDeliverable = searchParams.get("deliverable") || selectedRoleStage.deliverable;
   useEffect(() => {
     persistLastRouteCourseId(courseId);
   }, [courseId]);
@@ -2266,22 +2279,37 @@ export default function CourseLearning() {
   const course = COURSES.find((c) => c.id === courseId) || COURSES[0];
 
   // Episodes list corresponding to this course representation
-  const episodes = [
+  const roleEpisodes = roleProfile.stages.map((stage, index) => ({
+    title: `阶段 ${index + 1}：${stage.title}`,
+    duration: stage.duration,
+    watched: index === 0,
+  }));
+  const episodes = routeRole ? roleEpisodes : [
     { title: "第一章：软件工程基础与软件危机", duration: "12:15", watched: true },
     { title: "第二章：可行性分析与研发策划", duration: "16:40", watched: true },
     { title: "第三章：软件需求分析与文档建模", duration: "15:20", watched: false },
-    { title: "第四章：软件设计、测试与项目管理", duration: "22:10", watched: false }
+    { title: "第四章：软件设计、测试与项目管理", duration: "22:10", watched: false },
   ];
 
   // Local state for interactive features
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeEpisodeIdx, setActiveEpisodeIdx] = useState(() => {
+    // A stage selected from the path/resource pages is an explicit navigation
+    // instruction and must not be replaced by an older course-level runtime.
+    if (routeRole && searchParams.has("stageId")) {
+      return requestedRoleStageIndex;
+    }
     const restored = initialRuntimeRef.current?.activeEpisodeIdx;
     if (typeof restored === "number" && restored >= 0 && restored < episodes.length) {
       return restored;
     }
     return 0;
   });
+  useEffect(() => {
+    if (routeRole && searchParams.has("stageId")) {
+      setActiveEpisodeIdx(requestedRoleStageIndex);
+    }
+  }, [requestedRoleStageIndex, routeRole, searchParams]);
   const [chapterListCollapsed, setChapterListCollapsed] = useState(() => initialRuntimeRef.current?.chapterListCollapsed ?? false);
   const [userComment, setUserComment] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -2314,6 +2342,19 @@ export default function CourseLearning() {
   const [openClassroomPreview, setOpenClassroomPreview] = useState<ClassroomPreviewState | null>(null);
   const activeEpisode = episodes[activeEpisodeIdx] || episodes[0];
   const currentSectionTitle = activeEpisode?.title || "当前章节";
+  const activeRoleStage = roleProfile.stages[activeEpisodeIdx] || selectedRoleStage;
+  const switchChapter = (index: number) => {
+    setActiveEpisodeIdx(index);
+    if (!routeRole) return;
+    const stage = roleProfile.stages[index];
+    const params = new URLSearchParams(searchParams);
+    params.set("role", roleProfile.role);
+    params.set("stageId", String(index + 1));
+    params.set("ability", stage.ability);
+    params.set("task", stage.task);
+    params.set("deliverable", stage.deliverable);
+    navigate(`/learn?${params.toString()}`, { replace: true });
+  };
   const [selectedResourceDraftType, setSelectedResourceDraftType] = useState<"handout" | "mindmap" | "ppt" | "pptVideo" | "practice">("ppt");
   const [selectedPptTemplate, setSelectedPptTemplate] = useState<PptTemplateId>("academic");
   const [resourceOutlineDraft, setResourceOutlineDraft] = useState(() =>
@@ -2527,7 +2568,7 @@ export default function CourseLearning() {
     if (previewState.kind === "ppt") {
       return {
         title: "推荐下一步",
-        detail: "先快速过一遍课件结构，再交给 AI 导师逐页拆解，会比直接从视频硬听更容易形成主线。",
+        detail: "先快速过一遍课件结构，再交给岗位实训导师逐页拆解，会比直接从视频硬听更容易形成主线。",
         actionLabel: "让 AI 逐页讲",
         onAction: () => {
           const prompt = `请结合这份课件《${previewState.title}》继续给我讲这一节的主线，并把每一页分别在讲什么说清楚。`;
@@ -2560,7 +2601,7 @@ export default function CourseLearning() {
     }
     return {
       title: "推荐下一步",
-      detail: "先做这组练习，再交给 AI 导师讲错题思路，能更快定位薄弱点。",
+        detail: "先做这组练习，再交给岗位实训导师讲错题思路，能更快定位薄弱点。",
       actionLabel: "让 AI 讲题思路",
       onAction: () => {
         setPreviewState(null);
@@ -2750,7 +2791,10 @@ export default function CourseLearning() {
             return (
               <button
                 key={idx}
-                onClick={() => setActiveEpisodeIdx(idx)}
+                type="button"
+                onClick={() => switchChapter(idx)}
+                aria-pressed={isActive}
+                aria-label={`切换到${ep.title}`}
                 className={`w-full cursor-pointer ui-radius-20 border p-3.5 text-left transition-all flex items-start gap-3 ${
                   isActive
                     ? "border-[#fb7299]/35 bg-[linear-gradient(180deg,#fff5f9_0%,#ffffff_100%)] ui-text-brand shadow-[0_12px_30px_rgba(251,114,153,0.12)]"
@@ -2825,7 +2869,7 @@ export default function CourseLearning() {
               学习现场
             </div>
             <div className="mt-3 text-[15px] font-black tracking-[-0.02em] ui-text-ink">
-              右侧 AI 导师已经接入当前视频、章节和播放进度
+          右侧岗位实训导师已经接入当前视频、章节和播放进度
             </div>
             <div className="mt-1.5 max-w-2xl text-[12px] leading-6 text-[#526071]">
               在这一页边看边问，它会结合当前片段、术语上下文和课堂生成结果继续讲。
@@ -2858,7 +2902,7 @@ export default function CourseLearning() {
                 autoplay: true,
                 muted: true,
               });
-              showToast(`AI 导师已读取当前视频 ${playbackLabel} 的上下文`);
+    showToast(`岗位实训导师已读取当前视频 ${playbackLabel} 的上下文`);
             }}
             className="shrink-0 rounded-full bg-[#111827] px-5 py-2.5 text-sm font-black text-white shadow-[0_12px_32px_rgba(17,24,39,0.2)] transition-all hover:-translate-y-0.5 hover:bg-[#0b1220]"
           >
@@ -3151,7 +3195,7 @@ export default function CourseLearning() {
               <div className="mt-3 ui-radius-20 border border-[#e8edf2] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_56%,#fff5f8_100%)] px-4 py-3.5">
                 <LazyAiLoading
                   caption="生成结果正在回填"
-                  subcaption="下方卡片会逐步切换成可下载、可预览、可继续交给 AI 导师的正式结果。"
+          subcaption="下方卡片会逐步切换成可下载、可预览、可继续交给岗位实训导师的正式结果。"
                 />
               </div>
             ) : null}
@@ -3284,7 +3328,7 @@ export default function CourseLearning() {
                               artifact.loading ? "bg-[#CBD5E1] text-white cursor-not-allowed" : "ui-bg-dark text-white hover:bg-black"
                             }`}
                           >
-                            交给 AI 导师
+                  交给岗位实训导师
                           </button>
                           <button
                             type="button"
@@ -3376,7 +3420,7 @@ export default function CourseLearning() {
                                 <div>
                                   <div className="text-[11px] font-black uppercase ui-tracking-tight text-[#d97706]">Practice Preview</div>
                                   <p className="mt-1 text-sm font-black ui-text-ink">随堂练习题卡</p>
-                                  <p className="mt-1 text-[11px] leading-5 ui-text-body">先快速做题，再把不会的题继续交给 AI 导师讲透。</p>
+                  <p className="mt-1 text-[11px] leading-5 ui-text-body">先快速做题，再把不会的题继续交给岗位实训导师讲透。</p>
                                 </div>
                                 <span className="rounded-full bg-[#FFF3D6] px-3 py-1 text-[10px] font-black text-[#b45309]">
                                   预览前 3 题
@@ -3519,7 +3563,7 @@ export default function CourseLearning() {
                               visibleRecentPpt.loading ? "bg-[#CBD5E1] text-white cursor-not-allowed" : "ui-bg-dark text-white hover:bg-black"
                             }`}
                           >
-                            交给 AI 导师
+                    交给岗位实训导师
                           </button>
                           <button
                             type="button"
@@ -3907,20 +3951,35 @@ export default function CourseLearning() {
   };
 
   useEffect(() => {
+    if (routeRole) {
+      setPersistedDanmakus([]);
+      resetDanmakuRuntime();
+      return;
+    }
     resetDanmakuRuntime();
     void hydratePresetDanmaku();
-  }, [activeVideoKey]);
+  }, [activeVideoKey, routeRole]);
 
   useEffect(() => {
+    if (routeRole) {
+      setComments([]);
+      return;
+    }
     void hydrateCourseComments().catch(() => {
       showToast("评论加载失败，请稍后重试");
       setComments(buildFallbackCourseComments());
     });
-  }, [courseId, activeEpisodeIdx]);
+  }, [courseId, activeEpisodeIdx, routeRole]);
 
   useEffect(() => {
+    if (routeRole) {
+      setLearningQuestions([]);
+      setLearningNotes([]);
+      setLearningFeedLoading(false);
+      return;
+    }
     void hydrateLearningFeed();
-  }, [activeEpisodeIdx, backendCourseId]);
+  }, [activeEpisodeIdx, backendCourseId, routeRole]);
 
   const sortedDanmakus = useMemo(() => {
     const baseItems = [...persistedDanmakus].sort((a, b) => a.start_time - b.start_time || a.id - b.id);
@@ -4584,7 +4643,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       artifact.previewContent?.join("\n\n") ||
       artifact.summary,
     source_titles: sourceResource?.source_titles?.length ? sourceResource.source_titles : [artifact.sectionTitle],
-    study_suggestion: sourceResource?.study_suggestion || "可在这个预览页直接查看生成内容，也可以继续交给 AI 导师追问。",
+      study_suggestion: sourceResource?.study_suggestion || "可在这个预览页直接查看生成内容，也可以继续交给岗位实训导师追问。",
     source_file_count: sourceResource?.source_file_count || sourceResource?.source_files?.length || 0,
     source_files: sourceResource?.source_files || [],
     generated_at: sourceResource?.generated_at,
@@ -4616,7 +4675,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       summary: artifact.summary || "已按当前章节生成课件草案。",
       content_markdown: artifact.rawContent ? `<!-- ppt-template:${templateId} -->\n\n${artifact.rawContent}` : markedSlideMarkdown || artifact.previewContent?.join("\n\n") || artifact.summary || title,
       source_titles: sourceResource?.source_titles?.length ? sourceResource.source_titles : [artifact.sectionTitle],
-      study_suggestion: sourceResource?.study_suggestion || "先浏览课件结构，再把不清楚的页交给 AI 导师继续讲解。",
+      study_suggestion: sourceResource?.study_suggestion || "先浏览课件结构，再把不清楚的页交给岗位实训导师继续讲解。",
       source_file_count: sourceResource?.source_file_count || sourceResource?.source_files?.length || 0,
       source_files: sourceResource?.source_files || [],
       generated_at: sourceResource?.generated_at,
@@ -4642,7 +4701,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       summary: video.summary,
       content_markdown: content,
       source_titles: [artifact.sectionTitle, artifact.fileName],
-      study_suggestion: "先看分镜和旁白稿，再根据需要让 AI 导师压缩成答辩口播或课堂短视频脚本。",
+      study_suggestion: "先看分镜和旁白稿，再根据需要让岗位实训导师压缩成答辩口播或课堂短视频脚本。",
       source_file_count: 1,
       source_files: [
         {
@@ -5831,7 +5890,12 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       summary: "通过坐标映射、图表层级与过渡动画，把原始数据整理成有表达力的数据叙事页面，强化分析与展示一体化能力。",
     },
   };
-  const resolvedMeta = courseMetaResolved[courseId] ?? {
+  const resolvedMeta = routeRole ? {
+    category: `${roleProfile.role}岗位实训`,
+    title: `${selectedRoleStage.title}实训`,
+    uploader: selectedRoleStage.resources[0]?.source || "官方岗位资源",
+    summary: `${selectedRoleStage.task} 阶段产出：${selectedRoleStage.deliverable}`,
+  } : courseMetaResolved[courseId] ?? {
     category: "通用研学航道",
     title: course.title,
     uploader: course.uploader,
@@ -5840,11 +5904,30 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
 
   return (
     <div ref={learnWorkspaceRef} className="space-y-6" id="course-learning-classroom">
+      <JobLearningContextBar
+        kind="learn"
+        fallbackAbility={resolvedMeta.category}
+        fallbackTask={`完成《${resolvedMeta.title}》当前章节学习、代码练习与阶段产出`}
+      />
+      <section aria-label="当前岗位实训任务" className="border border-[#cfe3ef] bg-[#f8fcff] p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[10px] font-black tracking-[0.16em] text-[#006689]">岗位课程与实训</div>
+            <h2 className="mt-1 text-lg font-black text-[#172033]">{roleProfile.role} · {selectedRoleStage.title}</h2>
+            <p className="mt-1 text-sm text-[#5b6574]">能力维度：{selectedRoleStage.ability}</p>
+          </div>
+          <button type="button" onClick={() => navigate(`/resources?${new URLSearchParams({ courseId, role: roleProfile.role, ability: selectedRoleStage.ability, task: routeTask, deliverable: routeDeliverable, returnTo: `/learn?${searchParams.toString()}` }).toString()}`)} className="border border-[#006689] bg-white px-4 py-2 text-xs font-black text-[#006689] hover:bg-[#eaf8ff]">打开岗位资源</button>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <div className="border border-[#dbe7f0] bg-white p-3 text-xs leading-5 text-[#475467]"><span className="font-black text-[#172033]">代码/实践任务：</span>{routeTask}</div>
+          <div className="border border-[#dbe7f0] bg-white p-3 text-xs leading-5 text-[#475467]"><span className="font-black text-[#172033]">阶段产出：</span>{routeDeliverable}</div>
+        </div>
+      </section>
       
       {/* Dynamic Header Path Indicator */}
       <div className="flex items-center justify-between text-xs ui-text-muted-rose">
         <div className="flex items-center gap-1.5 font-mono">
-          <Link to="/" className="hover:ui-text-brand">首页</Link>
+          <Link to="/" className="hover:ui-text-brand">岗位学习总览</Link>
           <span>/</span>
           <span className="ui-text-brand font-bold">{resolvedMeta.category}</span>
           <span>/</span>
@@ -5857,9 +5940,104 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
         
         {/* Left Column: Player & Metadata Detail Sheets */}
         <div id="course-learning-primary-column" className="min-w-0 flex-1 space-y-6 xl:max-w-none">
+          {routeRole ? (
+            <section aria-label="岗位实训资源课堂" className="overflow-hidden border border-[#cfe3ef] bg-white shadow-sm">
+              <div className="border-b border-[#dbe7f0] bg-[#f3fbff] p-5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-[10px] font-black tracking-[0.16em] text-[#006689]">岗位可核验资源课堂</div>
+                    <h2 className="mt-1 text-2xl font-black text-[#172033]">{roleProfile.role} · {activeRoleStage.title}</h2>
+                    <p className="mt-2 text-sm leading-6 text-[#5b6574]">{activeRoleStage.task}</p>
+                  </div>
+                  <span className="shrink-0 border border-[#f3bed0] bg-[#fff3f7] px-3 py-1.5 text-[11px] font-bold text-[#d64d82]">公开课程 · 来源可核验</span>
+                </div>
+              </div>
+              <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="space-y-3">
+                  {activeRoleStage.resources[0]?.videoUrl ? (
+                    <div className="overflow-hidden border border-[#dbe7f0] bg-[#111827] shadow-sm">
+                      <div className="flex items-center justify-between bg-[#172033] px-4 py-2 text-[11px] font-bold text-white">
+                        <span>岗位视频课程 · {activeRoleStage.resources[0].title}</span>
+                        <span className="text-[#9fe8f5]">{activeRoleStage.duration}</span>
+                      </div>
+                      <div className="aspect-video w-full">
+                        <iframe
+                          title={`${roleProfile.role} ${activeRoleStage.title}视频课程`}
+                          src={activeRoleStage.resources[0].videoUrl}
+                          className="h-full w-full"
+                          loading="lazy"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          allowFullScreen
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#172033] px-4 py-2 text-[10px] leading-5 text-white/70">
+                        <span>视频来源：{activeRoleStage.resources[0].source} · 课程内容与岗位任务对应，请结合下方产出完成实践。</span>
+                        <a href={`https://www.bilibili.com/video/${activeRoleStage.resources[0].videoUrl.match(/bvid=([^&]+)/)?.[1] || ""}`} target="_blank" rel="noreferrer" className="shrink-0 border border-white/30 px-2 py-1 text-white hover:border-white">打开 Bilibili</a>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="border border-[#dbe7f0] bg-[#fbfdff] p-4">
+                    <div className="text-xs font-black text-[#172033]">本阶段执行清单</div>
+                    <ol className="mt-3 space-y-2 text-sm leading-6 text-[#475467]">
+                      <li>1. 明确输入、处理步骤和验收问题。</li>
+                      <li>2. 结合官方资料完成最小可验证实践。</li>
+                      <li>3. 提交阶段产出：{activeRoleStage.deliverable}</li>
+                    </ol>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {activeRoleStage.resources.map((resource) => (
+                      <a key={resource.url} href={resource.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 border border-[#006689] bg-[#006689] px-4 py-2 text-xs font-black text-white hover:bg-[#00536f]">
+                        打开 {resource.title}
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ))}
+                    <button type="button" onClick={() => navigate(`/tutor?${new URLSearchParams({ courseId, role: roleProfile.role, stageId: String(activeEpisodeIdx + 1), ability: activeRoleStage.ability, task: activeRoleStage.task, deliverable: activeRoleStage.deliverable, returnTo: `/learn?${searchParams.toString()}` }).toString()}`)} className="border border-[#d64d82] bg-white px-4 py-2 text-xs font-black text-[#d64d82] hover:bg-[#fff3f7]">询问岗位实训导师</button>
+                  </div>
+                </div>
+                <aside className="border border-[#dbe7f0] bg-white p-4">
+                  <div className="text-[10px] font-black tracking-[0.14em] text-[#8a94a3]">资源与能力</div>
+                  <div className="mt-2 text-sm font-black text-[#006689]">{activeRoleStage.ability}</div>
+                  {activeRoleStage.resources.map((resource) => (
+                    <div key={resource.url} className="mt-3 border-t border-[#edf2f7] pt-3 text-xs leading-5 text-[#667085]">
+                      <div className="font-black text-[#172033]">{resource.source}</div>
+                      <div className="mt-1">{resource.summary}</div>
+                    </div>
+                  ))}
+                  <div className="mt-4 border-t border-[#edf2f7] pt-3 text-[11px] leading-5 text-[#667085]">阶段产出：{activeRoleStage.deliverable}</div>
+                </aside>
+              </div>
+            </section>
+          ) : null}
+
+          {routeRole ? (
+            <JobStageTaskWorkbench
+              key={`${roleProfile.role}-${activeEpisodeIdx}`}
+              role={roleProfile.role}
+              stageIndex={activeEpisodeIdx}
+              stageCount={roleProfile.stages.length}
+              ability={activeRoleStage.ability}
+              task={activeRoleStage.task}
+              deliverable={activeRoleStage.deliverable}
+              onNextStage={() => switchChapter(Math.min(activeEpisodeIdx + 1, roleProfile.stages.length - 1))}
+              onGoEvaluation={() => {
+                const params = new URLSearchParams({
+                  courseId,
+                  role: roleProfile.role,
+                  stageId: String(activeEpisodeIdx + 1),
+                  ability: activeRoleStage.ability,
+                  task: activeRoleStage.task,
+                  deliverable: activeRoleStage.deliverable,
+                  completed: "true",
+                  source: "job-stage-task",
+                  returnTo: `/path?courseId=${courseId}&role=${encodeURIComponent(roleProfile.role)}`,
+                });
+                navigate(`/evaluation?${params.toString()}`);
+              }}
+            />
+          ) : null}
           
           {/* Lecture Player with Custom Bullet Comments Layer */}
-          <div className="rounded-t-3xl bg-black overflow-hidden relative aspect-video shadow-lg border-t border-x ui-border-app group">
+          <div className={`${routeRole ? "hidden" : ""} rounded-t-3xl bg-black overflow-hidden relative aspect-video shadow-lg border-t border-x ui-border-app group`}>
             {/* Real-time HTML Overlay Bullet comments */}
             {danmakuEnabled && (
               <div
@@ -5990,7 +6168,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
           </div>
 
           {/* BiliLearn Bullet Control Center Bar */}
-          <div className="mb-6 -mt-0.5 flex flex-col gap-3 rounded-b-[28px] border-x border-b ui-border-app/15 bg-[#171c22] px-4 py-3 shadow-[0_14px_30px_rgba(15,23,42,0.18)] sm:flex-row sm:items-center">
+          <div className={`${routeRole ? "hidden" : ""} mb-6 -mt-0.5 flex flex-col gap-3 rounded-b-[28px] border-x border-b ui-border-app/15 bg-[#171c22] px-4 py-3 shadow-[0_14px_30px_rgba(15,23,42,0.18)] sm:flex-row sm:items-center`}>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
@@ -6030,7 +6208,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
                 当前进度 {String(Math.floor(currentPlaybackTime / 60)).padStart(2, "0")}:{String(Math.floor(currentPlaybackTime % 60)).padStart(2, "0")}
               </div>
               <div className="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-[10px] font-bold text-white/72">
-                右侧 AI 导师已联动
+                右侧岗位实训导师已联动
               </div>
             </div>
           </div>
