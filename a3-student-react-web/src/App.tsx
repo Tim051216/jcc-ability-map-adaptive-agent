@@ -5,7 +5,7 @@
 
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from "react-router-dom";
-import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, ChevronDown, Bot, MessageCircleMore, ArrowRight } from "lucide-react";
+import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, ChevronDown, Bot, MessageCircleMore, ArrowRight, MessageSquareText } from "lucide-react";
 import { ACTIVE_TUTOR_CONTEXT_EVENT, OPEN_TUTOR_PANEL_EVENT, loadActiveTutorContext, type TutorPanelPayload } from "./lib/tutorPanel";
 import { getDemoUserIdentity } from "./lib/demoUserIdentity";
 import { buildResourcesRoute, readLastRouteCourseId } from "./lib/routeCourseContext";
@@ -27,6 +27,7 @@ const routeImporters = {
   collection: () => import("./pages/Collection"),
   im: () => import("./pages/IMCenter"),
   tutor: () => import("./pages/AITutor"),
+  trialFeedback: () => import("./pages/TrialFeedback"),
   welcome: () => import("./components/WelcomeScreen"),
 };
 
@@ -46,6 +47,7 @@ const StudyReport = lazy(routeImporters.report);
 const Collection = lazy(routeImporters.collection);
 const IMCenter = lazy(routeImporters.im);
 const AITutor = lazy(routeImporters.tutor);
+const TrialFeedback = lazy(routeImporters.trialFeedback);
 
 // Warm route chunks after the first screen settles so the first navigation is not a cold import.
 if (typeof window !== "undefined") {
@@ -89,6 +91,8 @@ function preloadRoute(path: string) {
                   ? routeImporters.collection
                   : normalizedPath === "/evaluation"
                     ? routeImporters.evaluation
+                    : normalizedPath === "/trial-feedback"
+                      ? routeImporters.trialFeedback
                     : normalizedPath === "/report"
                       ? routeImporters.report
                       : normalizedPath === "/profile"
@@ -357,7 +361,7 @@ function GlobalAIAssistantBar() {
       nextAction: "先继续最近的任务，再补充关键资料。",
     },
     "/resources": {
-      title: "资源中心",
+      title: "岗位学习资源",
       agent: "资源生成智能体",
       status: "资源已按课程和当前检索意图整理。",
       nextAction: "优先打开最贴近当前卡点的讲义或视频。",
@@ -381,13 +385,13 @@ function GlobalAIAssistantBar() {
       nextAction: "优先整理本周一定会复习的内容。",
     },
     "/learn": {
-      title: "课堂",
+      title: "岗位课程与实训",
       agent: "课堂学习智能体",
       status: "当前页面更适合边学边问，不需要跳走。",
-      nextAction: "有卡点时直接打开右侧 AI 导师。",
+      nextAction: "有卡点时直接打开右侧岗位实训导师。",
     },
     "/path": {
-      title: "个性化学习路径",
+      title: "岗位能力提升路径",
       agent: "路径规划智能体",
       status: "这条路径会结合你的学习画像、当前课程进度和薄弱点，拆出接下来每一阶段具体该学什么、练什么、产出什么。",
       nextAction: "先完成当前阶段的首个关键任务，再由系统继续生成下一步学习动作。",
@@ -529,14 +533,25 @@ function MainLayout({
 
   const navItems = [
     { label: "概览", id: "overview", path: "/", icon: Layers },
-    { label: "路径", id: "path", path: "/path", icon: Compass },
-    { label: "课堂", id: "learn", path: "/learn", icon: Tv },
-    { label: "资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
+    { label: "能力路径", id: "path", path: "/path", icon: Compass },
+    { label: "岗位实训", id: "learn", path: "/learn", icon: Tv },
+    { label: "岗位资源", id: "resources", path: (() => {
+      const params = new URLSearchParams(location.search);
+      const courseId = params.get("courseId") || readLastRouteCourseId();
+      const context = ["role", "job", "position", "goal", "ability", "assessmentId", "planId", "stageId", "stepId", "task", "deliverable", "returnTo"];
+      const next = new URLSearchParams({ courseId });
+      context.forEach((key) => {
+        const value = params.get(key);
+        if (value) next.set(key, value);
+      });
+      return `/resources?${next.toString()}`;
+    })(), icon: FolderOpen },
     { label: "收藏", id: "collection", path: "/collection", icon: Heart },
     { label: "评估", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
     { label: "报告", id: "report", path: "/report", icon: BarChart2 },
     { label: "画像", id: "profile", path: "/profile", icon: User },
     { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
+    { label: "反馈", id: "trial-feedback", path: "/trial-feedback", icon: MessageSquareText },
   ];
 
   useEffect(() => {
@@ -851,7 +866,7 @@ function MainLayout({
                     <Sparkles className="h-4 w-4" />
                   </span>
                   <span>
-                    <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">AI 导师建议</span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">岗位实训导师建议</span>
                     <span className="block text-[12px] font-semibold text-[#171c22]">
                       {assistantPanelCollapsed ? "已收起，点击展开" : "点击题目继续问"}
                     </span>
@@ -902,7 +917,7 @@ function MainLayout({
                                 }}
                                 className="inline-flex items-center gap-1 rounded-full border border-[#e7edf3] bg-white px-3 py-1.5 text-[11px] font-black text-[#171c22] transition hover:-translate-y-0.5 hover:border-[#fb7299]/30"
                               >
-                                打开 AI 导师
+                                打开岗位实训导师
                                 <Bot className="h-3.5 w-3.5" />
                               </button>
                             </div>
@@ -947,13 +962,13 @@ function MainLayout({
               bottom: "auto",
               touchAction: "none",
             }}
-            aria-label="打开 AI 导师侧栏"
-            title="打开 AI 导师侧栏"
+            aria-label="打开岗位实训导师侧栏"
+            title="打开岗位实训导师侧栏"
           >
             <span className="absolute bottom-0 left-1/2 h-12 w-[102px] -translate-x-1/2 rounded-[999px] bg-[#fb7299]/18 blur-md transition group-hover:bg-[#fb7299]/24 md:w-[118px]" />
             <span className="absolute bottom-1 left-1/2 h-9 w-[92px] -translate-x-1/2 rounded-[999px] border border-white/80 bg-white/78 shadow-[0_16px_34px_rgba(15,23,42,0.14)] backdrop-blur-md md:w-[106px]" />
             <span className="absolute right-0 top-1 rounded-full border border-[#F6B6CA] bg-white/94 px-2.5 py-1 text-[10px] font-black text-[#fb7299] shadow-[0_10px_24px_rgba(251,114,153,0.16)] transition group-hover:-translate-y-0.5">
-              AI 导师
+              岗位实训导师
             </span>
             <span className="pointer-events-none absolute inset-x-[-22px] bottom-[7px] top-[-10px] block">
               <Suspense
@@ -1000,7 +1015,7 @@ function MainLayout({
               className={`ui-border-app ui-text-soft absolute -left-10 top-1/2 hidden h-20 w-10 -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 bg-white shadow-[-8px_10px_30px_rgba(15,23,42,0.08)] transition md:flex ${
                 tutorDrawer.open ? "opacity-100" : "pointer-events-none opacity-0"
               }`}
-              aria-label="收起 AI 导师侧栏"
+              aria-label="收起岗位实训导师侧栏"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -1070,7 +1085,7 @@ function TutorDrawerFallback() {
       <div className="border-b border-[#EEF2F6] px-4 py-3">
         <div className="inline-flex items-center gap-2 rounded-full bg-[#FFF2F7] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#e85d8e]">
           <Sparkles className="h-3.5 w-3.5" />
-          AI Tutor
+          岗位实训导师
         </div>
         <div className="mt-3 flex gap-2 overflow-hidden">
           <div className="h-8 w-24 rounded-full bg-[#F5F7FA]" />
@@ -1604,7 +1619,15 @@ export default function App() {
                 path="/tutor"
                 element={
                   <ProtectedRoute>
-                    <TutorRouteBridge />
+                    <AITutor />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/trial-feedback"
+                element={
+                  <ProtectedRoute>
+                    <TrialFeedback />
                   </ProtectedRoute>
                 }
               />
