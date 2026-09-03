@@ -32,6 +32,9 @@ import { getDemoUserExperienceConfig, getDemoUserProfile } from "../lib/userProf
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import AILoadingLottie from "../components/AILoadingLottie";
 import { beginUiProgress, finishUiProgress, setUiProgress } from "../lib/uiProgress";
+import JobLearningContextBar from "../components/job-learning/JobLearningContextBar";
+import { getJobLearningProfile } from "../lib/jobLearningCatalog";
+import { readJobStageProgress } from "../lib/jobStageProgress";
 
 type TutorAttachment = {
   id: string;
@@ -280,13 +283,13 @@ function isTransientTutorFetchError(error: unknown) {
 function buildTutorErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (/^HTTP\s*5\d\d\b/i.test(message)) {
-    return "AI 导师服务暂时不可用，请稍后重试。";
+    return "岗位实训导师服务暂时不可用，请稍后重试。";
   }
   if (/request timeout|响应超时|timeout/i.test(message)) {
     return "这次生成时间超过预期，我已保留问题。请稍后在最近会话里查看结果，或重新发送一次。";
   }
   if (/failed to fetch|networkerror|load failed/i.test(message)) {
-    return "AI 导师连接暂时不稳定，请稍后重试。";
+    return "岗位实训导师连接暂时不稳定，请稍后重试。";
   }
   return message || "提问失败，请稍后重试。";
 }
@@ -471,11 +474,11 @@ async function waitForTutoringTaskResult(taskId: string | number, maxAttempts = 
       return status.result;
     }
     if (status.status === "failed") {
-      throw new Error(status.error_message || "AI 导师生成失败，请稍后重试。");
+      throw new Error(status.error_message || "岗位实训导师生成失败，请稍后重试。");
     }
     await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
-  throw new Error("AI 导师响应超时，请稍后重试。");
+  throw new Error("岗位实训导师响应超时，请稍后重试。");
 }
 
 function extractStreamingTextChunk(payload: unknown): string {
@@ -1278,7 +1281,7 @@ function buildQuickLocalReply(text: string, title?: string, subtitle?: string) {
   }
 
   if (["你是谁", "你是干嘛的", "你能做什么", "你会什么"].includes(normalized)) {
-    return `我是右侧的 AI 导师，可以陪你看${title || "这节课"}，也能帮你解释概念、看截图，或者继续顺着${subtitle || "当前内容"}往下讲。`;
+  return `我是右侧的岗位实训导师，可以陪你看${title || "这节课"}，也能帮你解释概念、看截图，或者继续顺着${subtitle || "当前内容"}往下讲。`;
   }
 
   const asksForDemoSummary =
@@ -1423,7 +1426,7 @@ async function buildAutoCourseLinksSection(text: string) {
 
 function cleanTutorDisplayText(text: string) {
   if (/^HTTP\s*5\d\d\s*$/i.test(text.trim())) {
-    return "AI 导师服务暂时不可用，请稍后重试。";
+    return "岗位实训导师服务暂时不可用，请稍后重试。";
   }
   if (/^Request timeout\s*$/i.test(text.trim())) {
     return "这次生成时间超过预期，我已保留问题。请稍后在最近会话里查看结果，或重新发送一次。";
@@ -1477,6 +1480,12 @@ export default function AITutor(props: AITutorProps = {}) {
     onClose,
     resetToken,
   } = props;
+  const routeParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const routeRole = routeParams.get("role") || routeParams.get("job") || routeParams.get("position") || "";
+  const roleProfile = getJobLearningProfile(routeRole);
+  const selectedRoleStageIndex = Math.max(0, Number(routeParams.get("stageId") || "1") - 1);
+  const selectedRoleStage = roleProfile.stages[selectedRoleStageIndex] || roleProfile.stages[0];
+  const stageProgress = readJobStageProgress(roleProfile.role, selectedRoleStageIndex);
   const preferFreshTaskContext = false;
   const resolvedUserId = user?.id || "1001";
   const resolvedUserProfile = useMemo(() => getDemoUserProfile(resolvedUserId), [resolvedUserId]);
@@ -1524,6 +1533,10 @@ export default function AITutor(props: AITutorProps = {}) {
   const [inputValue, setInputValue] = useState(
     !preferFreshTaskContext ? storedDraft?.inputValue || initialQuery || "" : initialQuery || "",
   );
+  const [clarificationOpen, setClarificationOpen] = useState(false);
+  const [clarificationContext, setClarificationContext] = useState("");
+  const [clarificationConstraints, setClarificationConstraints] = useState("");
+  const [clarificationOutput, setClarificationOutput] = useState(selectedRoleStage.deliverable);
   const [attachments, setAttachments] = useState<TutorAttachment[]>([]);
   const [historyItems, setHistoryItems] = useState<TutoringHistoryItem[]>([]);
   const [sessionTitleMap, setSessionTitleMap] = useState<Record<string, string>>(() => loadStoredSessionTitles());
@@ -2716,7 +2729,7 @@ export default function AITutor(props: AITutorProps = {}) {
               continue;
             }
             if (nextAnswer.status === "failed") {
-              throw new Error(nextAnswer.error_message || nextAnswer.error || "AI 导师生成失败，请稍后重试。");
+        throw new Error(nextAnswer.error_message || nextAnswer.error || "岗位实训导师生成失败，请稍后重试。");
             }
             return nextAnswer;
           } catch (error) {
@@ -2733,7 +2746,7 @@ export default function AITutor(props: AITutorProps = {}) {
         if (streamSettled || streamedFinalAnswer || streamedCompleteText || streamedText) {
           return null;
         }
-        throw lastError instanceof Error ? lastError : new Error("AI 导师响应超时，请稍后重试。");
+      throw lastError instanceof Error ? lastError : new Error("岗位实训导师响应超时，请稍后重试。");
       })();
 
       let answer: TutoringAnswerDetail | null = null;
@@ -2769,7 +2782,7 @@ export default function AITutor(props: AITutorProps = {}) {
                     text:
                       visualText ||
                       streamedText ||
-                      "内容稍微复杂一点，AI 导师还在继续生成，我会自动等待完成后回填。",
+          "内容稍微复杂一点，岗位实训导师还在继续生成，我会自动等待完成后回填。",
                     status: "pending",
                   }
                 : item,
@@ -2967,6 +2980,58 @@ export default function AITutor(props: AITutorProps = {}) {
 
   return (
     <>
+      {!embedded ? (
+        <div className="mx-auto max-w-7xl px-4 pt-4">
+          <JobLearningContextBar
+            kind="tutor"
+            fallbackTask={initialTitle || initialSubtitle || "围绕当前岗位任务进行分步辅导与复盘"}
+            aiGenerated
+            compact
+          />
+          <section aria-label="岗位导师上下文" className="mt-3 border border-[#cfe3ef] bg-[#f8fcff] p-4">
+            <div className="text-[10px] font-black tracking-[0.16em] text-[#006689]">岗位实训导师</div>
+            <h2 className="mt-1 text-base font-black text-[#172033]">{roleProfile.role} · {selectedRoleStage.title}</h2>
+            <p className="mt-1 text-xs leading-5 text-[#5b6574]">当前任务：{routeParams.get("task") || selectedRoleStage.task}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="border border-[#f3bed0] bg-[#fff3f7] px-3 py-1.5 text-[11px] font-bold text-[#d64d82]">AI 生成内容 · 需核验</span>
+              {selectedRoleStage.resources.map((resource) => (
+                <a key={resource.url} href={resource.url} target="_blank" rel="noreferrer" className="border border-[#9ecfdf] bg-white px-3 py-1.5 text-[11px] font-bold text-[#006689] hover:bg-[#eaf8ff]">来源：{resource.source}</a>
+              ))}
+              <button type="button" onClick={() => setInputValue(selectedRoleStage.tutorPrompt)} className="border border-[#d64d82] bg-white px-3 py-1.5 text-[11px] font-bold text-[#d64d82] hover:bg-[#fff3f7]">用导师建议提问</button>
+              <button type="button" onClick={() => setClarificationOpen((value) => !value)} className="border border-[#172033] bg-white px-3 py-1.5 text-[11px] font-bold text-[#172033] hover:bg-[#f5f7fa]">{clarificationOpen ? "收起澄清条件" : "先澄清实训条件"}</button>
+            </div>
+            {clarificationOpen ? (
+              <div className="mt-3 grid gap-2 border border-[#dbe7f0] bg-white p-3 md:grid-cols-3">
+                <label className="text-[11px] font-bold text-[#344054]">当前基础或已有内容<input aria-label="当前基础或已有内容" value={clarificationContext} onChange={(event) => setClarificationContext(event.target.value)} placeholder="已完成什么、卡在哪里" className="mt-1 w-full border border-[#cfd8e3] px-2.5 py-2 font-normal outline-none focus:border-[#006689]" /></label>
+                <label className="text-[11px] font-bold text-[#344054]">技术环境与限制<input aria-label="技术环境与限制" value={clarificationConstraints} onChange={(event) => setClarificationConstraints(event.target.value)} placeholder="技术栈、时限、不可使用项" className="mt-1 w-full border border-[#cfd8e3] px-2.5 py-2 font-normal outline-none focus:border-[#006689]" /></label>
+                <label className="text-[11px] font-bold text-[#344054]">期望产出<input aria-label="期望产出" value={clarificationOutput} onChange={(event) => setClarificationOutput(event.target.value)} placeholder={selectedRoleStage.deliverable} className="mt-1 w-full border border-[#cfd8e3] px-2.5 py-2 font-normal outline-none focus:border-[#006689]" /></label>
+                <button type="button" onClick={() => {
+                  setInputValue([
+                    "你是岗位实训导师。在给出方案前，如果信息仍不足，请先提出不超过 3 个澄清问题，不要直接假设。",
+                    `岗位与阶段：${roleProfile.role} · ${selectedRoleStage.title}`,
+                    `当前任务：${routeParams.get("task") || selectedRoleStage.task}`,
+                    `已有基础：${clarificationContext || "暂未说明"}`,
+                    `环境与限制：${clarificationConstraints || "暂未说明"}`,
+                    `期望产出：${clarificationOutput || selectedRoleStage.deliverable}`,
+                  ].join("\n"));
+                  setClarificationOpen(false);
+                }} className="border border-[#006689] bg-[#006689] px-3 py-2 text-[11px] font-black text-white md:col-span-3">生成澄清式提问</button>
+              </div>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a href={`/learn?${new URLSearchParams({ courseId: routeParams.get("courseId") || "series-1", role: roleProfile.role, stageId: String(selectedRoleStageIndex + 1), ability: selectedRoleStage.ability, task: selectedRoleStage.task, deliverable: selectedRoleStage.deliverable }).toString()}`} className="border border-[#006689] bg-white px-3 py-1.5 text-[11px] font-black text-[#006689]">返回课堂提交产出</a>
+              {stageProgress.completed ? <a href={`/evaluation?${new URLSearchParams({ courseId: routeParams.get("courseId") || "series-1", role: roleProfile.role, stageId: String(selectedRoleStageIndex + 1), completed: "true", source: "job-stage-task" }).toString()}`} className="border border-[#172033] bg-[#172033] px-3 py-1.5 text-[11px] font-black text-white">任务已完成，进入测评</a> : <span className="border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-700">提交阶段产出后可进入测评</span>}
+            </div>
+            <p className="mt-3 text-[11px] leading-5 text-[#667085]">AI 生成内容仅作学习辅助，请核对上述引用来源；勿在对话中提交密钥、个人敏感数据或未脱敏业务数据。</p>
+          </section>
+        </div>
+      ) : null}
+      {embedded ? (
+        <div className="flex items-center gap-2 border-b border-[#f3bed0] bg-[#fff3f7] px-4 py-2 text-[11px] font-bold text-[#d64d82]">
+          <Sparkles className="h-3.5 w-3.5" />
+          AI 生成内容 · 请结合引用来源核验，勿提交密钥或敏感数据
+        </div>
+      ) : null}
       <div ref={tutorSurfaceRef} className={containerClassName}>
         <div className="relative flex h-full min-h-0 w-full overflow-hidden rounded-[28px] border border-[#E7ECF0] bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
           <aside className="hidden">
@@ -2976,7 +3041,7 @@ export default function AITutor(props: AITutorProps = {}) {
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#0f172a]">AI 导师</p>
+                  <p className="text-sm font-semibold text-[#0f172a]">岗位实训导师</p>
                   <p className="text-xs text-[#64748b]">{buildModeSubtitle(initialMode || "default")}</p>
                 </div>
               </div>
@@ -3096,7 +3161,7 @@ export default function AITutor(props: AITutorProps = {}) {
                         Session Deck
                       </div>
                       <h2 className="mt-3 text-lg font-extrabold text-[#171c22]">最近会话页</h2>
-                      <p className="mt-1 text-sm leading-6 text-[#667085]">这里是独立于 AI 导师主会话的完整最近会话页，适合集中检索、回看与续聊。</p>
+                <p className="mt-1 text-sm leading-6 text-[#667085]">这里是独立于岗位实训导师主会话的完整最近会话页，适合集中检索、回看与续聊。</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -3110,7 +3175,7 @@ export default function AITutor(props: AITutorProps = {}) {
                         type="button"
                         onClick={() => setHistoryFullscreen(false)}
                         className="rounded-full border border-[#E7ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#344054] transition hover:border-[#d8dee6] hover:bg-[#f8fafc]"
-                        title="返回 AI 导师"
+                title="返回岗位实训导师"
                       >
                         返回导师
                       </button>
@@ -3236,7 +3301,7 @@ export default function AITutor(props: AITutorProps = {}) {
                 <div className="min-w-0 flex items-center gap-3">
                   <div className="inline-flex items-center gap-2 rounded-full bg-[#FFF2F7] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#e85d8e]">
                     <Sparkles className="h-3.5 w-3.5" />
-                    AI Tutor
+                    岗位实训导师
                   </div>
                   <button
                     type="button"
@@ -3264,7 +3329,7 @@ export default function AITutor(props: AITutorProps = {}) {
                       type="button"
                       onClick={onClose}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F5F7FA] text-[#667085] transition hover:bg-[#EEF2F6] hover:text-[#171c22]"
-                      title="关闭 AI 导师"
+              title="关闭岗位实训导师"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -3426,12 +3491,22 @@ export default function AITutor(props: AITutorProps = {}) {
                             </div>
                           ) : null}
                           {message.role === "assistant" ? (
-                            <KnowledgeEvidencePanel
-                              sources={message.referenceSources}
-                              knowledgePoints={message.knowledgePoints}
-                              confidenceScore={message.confidenceScore}
-                              questionType={message.questionType}
-                            />
+                            <>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#fff0f6] px-2.5 py-1 text-[10px] font-black text-[#c25179]">
+                                  <Bot className="h-3 w-3" /> AI 生成内容
+                                </span>
+                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${message.referenceSources?.length ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                  {message.referenceSources?.length ? `回答依据 ${message.referenceSources.length} 项` : "未检索到可靠课程来源，请核验"}
+                                </span>
+                              </div>
+                              <KnowledgeEvidencePanel
+                                sources={message.referenceSources}
+                                knowledgePoints={message.knowledgePoints}
+                                confidenceScore={message.confidenceScore}
+                                questionType={message.questionType}
+                              />
+                            </>
                           ) : null}
                           {message.attachments?.length ? (
                             <div className="mt-2.5 flex flex-wrap gap-2">
@@ -3574,7 +3649,7 @@ export default function AITutor(props: AITutorProps = {}) {
                           sending
                             ? (hasExtractedAttachment(attachments)
                               ? "正在识别附件内容并生成讲解"
-                              : "AI 导师正在组织回答")
+                          : "岗位实训导师正在组织回答")
                             : capturing
                               ? "正在处理截图上下文"
                               : "正在上传附件并挂接上下文"
