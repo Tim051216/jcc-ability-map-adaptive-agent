@@ -438,8 +438,25 @@ export interface JobLearningOutcome {
   baseline_score: number | null;
   latest_score: number | null;
   score_change: number | null;
-  ability_changes: Array<Record<string, unknown>>;
-  coaching: Record<string, unknown>;
+  ability_changes: Array<{
+    code: string;
+    label: string;
+    before_score: number | null;
+    after_score: number | null;
+    change: number | null;
+    assessment_status: JobAbilityAssessmentStatus;
+  }>;
+  coaching: {
+    total: number;
+    planned: number;
+    in_progress: number;
+    completed: number;
+    abandoned: number;
+    completion_rate: number;
+    helpful_count: number;
+    rated_count: number;
+    average_rating: number | null;
+  };
   summary: string;
 }
 
@@ -1619,6 +1636,21 @@ export const studentApi = {
   getJobLearningOutcomes(userId: number, courseId = 401, timeoutMs = 8000) {
     return requestAsUser<JobLearningOutcome>(
       `/student-portal/job-learning/outcomes?user_id=${userId}&course_id=${courseId}`,
+      userId,
+      timeoutMs,
+    );
+  },
+  updateJobLearningGoal(payload: { user_id: number; course_id?: number; student_goal: string; goal_scene: string }, timeoutMs = 8000) {
+    return requestJsonAsUser<{ user_id: number; course_id: number; job_name: string; student_goal: string; goal_scene: string; updated_at: string | null }>(
+      "/student-portal/job-learning/goal",
+      { method: "PUT", body: JSON.stringify({ course_id: 401, ...payload }) },
+      payload.user_id,
+      timeoutMs,
+    );
+  },
+  listJobCoachingRecords(userId: number, courseId = 401, limit = 20, timeoutMs = 8000) {
+    return requestAsUser<{ total: number; items: JobCoachingRecord[] }>(
+      `/student-portal/job-learning/coaching-records?user_id=${userId}&course_id=${courseId}&limit=${limit}`,
       userId,
       timeoutMs,
     );

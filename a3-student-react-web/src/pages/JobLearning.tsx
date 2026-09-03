@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, BriefcaseBusiness, CircleAlert, LoaderCircle, ShieldCheck } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, CircleAlert, LoaderCircle, Save, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getCurrentLoggedInUserId } from "../lib/currentUser";
 import { studentApi, type JobLearningOverview } from "../lib/studentApi";
@@ -9,11 +9,14 @@ export default function JobLearning() {
   const [data, setData] = useState<JobLearningOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [goal, setGoal] = useState("");
+  const [goalScene, setGoalScene] = useState("internship");
+  const [savingGoal, setSavingGoal] = useState(false);
 
   useEffect(() => {
     let active = true;
     studentApi.getJobLearningOverview(userId).then((next) => {
-      if (active) setData(next);
+      if (active) { setData(next); setGoal(next.student_goal || ""); setGoalScene(next.goal_scene || "internship"); }
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "岗位学习数据暂时不可用");
     }).finally(() => {
@@ -35,6 +38,8 @@ export default function JobLearning() {
           <Link to="/job-learning/outcomes" className="inline-flex items-center gap-2 border border-[#141414] px-4 py-2 text-sm font-bold text-[#141414] hover:bg-[#141414] hover:text-white">查看学习效果 <ArrowRight size={16} /></Link>
         </div>
       </header>
+
+      <section className="border border-[#dfe3e8] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black text-[#141414]">学习目标</h2><p className="mt-1 text-sm text-[#69717a]">目标会保存到你的岗位学习状态，供路径和建议使用。</p></div><button type="button" disabled={savingGoal || goal.trim().length < 2} onClick={async () => { setSavingGoal(true); try { const saved = await studentApi.updateJobLearningGoal({ user_id: userId, course_id: data.course_id, student_goal: goal.trim(), goal_scene: goalScene }); setData((current) => current ? { ...current, student_goal: saved.student_goal, goal_scene: saved.goal_scene } : current); } catch (reason) { setError(reason instanceof Error ? reason.message : "目标保存失败"); } finally { setSavingGoal(false); } }} className="inline-flex items-center gap-2 bg-[#e4002b] px-4 py-2 text-sm font-bold text-white disabled:opacity-40"><Save size={15} />{savingGoal ? "保存中" : "保存目标"}</button></div><div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]"><input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={200} placeholder="例如：完成软件开发岗位实习准备" className="border border-[#cfd5db] px-3 py-2 text-sm outline-none focus:border-[#e4002b]" /><select value={goalScene} onChange={(event) => setGoalScene(event.target.value)} className="border border-[#cfd5db] bg-white px-3 py-2 text-sm outline-none focus:border-[#e4002b]"><option value="course">课程达标</option><option value="training">综合实训</option><option value="competition">技能竞赛</option><option value="internship">岗位实习</option></select></div></section>
 
       <section className="grid gap-4 border-b border-[#dfe3e8] pb-6 md:grid-cols-3">
         <Info label="学习目标" value={data.student_goal || "尚未设置"} />
