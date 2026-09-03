@@ -28,6 +28,8 @@ const routeImporters = {
   im: () => import("./pages/IMCenter"),
   tutor: () => import("./pages/AITutor"),
   welcome: () => import("./components/WelcomeScreen"),
+  jobLearning: () => import("./pages/JobLearning"),
+  jobLearningOutcomes: () => import("./pages/JobLearningOutcomes"),
 };
 
 const Header = lazy(routeImporters.header);
@@ -46,6 +48,8 @@ const StudyReport = lazy(routeImporters.report);
 const Collection = lazy(routeImporters.collection);
 const IMCenter = lazy(routeImporters.im);
 const AITutor = lazy(routeImporters.tutor);
+const JobLearning = lazy(routeImporters.jobLearning);
+const JobLearningOutcomes = lazy(routeImporters.jobLearningOutcomes);
 
 // Warm route chunks after the first screen settles so the first navigation is not a cold import.
 if (typeof window !== "undefined") {
@@ -99,6 +103,10 @@ function preloadRoute(path: string) {
                             ? routeImporters.im
                             : normalizedPath === "/login"
                               ? routeImporters.login
+                              : normalizedPath === "/job-learning"
+                                ? routeImporters.jobLearning
+                                : normalizedPath === "/job-learning/outcomes"
+                                  ? routeImporters.jobLearningOutcomes
                               : null;
 
   if (importer) {
@@ -536,6 +544,7 @@ function MainLayout({
     { label: "评估", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
     { label: "报告", id: "report", path: "/report", icon: BarChart2 },
     { label: "画像", id: "profile", path: "/profile", icon: User },
+    { label: "岗位学习", id: "job-learning", path: "/job-learning", icon: Compass },
     { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
   ];
 
@@ -1605,6 +1614,22 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <TutorRouteBridge />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/job-learning"
+                element={
+                  <ProtectedRoute>
+                    <JobLearning />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/job-learning/outcomes"
+                element={
+                  <ProtectedRoute>
+                    <JobLearningOutcomes />
                   </ProtectedRoute>
                 }
               />
