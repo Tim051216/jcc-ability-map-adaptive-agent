@@ -8,7 +8,7 @@ export default function JobLearningOutcomes() {
   const userId = getCurrentLoggedInUserId();
   const [data, setData] = useState<JobLearningOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { let active = true; studentApi.getJobLearningOutcomes(userId).then((next) => active && setData(next)).catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "学习效果暂时不可用")); return () => { active = false; }; }, [userId]);
+  useEffect(() => { let active = true; studentApi.getJobLearningOutcomes(userId, 401, 30000).then((next) => active && setData(next)).catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "学习效果暂时不可用")); return () => { active = false; }; }, [userId]);
   if (error) return <State><CircleAlert />{error}</State>;
   if (!data) return <State><LoaderCircle className="animate-spin" />正在读取前后测数据...</State>;
   const change = data.score_change;

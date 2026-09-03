@@ -31,6 +31,7 @@ const routeImporters = {
   jobLearning: () => import("./pages/JobLearning"),
   jobLearningOutcomes: () => import("./pages/JobLearningOutcomes"),
   legacyOverview: () => import("./pages/Overview"),
+  trialFeedback: () => import("./pages/TrialFeedback"),
 };
 
 const Header = lazy(routeImporters.header);
@@ -51,6 +52,7 @@ const IMCenter = lazy(routeImporters.im);
 const AITutor = lazy(routeImporters.tutor);
 const JobLearning = lazy(routeImporters.jobLearning);
 const JobLearningOutcomes = lazy(routeImporters.jobLearningOutcomes);
+const TrialFeedback = lazy(routeImporters.trialFeedback);
 
 // Warm route chunks after the first screen settles so the first navigation is not a cold import.
 if (typeof window !== "undefined") {
@@ -106,8 +108,10 @@ function preloadRoute(path: string) {
                               ? routeImporters.login
                               : normalizedPath === "/job-learning"
                                 ? routeImporters.jobLearning
-                                : normalizedPath === "/job-learning/outcomes"
+                              : normalizedPath === "/job-learning/outcomes"
                                   ? routeImporters.jobLearningOutcomes
+                                  : normalizedPath === "/trial-feedback"
+                                    ? routeImporters.trialFeedback
                               : null;
 
   if (importer) {
@@ -546,6 +550,7 @@ function MainLayout({
     { label: "报告", id: "report", path: "/report", icon: BarChart2 },
     { label: "画像", id: "profile", path: "/profile", icon: User },
     { label: "岗位学习", id: "job-learning", path: "/job-learning", icon: Compass },
+    { label: "试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardCheck },
     { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
   ];
 
@@ -1639,6 +1644,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <JobLearningOutcomes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/trial-feedback"
+                element={
+                  <ProtectedRoute>
+                    <TrialFeedback />
                   </ProtectedRoute>
                 }
               />

@@ -15,7 +15,7 @@ export default function JobLearning() {
 
   useEffect(() => {
     let active = true;
-    studentApi.getJobLearningOverview(userId).then((next) => {
+    studentApi.getJobLearningOverview(userId, 401, 30000).then((next) => {
       if (active) { setData(next); setGoal(next.student_goal || ""); setGoalScene(next.goal_scene || "internship"); }
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "岗位学习数据暂时不可用");
