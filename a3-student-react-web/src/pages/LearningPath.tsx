@@ -41,8 +41,11 @@ import {
   type StoredLearningGoal,
 } from "../lib/learningGoal";
 import { resolveBackendCourseId } from "../lib/courseRouting";
+import { persistLastRouteCourseId } from "../lib/routeCourseContext";
 import { getCurrentLoggedInUserId } from "../lib/currentUser";
+import { getJobLearningProfile } from "../lib/jobLearningCatalog";
 import { SESSION_STORAGE_KEY, PERSISTENT_SESSION_STORAGE_KEY } from "../App";
+import JobLearningContextBar, { buildJobLearningSearch } from "../components/job-learning/JobLearningContextBar";
 
 type UiStep = {
   id: string;
@@ -1299,7 +1302,7 @@ function buildGoalPlanningProfile(
         day: 3,
         title: "复盘并补最后一轮",
         focus: "把错题和知识点重新对齐，形成下一轮复习入口。",
-        task: "把错题按概念、流程、应用三类归档，再选 2 个最薄弱点让 AI 导师重新讲一遍。",
+        task: "把错题按概念、流程、应用三类归档，再选 2 个最薄弱点让岗位实训导师重新讲一遍。",
         deliverable: "错题分类表 + 2 个追问记录",
       },
     ];
@@ -1604,15 +1607,63 @@ function mapPlanToPhases(plan: LearningPlanResponse, progress: PlanProgressRespo
   ];
 }
 
+function RolePathPlan({
+  role,
+  onStartStage,
+  onOpenResources,
+}: {
+  role: string;
+  onStartStage: (stageIndex: number) => void;
+  onOpenResources: (stageIndex: number) => void;
+}) {
+  const profile = getJobLearningProfile(role);
+  return (
+    <section aria-label="岗位执行路径" className="border border-[#cfe3ef] bg-[#f8fcff] p-5 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="text-[11px] font-black tracking-[0.16em] text-[#006689]">可执行岗位计划</div>
+          <h2 className="mt-1 text-xl font-black text-[#172033]">{profile.role}岗位能力提升路径</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[#5b6574]">{profile.overview}</p>
+        </div>
+        <span className="text-xs font-semibold text-[#006689]">共 {profile.stages.length} 个阶段 · 每阶段均含真实任务与产出</span>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        {profile.stages.map((stage, index) => (
+          <article key={stage.title} className="border-t-4 border-[#00a6c8] bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between text-[10px] font-black text-[#006689]">
+              <span>阶段 {index + 1}</span><span>{stage.duration}</span>
+            </div>
+            <h3 className="mt-2 font-black text-[#172033]">{stage.title}</h3>
+            <div className="mt-2 text-xs text-[#006689]">能力维度：{stage.ability}</div>
+            <p className="mt-2 text-xs leading-5 text-[#5b6574]">任务：{stage.task}</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-[#172033]">阶段产出：{stage.deliverable}</p>
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => onStartStage(index)} className="flex-1 border border-[#006689] bg-[#006689] px-3 py-2 text-xs font-black text-white hover:bg-[#00536f]">进入任务</button>
+              <button type="button" onClick={() => onOpenResources(index)} className="flex-1 border border-[#9ecfdf] bg-white px-3 py-2 text-xs font-black text-[#006689] hover:bg-[#eaf8ff]">查看资源</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function LearningPath() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const routeCourseId = searchParams.get("courseId") || "series-2";
+  const alternateTrack = routeCourseId !== "series-2";
   const numericCourseId = resolveBackendCourseId(routeCourseId);
   const activeUserId = getCurrentLoggedInUserId();
+  const routeRole = searchParams.get("role") || searchParams.get("job") || searchParams.get("position") || "";
+  const roleProfile = getJobLearningProfile(routeRole);
   const course = COURSES.find((item) => item.id === routeCourseId) || COURSES[1] || COURSES[0];
   const defaultCourseGoal = `${course.title}：先完成当前课程的核心知识梳理，并输出一份可复用的学习总结`;
   const currentPageLabel = PATH_PAGE_LABELS[routeCourseId]?.title || `${course.title} 个性化学习方案`;
+
+  useEffect(() => {
+    persistLastRouteCourseId(routeCourseId);
+  }, [routeCourseId]);
 
   const [plan, setPlan] = useState<LearningPlanResponse | null>(null);
   const [progress, setProgress] = useState<PlanProgressResponse | null>(null);
@@ -1828,6 +1879,13 @@ export default function LearningPath() {
   }, [activeUserId]);
 
   const loadPersonalizedSidebar = async () => {
+    if (alternateTrack) {
+      setGoalPath(null);
+      setReviewPlan(null);
+      setLevelRecommendation(null);
+      setPersonalizedReady(true);
+      return;
+    }
     setPersonalizedReady(false);
     const [latestGoalPath, latestReviewPlan, latestLevelRecommendation] = await Promise.all([
       studentApi.getGoalPath(numericCourseId).catch(() => null),
@@ -1870,24 +1928,29 @@ export default function LearningPath() {
 
     try {
       let latestPlan: LearningPlanResponse | null = null;
-      if (!resolvedGoalPath) {
+      if (alternateTrack) {
+        resolvedGoalPath = null;
+        resolvedLevelRecommendation = null;
+      } else if (!resolvedGoalPath) {
         resolvedGoalPath = await studentApi.getGoalPath(numericCourseId).catch(() => null);
         if (resolvedGoalPath) {
           setGoalPath(resolvedGoalPath);
         }
       }
 
-      if (!resolvedLevelRecommendation) {
+      if (!alternateTrack && !resolvedLevelRecommendation) {
         resolvedLevelRecommendation = await studentApi.getLevelRecommendation(numericCourseId).catch(() => null);
         if (resolvedLevelRecommendation) {
           setLevelRecommendation(resolvedLevelRecommendation);
         }
       }
 
-      try {
-        latestPlan = await studentApi.getLatestLearningPlan(activeUserId, numericCourseId);
-      } catch {
-        latestPlan = null;
+      if (!alternateTrack) {
+        try {
+          latestPlan = await studentApi.getLatestLearningPlan(activeUserId, numericCourseId);
+        } catch {
+          latestPlan = null;
+        }
       }
 
       if (latestPlan && (shouldRegeneratePlan(latestPlan, routeCourseId) || isFallbackLikePlan(latestPlan, routeCourseId))) {
@@ -1974,7 +2037,7 @@ export default function LearningPath() {
   useEffect(() => {
     void loadPlanState();
     void loadPersonalizedSidebar();
-  }, [activeUserId, numericCourseId]);
+  }, [activeUserId, numericCourseId, alternateTrack]);
 
   useEffect(() => {
     if (!personalizedReady) return;
@@ -2116,8 +2179,65 @@ export default function LearningPath() {
     }
   };
 
+  const activeJobStep =
+    plan?.steps?.find((step) => step.status === "current") ||
+    plan?.steps?.find((step) => step.status !== "completed") ||
+    plan?.steps?.[0];
+  const buildExperienceRoute = (pathname: "/resources" | "/tutor" | "/evaluation") => {
+    const search = buildJobLearningSearch({
+      courseId: course.id,
+      role: searchParams.get("role") || searchParams.get("job") || searchParams.get("position") || undefined,
+      goal: learningGoal?.goal,
+      ability: activeJobStep?.weak_point_focus?.[0] || activeJobStep?.knowledge_points?.[0],
+      planId: plan?.plan_id,
+      stageId: activeJobStep?.stage_id || activeJobStep?.stage_no,
+      stepId: activeJobStep?.step_id,
+      task: activeJobStep?.tasks?.[0] || activeJobStep?.title,
+      deliverable: activeJobStep?.expected_outcome || activeJobStep?.checkpoint,
+      returnTo: `/path?courseId=${course.id}`,
+    });
+    return `${pathname}?${search}`;
+  };
+
   return (
     <div className="path-product space-y-6 select-none" id="learning-path-workspace">
+      <JobLearningContextBar
+        kind="path"
+        fallbackAbility={plan?.steps?.find((step) => step.weak_point_focus?.length)?.weak_point_focus?.[0]}
+        fallbackTask={heroNextActionTitle}
+        aiGenerated={!usingFallback && Boolean(plan)}
+      />
+      <RolePathPlan
+        role={roleProfile.role}
+        onStartStage={(stageIndex) => {
+          const stage = roleProfile.stages[stageIndex];
+          const search = buildJobLearningSearch({
+            courseId: course.id,
+            role: roleProfile.role,
+            goal: roleProfile.overview,
+            ability: stage.ability,
+            stageId: String(stageIndex + 1),
+            task: stage.task,
+            deliverable: stage.deliverable,
+            returnTo: `/path?courseId=${course.id}&role=${encodeURIComponent(roleProfile.role)}`,
+          });
+          navigate(`/learn?${search}`);
+        }}
+        onOpenResources={(stageIndex) => {
+          const stage = roleProfile.stages[stageIndex];
+          const search = buildJobLearningSearch({
+            courseId: course.id,
+            role: roleProfile.role,
+            goal: roleProfile.overview,
+            ability: stage.ability,
+            stageId: String(stageIndex + 1),
+            task: stage.task,
+            deliverable: stage.deliverable,
+            returnTo: `/path?courseId=${course.id}&role=${encodeURIComponent(roleProfile.role)}`,
+          });
+          navigate(`/resources?${search}`);
+        }}
+      />
       <div className="path-topbar flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <button
           onClick={() => navigate(-1)}
@@ -2137,7 +2257,7 @@ export default function LearningPath() {
           <div className="max-w-3xl space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="path-label">
-                学习路径
+                岗位能力提升路径
               </span>
               <span
                 className={`path-status-pill ${
@@ -2172,11 +2292,26 @@ export default function LearningPath() {
 
           <div className="flex w-full shrink-0 flex-col gap-3 lg:w-80">
             <button
-              onClick={() => navigate(`/learn?courseId=${course.id}`)}
+              onClick={() => {
+                const activeStep = plan?.steps?.find((step) => step.status === "current") || plan?.steps?.find((step) => step.status !== "completed") || plan?.steps?.[0];
+                const search = buildJobLearningSearch({
+                  courseId: course.id,
+                  role: searchParams.get("role") || searchParams.get("job") || searchParams.get("position") || undefined,
+                  goal: learningGoal?.goal,
+                  ability: activeStep?.weak_point_focus?.[0] || activeStep?.knowledge_points?.[0],
+                  planId: plan?.plan_id,
+                  stageId: activeStep?.stage_id || activeStep?.stage_no,
+                  stepId: activeStep?.step_id,
+                  task: activeStep?.tasks?.[0] || activeStep?.title,
+                  deliverable: activeStep?.expected_outcome || activeStep?.checkpoint,
+                  returnTo: `/path?courseId=${course.id}`,
+                });
+                navigate(`/learn?${search}`);
+              }}
               className="path-primary-action inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#fb7299] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#eb5f90]"
             >
               <PlayCircle className="h-5 w-5" />
-              继续学习
+              开始岗位实训
             </button>
             <button
               onClick={() => void loadPlanState({ silent: true })}
@@ -2363,7 +2498,7 @@ export default function LearningPath() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => navigate(`/resources?courseId=${course.id}`)}
+                      onClick={() => navigate(buildExperienceRoute("/resources"))}
                       className="inline-flex items-center gap-1 rounded-full bg-[#fb7299] px-4 py-2 text-xs font-black text-white shadow-[0_10px_24px_rgba(251,114,153,0.18)]"
                     >
                       去看配套资料
@@ -2371,10 +2506,10 @@ export default function LearningPath() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate(`/tutor?courseId=${course.id}&query=${encodeURIComponent(`结合我当前的学习路径，先帮我讲清楚：${pathDecisionInsight.learnNext}`)}`)}
+                      onClick={() => navigate(`${buildExperienceRoute("/tutor")}&query=${encodeURIComponent(`结合我当前的岗位能力提升路径，先帮我讲清楚：${pathDecisionInsight.learnNext}`)}`)}
                       className="inline-flex items-center gap-1 rounded-full border border-[#f3d5de] bg-white px-4 py-2 text-xs font-black text-[#8a5666]"
                     >
-                      去问 AI 导师
+                    去问岗位实训导师
                       <Bot className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -2776,7 +2911,7 @@ export default function LearningPath() {
                           </div>
 
                           <button
-                            onClick={() => navigate(`/resources?courseId=${course.id}`)}
+                            onClick={() => navigate(buildExperienceRoute("/resources"))}
                             className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-[#006689] hover:underline"
                           >
                             配套资源
@@ -2809,7 +2944,7 @@ export default function LearningPath() {
             </div>
             <div className="mt-4 grid gap-3">
               <button
-                onClick={() => navigate(`/evaluation?courseId=${course.id}`)}
+                onClick={() => navigate(buildExperienceRoute("/evaluation"))}
                 className="inline-flex items-center justify-between rounded-2xl border border-[#E3E8EC] bg-[#fafbfd] px-4 py-3 text-left text-xs font-bold text-[#171c22]"
               >
                 去测评页看报告联动
@@ -2827,7 +2962,7 @@ export default function LearningPath() {
                 <Bot className="h-4 w-4 text-[#8a94a3]" />
               </button>
               <button
-                onClick={() => navigate(`/resources?courseId=${course.id}`)}
+                onClick={() => navigate(buildExperienceRoute("/resources"))}
                 className="inline-flex items-center justify-between rounded-2xl border border-[#E3E8EC] bg-[#fafbfd] px-4 py-3 text-left text-xs font-bold text-[#171c22]"
               >
                 去资源中心看推荐资料
