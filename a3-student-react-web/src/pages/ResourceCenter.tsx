@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -55,6 +55,8 @@ import { openTutorPanel } from "../lib/tutorPanel";
 import { getGeneratedResourceIcon, getGeneratedResourceUiMeta } from "../lib/generatedResourceUi";
 import AILoadingLottie from "../components/AILoadingLottie";
 import { beginUiProgress, finishUiProgress, setUiProgress } from "../lib/uiProgress";
+import JobLearningContextBar from "../components/job-learning/JobLearningContextBar";
+import { getJobLearningProfile } from "../lib/jobLearningCatalog";
 
 type ResourceTab = "all" | "handouts" | "notes" | "videos";
 
@@ -276,7 +278,7 @@ function buildGeneratedResourcePreviewState(
           item.kind === "mindmap"
             ? "建议先看导图主干，再按分支顺序回到课堂或讲义补细节。"
             : item.kind === "practice"
-              ? "建议先做题，再结合解析与 AI 导师定位薄弱点。"
+    ? "建议先做题，再结合解析与岗位实训导师定位薄弱点。"
               : "建议先通读讲义主线，再继续追问关键概念和易错点。",
         source_file_count: 0,
         source_files: [],
@@ -607,7 +609,7 @@ function buildGeneratedIllustrationPreview(courseId: string, title: string, sour
       <rect x="720" y="540" width="236" height="16" rx="8" fill="${palette.line}" opacity="0.22"/>
       <rect x="1002" y="506" width="182" height="16" rx="8" fill="${palette.soft}"/>
       <rect x="1002" y="540" width="182" height="16" rx="8" fill="${palette.line}" opacity="0.22"/>
-      <text x="156" y="596" font-size="18" font-family="Arial, sans-serif" fill="#475467">推荐用途：讲义配图、课堂讲解、答辩结构说明、AI 导师流程解释</text>
+      <text x="156" y="596" font-size="18" font-family="Arial, sans-serif" fill="#475467">推荐用途：讲义配图、课堂讲解、答辩结构说明、岗位实训导师流程解释</text>
       <rect x="124" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
       <rect x="336" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
       <rect x="548" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
@@ -618,7 +620,7 @@ function buildGeneratedIllustrationPreview(courseId: string, title: string, sour
       <rect x="356" y="734" width="110" height="10" rx="5" fill="${palette.line}" opacity="0.55"/>
       <rect x="568" y="734" width="110" height="10" rx="5" fill="${palette.line}" opacity="0.55"/>
       <rect x="760" y="684" width="484" height="86" rx="22" fill="#f8fafc"/>
-      <text x="786" y="718" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="${palette.accent}">插图投放位：讲义页 / PPT 页 / AI 导师页</text>
+      <text x="786" y="718" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="${palette.accent}">插图投放位：讲义页 / PPT 页 / 岗位实训导师页</text>
       <text x="786" y="748" font-size="15" font-family="Arial, sans-serif" fill="#667085">同一张图会裁成不同版式，保证课堂、资源页和答辩展示观感统一。</text>
     </svg>
   `);
@@ -750,10 +752,10 @@ function buildAiPptDraft(topicInput: string, sourceText: string, courseTitle: st
       subtitle: "把 PPT 继续转成学习资源闭环",
       bullets: ["导出 .pptx 后可用于课堂讲解和答辩展示", "在线幻灯片保留每页讲稿与配图提示词", "后端可替换为阿里通义千问 + 通义万相正式生成链路"],
       accent,
-      speakerNote: "收束到系统价值：不是单页生成，而是能进入资源中心、课堂和 AI 导师的完整闭环。",
+      speakerNote: "收束到系统价值：不是单页生成，而是能进入资源中心、课堂和岗位实训导师的完整闭环。",
       illustration: {
         title: "从课件到学习闭环",
-        caption: "PPT、讲义、练习、AI 导师统一承接",
+        caption: "PPT、讲义、练习、岗位实训导师统一承接",
         type: "summary" as const,
       },
     },
@@ -1131,7 +1133,7 @@ function buildFallbackExtendedReadingMarkdown(courseId: string) {
     "## 6. 场景案例",
     isVueCourse
       ? "以资源中心页面为例：资料列表、文件预览、AI 补齐、收藏状态和学习建议都不是孤立按钮。它们共同构成一个学习资料工作流，因此需要统一资源模型、统一跳转参数、统一预览页，而不是每个入口各写一套页面。"
-      : "以课程资源页为例：同一份知识可以出现在讲义、练习、导图、板书和 AI 导师对话里。系统需要保证这些入口指向同一学习目标，否则学生会看到很多碎片，却无法形成主线。",
+      : "以课程资源页为例：同一份知识可以出现在讲义、练习、导图、板书和岗位实训导师对话里。系统需要保证这些入口指向同一学习目标，否则学生会看到很多碎片，却无法形成主线。",
     "",
     "## 7. 对比理解",
     "| 做法 | 短期效果 | 长期风险 | 推荐处理 |",
@@ -1395,6 +1397,37 @@ function buildLocalFallbackResources(courseId: string): UiResourceGroup[] {
   ];
 }
 
+function buildRoleLearningResources(courseId: string, role: string): UiResourceGroup[] {
+  const profile = getJobLearningProfile(role);
+  return profile.stages.flatMap((stage, stageIndex) =>
+    stage.resources.map((resource, resourceIndex) => ({
+      resourceId: `role-${profile.role}-${stageIndex}-${resourceIndex}`,
+      courseId,
+      title: resource.title,
+      category: resource.format === "官方学习路径" ? "handouts" : "notes",
+      uploader: resource.source,
+      updatedAt: "已核验来源",
+      downloads: 0,
+      summary: `${resource.summary} 本阶段任务：${stage.task}`,
+      resourceTypes: [resource.format === "实践项目" ? "coding_lab" : "extended_reading"],
+      files: [
+        {
+          fileId: `role-${stageIndex}-${resourceIndex}-source`,
+          name: `${resource.source} · ${resource.title}`,
+          type: "text" as const,
+          format: resource.format,
+          size: "外部可核验来源",
+          uploadedDate: "已核验",
+          excerpt: `适用能力：${resource.ability}。${resource.summary}`,
+          previewUrl: resource.url,
+          openUrl: resource.url,
+          studyAdvice: `完成“${stage.task}”，并提交：${stage.deliverable}`,
+        },
+      ],
+    })),
+  );
+}
+
 function buildLocalFallbackFavoriteIds(resources: UiResourceGroup[]) {
   return new Set(resources.slice(0, 1).map((item) => item.resourceId));
 }
@@ -1526,14 +1559,75 @@ function doesResourceMatchSearch(group: UiResourceGroup, query: string, courseDe
   return tokens.every((token) => searchableText.includes(token));
 }
 
+function RoleResourceShelf({
+  role,
+  onReturnToTask,
+  onOpenStage,
+}: {
+  role: string;
+  onReturnToTask: () => void;
+  onOpenStage: (stageIndex: number) => void;
+}) {
+  const profile = getJobLearningProfile(role);
+  return (
+    <section aria-label="岗位官方资源" className="rounded-3xl border border-[#dbe7f0] bg-[#f8fbff] p-5 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="text-[11px] font-black tracking-[0.16em] text-[#006689]">已核验的岗位资源</div>
+          <h2 className="mt-1 text-xl font-black text-[#171c22]">{profile.role}学习方案</h2>
+          <p className="mt-1 text-sm leading-6 text-[#5b6574]">{profile.overview}</p>
+        </div>
+        <button type="button" onClick={onReturnToTask} className="rounded-xl border border-[#006689] bg-white px-4 py-2 text-xs font-black text-[#006689] hover:bg-[#eaf8ff]">返回当前任务</button>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        {profile.stages.map((stage, stageIndex) => (
+          <article key={stage.title} className="border-l-4 border-[#00a6c8] bg-white p-4 shadow-sm">
+            <div className="text-[10px] font-black text-[#006689]">{stage.duration} · {stage.ability}</div>
+            <h3 className="mt-2 font-black text-[#172033]">{stage.title}</h3>
+            <p className="mt-2 text-xs leading-5 text-[#5b6574]">任务：{stage.task}</p>
+            <p className="mt-1 text-xs font-semibold text-[#172033]">交付：{stage.deliverable}</p>
+            <div className="mt-3 space-y-2">
+              {stage.resources.map((resource) => {
+                const bilibiliVideoId = resource.videoUrl?.match(/bvid=([^&]+)/)?.[1];
+                const sourceUrl = bilibiliVideoId ? `https://www.bilibili.com/video/${bilibiliVideoId}` : resource.url;
+                return (
+                <div key={resource.url} className="border border-[#dbe7f0] bg-[#f8fbff] p-3 text-xs">
+                  <div className="font-black text-[#006689]">{resource.title}</div>
+                  <div className="mt-1 text-[#667085]">来源：{resource.source} · 适用：{resource.ability}</div>
+                  <p className="mt-2 leading-5 text-[#667085]">{resource.summary}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => onOpenStage(stageIndex)} className="border border-[#006689] bg-[#006689] px-2.5 py-1.5 font-black text-white hover:bg-[#00566f]">课堂播放</button>
+                    <a href={sourceUrl} target="_blank" rel="noreferrer" className="border border-[#006689] bg-white px-2.5 py-1.5 font-black text-[#006689] hover:bg-[#eaf8ff]">打开来源</a>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+            <button type="button" onClick={() => onOpenStage(stageIndex)} className="mt-3 text-xs font-black text-[#006689] hover:underline">返回该阶段任务</button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function ResourceCenter() {
   const activeUserId = getCurrentLoggedInUserId();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const routeCourseId = searchParams.get("courseId") || "";
-  const courseId = DEFAULT_ROUTE_COURSE_ID;
+  const courseId = routeCourseId.trim() || DEFAULT_ROUTE_COURSE_ID;
   const focusedResourceId = searchParams.get("resourceId");
   const searchParamText = searchParams.get("search") || "";
+  const routeRole = searchParams.get("role") || searchParams.get("job") || searchParams.get("position") || "";
+  const roleProfile = getJobLearningProfile(routeRole);
+  const routeAbility = searchParams.get("ability") || "综合岗位能力";
+  const preserveJobLearningContext = (target: URLSearchParams) => {
+    ["role", "job", "position", "goal", "ability", "assessmentId", "planId", "stageId", "stepId", "task", "deliverable", "returnTo"].forEach((key) => {
+      const value = searchParams.get(key);
+      if (value) target.set(key, value);
+    });
+  };
 
   const [activeTab, setActiveTab] = useState<ResourceTab>("all");
   const [searchQuery, setSearchQuery] = useState(searchParamText);
@@ -1575,15 +1669,6 @@ export default function ResourceCenter() {
   useEffect(() => {
     persistLastRouteCourseId(courseId);
   }, [courseId]);
-
-  useEffect(() => {
-    if (routeCourseId === DEFAULT_ROUTE_COURSE_ID) {
-      return;
-    }
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("courseId", DEFAULT_ROUTE_COURSE_ID);
-    navigate(`/resources?${nextParams.toString()}`, { replace: true });
-  }, [navigate, routeCourseId, searchParams]);
 
   useEffect(() => {
     const fallbackResources = buildLocalFallbackResources(courseId);
@@ -1637,6 +1722,14 @@ export default function ResourceCenter() {
     async function hydrateResourceCenter() {
       setLoadError(null);
       setRefreshing(false);
+      // The shared demo API can return the software-engineering catalog for
+      // unknown course codes. Keep alternate job tracks on their own local
+      // course catalog instead of replacing them with unrelated results.
+      if (courseId !== "series-2") {
+        setHasLoadedOnce(true);
+        setIsLoading(false);
+        return;
+      }
       const resourceTask = studentApi.listResourcesByCourseCode(activeUserId, backendCourseCode);
       const favoriteTask = studentApi.listFavoriteResources(activeUserId, 3000);
       const summaryTask = studentApi.getFavoriteSummary(activeUserId, 3000);
@@ -1887,6 +1980,7 @@ export default function ResourceCenter() {
     if (Number.isFinite(numericResourceId) && numericResourceId > 0) {
       nextParams.set("resourceId", String(numericResourceId));
     }
+    preserveJobLearningContext(nextParams);
     appendGenerationParams(nextParams);
     const targetUrl = `/resources/preview?${nextParams.toString()}`;
     if (previewGenerationIntent?.stage === "running") {
@@ -1940,6 +2034,7 @@ export default function ResourceCenter() {
     if (routeResourceId) {
       nextParams.set("resourceId", routeResourceId);
     }
+    preserveJobLearningContext(nextParams);
     navigate(`/resources/preview?${nextParams.toString()}`, {
       state: {
         initialResource: previewResource,
@@ -2151,7 +2246,7 @@ export default function ResourceCenter() {
       courseId: resource.courseId,
       mode: "default",
       title: `${resource.title} · 资料精读`,
-      subtitle: "AI 导师会结合当前资源页上下文继续讲解、提炼重点和安排下一步。",
+      subtitle: "岗位实训导师会结合当前资源页上下文继续讲解、提炼重点和安排下一步。",
       resourceId: Number(resource.resourceId) || undefined,
       resourceTitle: resource.title,
       resourceType: resource.rawResource?.resource_type || resource.resourceTypes[0],
@@ -2166,7 +2261,7 @@ export default function ResourceCenter() {
       courseId: bundle.courseId,
       mode: "default",
       title: `${bundle.title} · 课程资料工作台`,
-      subtitle: "AI 导师会结合当前课程已有资料和缺口，继续讲解、补充和安排下一步。",
+      subtitle: "岗位实训导师会结合当前课程已有资料和缺口，继续讲解、补充和安排下一步。",
       resourceId: Number(bundle.primaryResource.resourceId) || undefined,
       resourceTitle: bundle.title,
       resourceType: bundle.primaryResource.rawResource?.resource_type || bundle.resourceTypes[0],
@@ -2216,7 +2311,7 @@ export default function ResourceCenter() {
       query: `请按照这份 PPT 讲解视频脚本继续讲解，并优先按分镜顺序展开：\n\n${item.explanationVideo.transcript}`,
       quickPrompts: ["按分镜讲一遍", "压缩成 1 分钟", "生成答辩口播稿"],
     });
-    setToastMessage("AI 导师已接入 PPT 讲解视频脚本。");
+    setToastMessage("岗位实训导师已接入 PPT 讲解视频脚本。");
   };
 
   const handleAiPptFileUpload = async (file?: File | null) => {
@@ -2324,12 +2419,49 @@ export default function ResourceCenter() {
 
   return (
     <div ref={workspaceRef} className="space-y-3 select-none" id="resource-center-workspace">
+      <JobLearningContextBar
+        kind="resources"
+        fallbackAbility={recommendedFocusLabel}
+        fallbackTask={nextResourceAction}
+        aiGenerated={resourceGroups.some((group) => Boolean(group.rawResource?.generated_at || group.rawResource?.generation_context))}
+        sourceCount={resourceGroups.reduce((count, group) => count + (group.rawResource?.source_titles?.length || 0), 0)}
+        compact
+      />
+      <RoleResourceShelf
+        role={roleProfile.role}
+        onReturnToTask={() => {
+          const returnTo = searchParams.get("returnTo");
+          if (returnTo) {
+            navigate(returnTo);
+            return;
+          }
+          const params = new URLSearchParams({
+            courseId,
+            role: roleProfile.role,
+            task: searchParams.get("task") || roleProfile.stages[0].task,
+            deliverable: searchParams.get("deliverable") || roleProfile.stages[0].deliverable,
+          });
+          navigate(`/learn?${params.toString()}`);
+        }}
+        onOpenStage={(stageIndex) => {
+          const stage = roleProfile.stages[stageIndex];
+          const params = new URLSearchParams();
+          params.set("courseId", courseId);
+          params.set("role", roleProfile.role);
+          params.set("stageId", String(stageIndex + 1));
+          params.set("ability", stage.ability);
+          params.set("task", stage.task);
+          params.set("deliverable", stage.deliverable);
+          params.set("returnTo", `/resources?${searchParams.toString()}`);
+          navigate(`/learn?${params.toString()}`);
+        }}
+      />
       <section className="overflow-hidden rounded-[24px] border border-[#dce6f4] bg-[linear-gradient(135deg,#ffffff_0%,#f7fbff_48%,#fff4f8_100%)] p-3 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[10px] font-black text-[#006689] shadow-sm">
               <BookOpen className="h-3.5 w-3.5" />
-              课程资源工作台
+              岗位学习资源
             </div>
             <h1 className="mt-2 text-[23px] font-black tracking-[-0.05em] text-[#111827] md:text-[28px]">
               {currentCourseTitle}资源包
@@ -2347,6 +2479,10 @@ export default function ResourceCenter() {
               <span className="rounded-full bg-[#fff4f8] px-3 py-1 text-[11px] font-bold text-[#d64d7b] shadow-sm">
                 资料页内按需补充
               </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-semibold text-[#667085]" aria-label="资源标识说明">
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />来源：课程、实训或知识库依据，可打开预览核验</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c25179]" />AI 生成内容：由智能体生成，使用前请结合来源复核</span>
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-3">
               {[
@@ -2960,7 +3096,7 @@ export default function ResourceCenter() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-[#006689] ring-1 ring-[#dce8f3]">
-                        课程资源包
+                        岗位资源包
                       </span>
                       <span className="hidden text-[10px] font-semibold text-[#8b95a7] sm:inline">
                         {bundle.updatedAt}
@@ -2970,6 +3106,17 @@ export default function ResourceCenter() {
                           当前查看
                         </span>
                       ) : null}
+                      <span className="rounded-full bg-[#eaf8ff] px-2 py-1 text-[9px] font-extrabold text-[#006689]">
+                        适用能力：{routeAbility}
+                      </span>
+                      {bundle.primaryResource.rawResource?.generated_at || bundle.primaryResource.rawResource?.generation_context ? (
+                        <span className="rounded-full bg-[#fff0f6] px-2 py-1 text-[9px] font-extrabold text-[#c25179]">AI 生成内容</span>
+                      ) : null}
+                      <span className={`rounded-full px-2 py-1 text-[9px] font-extrabold ${bundle.primaryResource.rawResource?.source_titles?.length ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                        {bundle.primaryResource.rawResource?.source_titles?.length
+                          ? `来源 ${bundle.primaryResource.rawResource.source_titles.length} 项`
+                          : "来源待补充"}
+                      </span>
                     </div>
 
                     <h3 className="font-sans text-[18px] font-black leading-snug tracking-[-0.03em] text-[#171c22] transition-colors group-hover:text-[#111827]">
@@ -2997,7 +3144,7 @@ export default function ResourceCenter() {
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#d7e3ef] bg-white px-3.5 py-2 text-[11px] font-black text-[#006689] transition hover:bg-[#f8fbff]"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      问 AI 导师
+                    问岗位实训导师
                     </button>
                     <button
                       type="button"
@@ -3211,4 +3358,3 @@ export default function ResourceCenter() {
     </div>
   );
 }
-
