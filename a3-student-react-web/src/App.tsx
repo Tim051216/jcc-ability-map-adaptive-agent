@@ -30,6 +30,7 @@ const routeImporters = {
   welcome: () => import("./components/WelcomeScreen"),
   jobLearning: () => import("./pages/JobLearning"),
   jobLearningOutcomes: () => import("./pages/JobLearningOutcomes"),
+  legacyOverview: () => import("./pages/Overview"),
 };
 
 const Header = lazy(routeImporters.header);
@@ -76,7 +77,7 @@ function preloadRoute(path: string) {
   if (preloadedRouteKeys.has(normalizedPath)) return;
   const importer =
     normalizedPath === "/"
-        ? routeImporters.overview
+        ? routeImporters.jobLearning
       : normalizedPath === "/search"
         ? routeImporters.search
       : normalizedPath === "/path"
@@ -127,7 +128,7 @@ function scheduleRouteWarmup() {
     if (shouldSkipWarmup()) return;
     const currentPath = window.location.pathname;
     const importers = [
-      routeImporters.overview,
+      routeImporters.jobLearning,
       routeImporters.path,
       routeImporters.resources,
       routeImporters.evaluation,
@@ -536,7 +537,7 @@ function MainLayout({
         : `mx-auto w-full max-w-[1480px] px-4 py-6 pb-24 transition-[padding] duration-300 md:px-8 md:py-8 md:pb-8 lg:px-10 xl:px-12 ${desktopTutorWidthClass}`;
 
   const navItems = [
-    { label: "概览", id: "overview", path: "/", icon: Layers },
+    { label: "概览", id: "overview", path: "/overview", icon: Layers },
     { label: "路径", id: "path", path: "/path", icon: Compass },
     { label: "课堂", id: "learn", path: "/learn", icon: Tv },
     { label: "资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
@@ -1499,6 +1500,14 @@ export default function App() {
 
               <Route
                 path="/"
+                element={
+                  <ProtectedRoute>
+                    <JobLearning />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/overview"
                 element={
                   <ProtectedRoute>
                     <Overview user={user} />
