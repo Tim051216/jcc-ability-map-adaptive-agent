@@ -11,6 +11,7 @@
 - [x] `/trial-feedback` 支持保存试用任务、优点、问题、改进建议和身份说明。
 - [x] 目录接口、岗位学习接口和权限隔离测试通过。
 - [x] 前端 `npm run lint`、`npm run build` 通过。
+- [x] 后端功能 PR #2 已合并到唯一主仓库 `main`，GitHub Actions 的 Java、Python、前端、Harness 和镜像构建检查通过。
 - [x] 星辰 Agent、插件、知识库和真实命中记录已在 `a3-ai-python/xfyun_agent/README.md` 留档。
 
 ## 比赛提交前必须由团队补齐
