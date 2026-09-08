@@ -8,6 +8,7 @@ def test_catalog_exposes_all_entries_as_actionable_tasks() -> None:
     assert [item.id for item in response.items] == [f"K{index:03d}" for index in range(1, 51)]
     assert all(item.task_prompt for item in response.items)
     assert all(item.skill_point for item in response.items)
+    assert all("可审查" in item.skill_point for item in response.items)
     assert len({item.id for item in response.items}) == response.total
     assert all(item.deliverable for item in response.items)
     assert all(item.acceptance_criteria for item in response.items)
