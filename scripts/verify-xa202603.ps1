@@ -20,6 +20,17 @@ $submitDirs = 1..6 | ForEach-Object { Join-Path $repo ("deliverables\{0:D2}-{1}"
 $missingDirs = @($submitDirs | Where-Object { -not (Test-Path $_) })
 $sourcePackage = Join-Path $repo "deliverables\04-作品源码"
 $sensitive = @(Get-ChildItem -Path $sourcePackage -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\.env($|\.)|\.log$|\.sqlite$' })
+$legacySlides = @()
+foreach ($ppt in (Get-ChildItem -Path (Join-Path $repo "deliverables\03-作品说明") -Filter *.pptx -File -ErrorAction SilentlyContinue)) {
+  $zip = [IO.Compression.ZipFile]::OpenRead($ppt.FullName)
+  try {
+    foreach ($entry in $zip.Entries | Where-Object { $_.FullName -match '^ppt/slides/slide\d+\.xml$' }) {
+      $reader = New-Object IO.StreamReader($entry.Open())
+      try { $slideText = $reader.ReadToEnd() } finally { $reader.Dispose() }
+      if ($slideText -match '中国软件杯|A3-') { $legacySlides += $ppt.Name; break }
+    }
+  } finally { $zip.Dispose() }
+}
 
 Write-Host "XA-202603 offline audit"
 Write-Host "catalog_entries=$($ids.Count) skill_points=$skillCount sources=$($sourceLines.Count)"
@@ -31,4 +42,5 @@ if (@($dimensions | Where-Object { $_ -notin $required }).Count -gt 0 -or @($req
 if ($missing.Count -gt 0) { throw "存在不存在的来源文件：$($missing -join ', ')" }
 if ($missingDirs.Count -gt 0) { throw "提交目录缺失：$($missingDirs -join ', ')" }
 if ($sensitive.Count -gt 0) { throw "发现疑似运行时/敏感文件，请勿放入提交包：$($sensitive.FullName -join ', ')" }
+if ($legacySlides.Count -gt 0) { throw "03-作品说明中 PPT 仍含旧 A3 口径：$($legacySlides -join ', ')" }
 Write-Host "PASS: catalog, sources, dimensions, submission directories, and sensitive-file checks"
