@@ -16,3 +16,6 @@ class PersonalizedLearningState(Base, TimestampMixin):
     total_watched_seconds: Mapped[int] = mapped_column(default=0)
     completed_sections: Mapped[list[int]] = mapped_column(JSON, default=list)
     last_event_type: Mapped[str] = mapped_column(String(32), default="init")
+    student_goal: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    goal_scene: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    job_name: Mapped[str | None] = mapped_column(String(100), nullable=True)

@@ -1,16 +1,21 @@
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-import time
 from urllib.parse import urlparse
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
+import app.db.models  # noqa: F401
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.base import Base
-import app.db.models  # noqa: F401
 
 
 def _build_engine(dsn: str) -> AsyncEngine:
@@ -69,6 +74,24 @@ async def _ensure_sqlite_chat_session_columns() -> None:
             await connection.execute(text("ALTER TABLE chat_session ADD COLUMN peer_name VARCHAR(255)"))
 
 
+async def _ensure_sqlite_job_learning_columns() -> None:
+    async with sqlite_engine.begin() as connection:
+        table_info = await connection.execute(text("PRAGMA table_info(personalized_learning_state)"))
+        columns = {str(row[1]) for row in table_info.fetchall()}
+        if "student_goal" not in columns:
+            await connection.execute(
+                text("ALTER TABLE personalized_learning_state ADD COLUMN student_goal VARCHAR(200)")
+            )
+        if "goal_scene" not in columns:
+            await connection.execute(
+                text("ALTER TABLE personalized_learning_state ADD COLUMN goal_scene VARCHAR(32)")
+            )
+        if "job_name" not in columns:
+            await connection.execute(
+                text("ALTER TABLE personalized_learning_state ADD COLUMN job_name VARCHAR(100)")
+            )
+
+
 async def _probe_engine(engine: AsyncEngine, dsn: str, backend: str) -> bool:
     now = time.monotonic()
     cached = _probe_cache.get(backend)
@@ -103,6 +126,7 @@ async def ensure_sqlite_schema() -> None:
     async with sqlite_engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     await _ensure_sqlite_chat_session_columns()
+    await _ensure_sqlite_job_learning_columns()
     _sqlite_schema_ready = True
     logger.warning("db.session.sqlite_schema_ready", dsn=sqlite_dsn)
 

@@ -1,13 +1,55 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1 import student_portal
+from app.schemas.evaluation import EvaluationHistoryItem, EvaluationTrendResponse
 from app.services.student_portal_service import StudentPortalService
-
 
 app = FastAPI()
 app.include_router(student_portal.router, prefix="/api/v1/student-portal")
 client = TestClient(app)
+
+
+def _coaching_record_payload(**overrides):
+    payload = {
+        "id": 1,
+        "user_id": 1001,
+        "course_id": 401,
+        "source": "xfyun_workflow",
+        "user_question": "如何提升系统设计能力？",
+        "advice_summary": "先完成模块划分练习，再进行接口设计复盘。",
+        "recommended_actions": ["完成模块划分练习", "复盘接口设计"],
+        "status": "planned",
+        "helpful": None,
+        "rating": None,
+        "feedback_note": None,
+        "created_at": "2026-08-05T16:20:00+08:00",
+        "updated_at": "2026-08-05T16:20:00+08:00",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _trial_feedback_payload(**overrides):
+    payload = {
+        "id": 1,
+        "user_id": 1001,
+        "course_id": 401,
+        "participant_role": "student",
+        "identity_description": "软件技术专业二年级学生",
+        "trial_task": "完成岗位诊断并执行一条学习建议",
+        "strengths": "步骤清晰，能看到薄弱项。",
+        "problems": "首次进入时不清楚从哪里开始。",
+        "improvement_suggestions": "突出显示开始诊断按钮。",
+        "overall_rating": 4,
+        "consent_to_quote": True,
+        "created_at": "2026-08-08T16:00:00+08:00",
+        "updated_at": "2026-08-08T16:00:00+08:00",
+    }
+    payload.update(overrides)
+    return payload
 
 
 def test_get_student_dashboard_returns_payload(monkeypatch) -> None:
@@ -76,3 +118,471 @@ def test_get_study_report_returns_payload(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["best_day"] == "周六"
+
+
+def test_get_job_learning_overview_returns_shared_contract(monkeypatch) -> None:
+    async def fake_get_job_learning_overview(self, *, user_id: int, course_id: int):
+        assert user_id == 1001
+        assert course_id == 401
+        return {
+            "user_id": 1001,
+            "course_id": 401,
+            "course_code": "SE-401",
+            "course_name": "软件工程与实践（第4版）",
+            "student_goal": "完成软件开发岗位实习准备",
+            "goal_scene": "internship",
+            "assessment_id": "assessment-18",
+            "ability_dimensions": [
+                {
+                    "code": "requirement_analysis",
+                    "label": "需求理解与分析",
+                    "score": 72,
+                    "benchmark": 70,
+                    "assessment_status": "derived",
+                    "evidence": ["基于最近岗位诊断总分 78 按规则推导。"],
+                }
+            ],
+            "weak_abilities": [],
+            "recommended_path": [],
+            "recommended_resources": [],
+            "citations": [],
+            "safety_notices": [],
+            "ai_generated": True,
+            "next_action": {
+                "action_type": "continue_plan",
+                "label": "继续岗位能力提升路径",
+                "route": "/path?courseId=401",
+                "reason": "已有诊断和学习路径。",
+            },
+        }
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "get_job_learning_overview",
+        fake_get_job_learning_overview,
+    )
+
+    response = client.get(
+        "/api/v1/student-portal/job-learning",
+        params={"user_id": 1001, "course_id": 401},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_name"] == "软件开发工程师"
+    assert payload["ability_dimensions"][0]["code"] == "requirement_analysis"
+    assert payload["ability_dimensions"][0]["assessment_status"] == "derived"
+
+
+def test_get_job_learning_outcomes_returns_measured_change(monkeypatch) -> None:
+    async def fake_get_outcomes(self, *, user_id: int, course_id: int):
+        assert (user_id, course_id) == (1001, 401)
+        return {
+            "user_id": user_id,
+            "course_id": course_id,
+            "status": "comparable",
+            "assessment_count": 2,
+            "baseline_assessment_id": "assessment-17",
+            "latest_assessment_id": "assessment-18",
+            "baseline_score": 62,
+            "latest_score": 78,
+            "score_change": 16,
+            "ability_changes": [
+                {
+                    "code": "system_design",
+                    "label": "系统设计",
+                    "before_score": 62,
+                    "after_score": 78,
+                    "change": 16,
+                    "assessment_status": "derived",
+                }
+            ],
+            "coaching": {
+                "total": 2,
+                "completed": 1,
+                "completion_rate": 50,
+                "helpful_count": 1,
+                "rated_count": 1,
+                "average_rating": 5,
+            },
+            "summary": "前后测总分提升 16 分；已完成 1/2 条智能体建议。",
+        }
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "get_job_learning_outcomes",
+        fake_get_outcomes,
+    )
+
+    response = client.get(
+        "/api/v1/student-portal/job-learning/outcomes",
+        params={"user_id": 1001, "course_id": 401},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "comparable"
+    assert payload["score_change"] == 16
+    assert payload["coaching"]["completion_rate"] == 50
+
+
+def test_update_job_learning_goal_returns_persisted_goal(monkeypatch) -> None:
+    async def fake_update_job_learning_goal(self, request):
+        assert request.user_id == 1001
+        assert request.course_id == 401
+        assert request.goal_scene == "competition"
+        return {
+            "user_id": request.user_id,
+            "course_id": request.course_id,
+            "job_name": "软件开发工程师",
+            "student_goal": request.student_goal,
+            "goal_scene": request.goal_scene,
+            "updated_at": "2026-08-05T10:00:00+08:00",
+        }
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "update_job_learning_goal",
+        fake_update_job_learning_goal,
+    )
+
+    response = client.put(
+        "/api/v1/student-portal/job-learning/goal",
+        json={
+            "user_id": 1001,
+            "course_id": 401,
+            "student_goal": "备战软件开发技能竞赛",
+            "goal_scene": "competition",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["student_goal"] == "备战软件开发技能竞赛"
+
+
+def test_job_learning_rejects_non_positive_identifiers() -> None:
+    overview_response = client.get(
+        "/api/v1/student-portal/job-learning",
+        params={"user_id": 0, "course_id": 401},
+    )
+    goal_response = client.put(
+        "/api/v1/student-portal/job-learning/goal",
+        json={
+            "user_id": 1001,
+            "course_id": 0,
+            "student_goal": "备战软件开发技能竞赛",
+            "goal_scene": "competition",
+        },
+    )
+
+    assert overview_response.status_code == 422
+    assert goal_response.status_code == 422
+
+
+def test_resolve_current_course_uses_requested_user(monkeypatch) -> None:
+    requested: dict[str, int] = {}
+
+    async def fake_get_learning_course_detail(
+        self,
+        course_id: int,
+        user_id: int | None = None,
+    ):
+        requested["course_id"] = course_id
+        requested["user_id"] = user_id or 0
+        return None
+
+    monkeypatch.setattr(
+        "app.services.student_portal_service.CourseService.get_learning_course_detail",
+        fake_get_learning_course_detail,
+    )
+
+    result = asyncio.run(
+        StudentPortalService()._resolve_current_course(401, user_id=2002)
+    )
+
+    assert result is None
+    assert requested == {"course_id": 401, "user_id": 2002}
+
+
+def test_create_job_coaching_record(monkeypatch) -> None:
+    async def fake_create(self, request):
+        assert request.user_id == 1001
+        assert request.recommended_actions == ["完成模块划分练习", "复盘接口设计"]
+        return _coaching_record_payload()
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "create_job_coaching_record",
+        fake_create,
+    )
+
+    response = client.post(
+        "/api/v1/student-portal/job-learning/coaching-records",
+        json={
+            "user_id": 1001,
+            "course_id": 401,
+            "user_question": "如何提升系统设计能力？",
+            "advice_summary": "先完成模块划分练习，再进行接口设计复盘。",
+            "recommended_actions": ["完成模块划分练习", "复盘接口设计"],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "planned"
+
+
+def test_list_job_coaching_records(monkeypatch) -> None:
+    async def fake_list(self, *, user_id: int, course_id: int, limit: int):
+        assert (user_id, course_id, limit) == (1001, 401, 5)
+        return {"total": 1, "items": [_coaching_record_payload()]}
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "list_job_coaching_records",
+        fake_list,
+    )
+
+    response = client.get(
+        "/api/v1/student-portal/job-learning/coaching-records",
+        params={"user_id": 1001, "course_id": 401, "limit": 5},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["recommended_actions"]
+
+
+def test_update_job_coaching_feedback(monkeypatch) -> None:
+    async def fake_update(self, *, record_id: int, request):
+        assert record_id == 1
+        assert request.user_id == 1001
+        assert request.rating == 5
+        return _coaching_record_payload(
+            status="completed",
+            helpful=True,
+            rating=5,
+            feedback_note="建议可执行，已经完成。",
+        )
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "update_job_coaching_feedback",
+        fake_update,
+    )
+
+    response = client.patch(
+        "/api/v1/student-portal/job-learning/coaching-records/1/feedback",
+        json={
+            "user_id": 1001,
+            "status": "completed",
+            "helpful": True,
+            "rating": 5,
+            "feedback_note": "建议可执行，已经完成。",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["rating"] == 5
+
+
+def test_update_job_coaching_feedback_returns_404(monkeypatch) -> None:
+    async def fake_update(self, *, record_id: int, request):
+        return None
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "update_job_coaching_feedback",
+        fake_update,
+    )
+
+    response = client.patch(
+        "/api/v1/student-portal/job-learning/coaching-records/999/feedback",
+        json={"user_id": 1001, "status": "completed"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_job_trial_feedback(monkeypatch) -> None:
+    async def fake_create(self, request):
+        assert request.participant_role == "student"
+        assert request.consent_to_quote is True
+        return _trial_feedback_payload()
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "create_job_trial_feedback",
+        fake_create,
+    )
+    response = client.post(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        json={
+            "user_id": 1001,
+            "course_id": 401,
+            "participant_role": "student",
+            "identity_description": "软件技术专业二年级学生",
+            "trial_task": "完成岗位诊断并执行一条学习建议",
+            "strengths": "步骤清晰，能看到薄弱项。",
+            "problems": "首次进入时不清楚从哪里开始。",
+            "improvement_suggestions": "突出显示开始诊断按钮。",
+            "overall_rating": 4,
+            "consent_to_quote": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["overall_rating"] == 4
+
+
+def test_list_job_trial_feedback(monkeypatch) -> None:
+    async def fake_list(self, *, user_id: int, course_id: int, limit: int):
+        assert (user_id, course_id, limit) == (1001, 401, 10)
+        return {"total": 1, "items": [_trial_feedback_payload()]}
+
+    monkeypatch.setattr(
+        StudentPortalService,
+        "list_job_trial_feedback",
+        fake_list,
+    )
+    response = client.get(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        params={"user_id": 1001, "course_id": 401, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_create_job_trial_feedback_rejects_another_user() -> None:
+    response = client.post(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        headers={"X-User-Id": "1001"},
+        json={
+            "user_id": 1002,
+            "course_id": 401,
+            "participant_role": "student",
+            "identity_description": "软件技术专业学生",
+            "trial_task": "完成岗位诊断",
+            "strengths": "流程清晰",
+            "problems": "入口不明显",
+            "improvement_suggestions": "突出入口",
+            "overall_rating": 4,
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_list_job_trial_feedback_rejects_another_user() -> None:
+    response = client.get(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        headers={"X-User-Id": "1001"},
+        params={"user_id": 1002, "course_id": 401},
+    )
+
+    assert response.status_code == 403
+
+
+def test_job_trial_feedback_validates_role_and_rating() -> None:
+    response = client.post(
+        "/api/v1/student-portal/job-learning/trial-feedback",
+        json={
+            "participant_role": "anonymous",
+            "identity_description": "测试人员",
+            "trial_task": "完成岗位诊断",
+            "strengths": "流程清晰",
+            "problems": "入口不明显",
+            "improvement_suggestions": "突出入口",
+            "overall_rating": 6,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_job_ability_dimensions_do_not_invent_scores_without_assessment() -> None:
+    dimensions = StudentPortalService._build_job_ability_dimensions(
+        latest_evaluation=None,
+        evaluation_trend=None,
+    )
+
+    assert len(dimensions) == 5
+    assert all(item.score is None for item in dimensions)
+    assert all(item.assessment_status == "not_assessed" for item in dimensions)
+
+
+def test_job_ability_dimensions_derive_transparently_from_real_evaluation() -> None:
+    latest = EvaluationHistoryItem(
+        record_id=18,
+        course_code="SE-401",
+        overall_score=78,
+        weak_points=["需求分析边界不清", "测试用例覆盖不足"],
+        knowledge_points=["需求分析", "软件测试"],
+    )
+    trend = EvaluationTrendResponse(
+        user_id=1001,
+        course_code="SE-401",
+        total=1,
+        latest_score=78,
+        focus_knowledge_points=["需求分析边界不清"],
+    )
+
+    dimensions = StudentPortalService._build_job_ability_dimensions(
+        latest_evaluation=latest,
+        evaluation_trend=trend,
+    )
+    by_code = {item.code: item for item in dimensions}
+
+    assert by_code["requirement_analysis"].score < 78
+    assert by_code["software_testing"].score < 78
+    assert by_code["system_design"].score == 78
+    assert all(item.assessment_status == "derived" for item in dimensions)
+    assert any(
+        "薄弱点命中" in evidence
+        for evidence in by_code["requirement_analysis"].evidence
+    )
+
+
+def test_job_ability_changes_compare_two_real_assessments() -> None:
+    baseline = EvaluationHistoryItem(
+        record_id=17,
+        course_code="SE-401",
+        overall_score=60,
+        weak_points=[],
+    )
+    latest = EvaluationHistoryItem(
+        record_id=18,
+        course_code="SE-401",
+        overall_score=75,
+        weak_points=[],
+    )
+
+    changes = StudentPortalService._build_job_ability_changes(
+        baseline=baseline,
+        latest=latest,
+    )
+
+    assert len(changes) == 5
+    assert all(item.before_score == 60 for item in changes)
+    assert all(item.after_score == 75 for item in changes)
+    assert all(item.change == 15 for item in changes)
+    assert all(item.assessment_status == "derived" for item in changes)
+
+
+def test_job_ability_changes_do_not_claim_change_from_one_assessment() -> None:
+    latest = EvaluationHistoryItem(
+        record_id=18,
+        course_code="SE-401",
+        overall_score=75,
+        weak_points=[],
+    )
+
+    changes = StudentPortalService._build_job_ability_changes(
+        baseline=None,
+        latest=latest,
+    )
+
+    assert all(item.before_score is None for item in changes)
+    assert all(item.after_score == 75 for item in changes)
+    assert all(item.change is None for item in changes)

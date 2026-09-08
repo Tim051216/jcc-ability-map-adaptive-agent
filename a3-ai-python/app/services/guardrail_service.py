@@ -7,9 +7,14 @@ import httpx
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.schemas.guardrails import GuardrailIssue, GuardrailReview, HallucinationReview, SafetyReview
-from app.services.rag_service import RagService
+from app.schemas.guardrails import (
+    GuardrailIssue,
+    GuardrailReview,
+    HallucinationReview,
+    SafetyReview,
+)
 from app.schemas.rag import RagSearchRequest
+from app.services.rag_service import RagService
 
 
 @dataclass
@@ -181,9 +186,15 @@ class GuardrailService:
                 logger.warning("hallucination_rag_lookup_failed", error=str(exc), scene=context.scene)
 
         claims = self._extract_claims(normalized)
-        unsupported_claims = [
-            claim for claim in claims if evidence_sources and not self._claim_supported_by_sources(claim, evidence_sources)
-        ]
+        unsupported_claims = (
+            claims
+            if claims and not evidence_sources
+            else [
+                claim
+                for claim in claims
+                if not self._claim_supported_by_sources(claim, evidence_sources)
+            ]
+        )
 
         grounded = not unsupported_claims
         score = 1.0 if grounded else max(0.35, 1.0 - len(unsupported_claims) * 0.18)

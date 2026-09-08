@@ -5,7 +5,7 @@
 
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from "react-router-dom";
-import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, ChevronDown, Bot, MessageCircleMore, ArrowRight } from "lucide-react";
+import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, ChevronDown, Bot, MessageCircleMore, ArrowRight, BookOpen } from "lucide-react";
 import { ACTIVE_TUTOR_CONTEXT_EVENT, OPEN_TUTOR_PANEL_EVENT, loadActiveTutorContext, type TutorPanelPayload } from "./lib/tutorPanel";
 import { getDemoUserIdentity } from "./lib/demoUserIdentity";
 import { buildResourcesRoute, readLastRouteCourseId } from "./lib/routeCourseContext";
@@ -28,6 +28,11 @@ const routeImporters = {
   im: () => import("./pages/IMCenter"),
   tutor: () => import("./pages/AITutor"),
   welcome: () => import("./components/WelcomeScreen"),
+  jobLearning: () => import("./pages/JobLearning"),
+  jobLearningOutcomes: () => import("./pages/JobLearningOutcomes"),
+  legacyOverview: () => import("./pages/Overview"),
+  trialFeedback: () => import("./pages/TrialFeedback"),
+  jobKnowledgeCatalog: () => import("./pages/JobKnowledgeCatalog"),
 };
 
 const Header = lazy(routeImporters.header);
@@ -46,6 +51,10 @@ const StudyReport = lazy(routeImporters.report);
 const Collection = lazy(routeImporters.collection);
 const IMCenter = lazy(routeImporters.im);
 const AITutor = lazy(routeImporters.tutor);
+const JobLearning = lazy(routeImporters.jobLearning);
+const JobLearningOutcomes = lazy(routeImporters.jobLearningOutcomes);
+const TrialFeedback = lazy(routeImporters.trialFeedback);
+const JobKnowledgeCatalog = lazy(routeImporters.jobKnowledgeCatalog);
 
 // Warm route chunks after the first screen settles so the first navigation is not a cold import.
 if (typeof window !== "undefined") {
@@ -72,7 +81,7 @@ function preloadRoute(path: string) {
   if (preloadedRouteKeys.has(normalizedPath)) return;
   const importer =
     normalizedPath === "/"
-        ? routeImporters.overview
+        ? routeImporters.jobLearning
       : normalizedPath === "/search"
         ? routeImporters.search
       : normalizedPath === "/path"
@@ -99,6 +108,14 @@ function preloadRoute(path: string) {
                             ? routeImporters.im
                             : normalizedPath === "/login"
                               ? routeImporters.login
+                              : normalizedPath === "/job-learning"
+                                ? routeImporters.jobLearning
+                              : normalizedPath === "/job-learning/outcomes"
+                                  ? routeImporters.jobLearningOutcomes
+                              : normalizedPath === "/trial-feedback"
+                                    ? routeImporters.trialFeedback
+                              : normalizedPath === "/job-learning/knowledge-catalog"
+                                ? routeImporters.jobKnowledgeCatalog
                               : null;
 
   if (importer) {
@@ -119,7 +136,7 @@ function scheduleRouteWarmup() {
     if (shouldSkipWarmup()) return;
     const currentPath = window.location.pathname;
     const importers = [
-      routeImporters.overview,
+      routeImporters.jobLearning,
       routeImporters.path,
       routeImporters.resources,
       routeImporters.evaluation,
@@ -528,7 +545,7 @@ function MainLayout({
         : `mx-auto w-full max-w-[1480px] px-4 py-6 pb-24 transition-[padding] duration-300 md:px-8 md:py-8 md:pb-8 lg:px-10 xl:px-12 ${desktopTutorWidthClass}`;
 
   const navItems = [
-    { label: "概览", id: "overview", path: "/", icon: Layers },
+    { label: "概览", id: "overview", path: "/overview", icon: Layers },
     { label: "路径", id: "path", path: "/path", icon: Compass },
     { label: "课堂", id: "learn", path: "/learn", icon: Tv },
     { label: "资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
@@ -536,6 +553,9 @@ function MainLayout({
     { label: "评估", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
     { label: "报告", id: "report", path: "/report", icon: BarChart2 },
     { label: "画像", id: "profile", path: "/profile", icon: User },
+    { label: "岗位学习", id: "job-learning", path: "/job-learning", icon: Compass },
+    { label: "知识目录", id: "job-knowledge-catalog", path: "/job-learning/knowledge-catalog", icon: BookOpen },
+    { label: "试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardCheck },
     { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
   ];
 
@@ -835,9 +855,13 @@ function MainLayout({
       {!isLoginPage ? (
         <>
           <div
-            className={`fixed bottom-[242px] right-3 z-[149] w-[min(292px,calc(100vw-1.5rem))] transition-all duration-300 md:bottom-[252px] md:right-5 ${
+            className={`fixed z-[149] w-[min(292px,calc(100vw-1.5rem))] transition-all duration-300 ${
               tutorDrawer.open ? "pointer-events-none translate-y-3 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
             }`}
+            style={{
+              left: `${Math.max(8, Math.min(assistantBubblePosition.x - 158, window.innerWidth - 300))}px`,
+              top: `${Math.max(8, assistantBubblePosition.y - (assistantPanelCollapsed ? 76 : 360))}px`,
+            }}
           >
             <div className="overflow-hidden rounded-[20px] border border-white/80 bg-white/92 shadow-[0_12px_26px_rgba(15,23,42,0.08)] backdrop-blur-md">
               <button
@@ -1492,6 +1516,14 @@ export default function App() {
                 path="/"
                 element={
                   <ProtectedRoute>
+                    <JobLearning />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/overview"
+                element={
+                  <ProtectedRoute>
                     <Overview user={user} />
                   </ProtectedRoute>
                 }
@@ -1605,6 +1637,38 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <TutorRouteBridge />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/job-learning"
+                element={
+                  <ProtectedRoute>
+                    <JobLearning />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/job-learning/outcomes"
+                element={
+                  <ProtectedRoute>
+                    <JobLearningOutcomes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/job-learning/knowledge-catalog"
+                element={
+                  <ProtectedRoute>
+                    <JobKnowledgeCatalog />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/trial-feedback"
+                element={
+                  <ProtectedRoute>
+                    <TrialFeedback />
                   </ProtectedRoute>
                 }
               />

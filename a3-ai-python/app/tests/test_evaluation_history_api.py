@@ -4,15 +4,23 @@ from fastapi.testclient import TestClient
 from app.api.v1 import evaluation
 from app.services.evaluation_history_service import EvaluationHistoryService
 
-
 app = FastAPI()
 app.include_router(evaluation.router, prefix="/api/v1/evaluation")
 client = TestClient(app)
 
 
 def test_get_evaluation_history_returns_payload(monkeypatch) -> None:
-    async def fake_list_history(self, *, user_id: int, course_code: str, evaluation_type=None, limit: int = 10):
+    async def fake_list_history(
+        self,
+        *,
+        user_id: int,
+        course_id: int | None = None,
+        course_code: str,
+        evaluation_type=None,
+        limit: int = 10,
+    ):
         assert user_id == 1001
+        assert course_id is None
         assert course_code == "PYTHON-AI"
         assert evaluation_type == "diagnostic"
         assert limit == 5
@@ -46,8 +54,17 @@ def test_get_evaluation_history_returns_payload(monkeypatch) -> None:
 
 
 def test_get_evaluation_trend_returns_payload(monkeypatch) -> None:
-    async def fake_get_trend(self, *, user_id: int, course_code: str, evaluation_type=None, limit: int = 10):
+    async def fake_get_trend(
+        self,
+        *,
+        user_id: int,
+        course_id: int | None = None,
+        course_code: str,
+        evaluation_type=None,
+        limit: int = 10,
+    ):
         assert user_id == 1001
+        assert course_id is None
         assert course_code == "PYTHON-AI"
         assert evaluation_type is None
         assert limit == 10

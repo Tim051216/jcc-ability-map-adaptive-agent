@@ -394,6 +394,129 @@ export interface ResourceCard {
   generation_context?: Record<string, unknown> | null;
 }
 
+export type JobAbilityAssessmentStatus = "measured" | "derived" | "not_assessed";
+export type JobCoachingStatus = "planned" | "in_progress" | "completed" | "abandoned";
+export type TrialParticipantRole = "student" | "teacher" | "enterprise_mentor";
+
+export interface JobAbilityDimension {
+  code: string;
+  label: string;
+  score: number | null;
+  benchmark: number;
+  assessment_status: JobAbilityAssessmentStatus;
+  evidence: string[];
+}
+
+export interface JobLearningOverview {
+  user_id: number;
+  course_id: number;
+  course_code: string;
+  course_name: string;
+  professional_group: string;
+  job_name: string;
+  student_goal: string | null;
+  goal_scene: string | null;
+  assessment_id: string | null;
+  assessment_updated_at: string | null;
+  ability_dimensions: JobAbilityDimension[];
+  weak_abilities: Array<Record<string, unknown>>;
+  recommended_path: Array<Record<string, unknown>>;
+  recommended_resources: Array<Record<string, unknown>>;
+  citations: Array<Record<string, unknown>>;
+  safety_notices: string[];
+  ai_generated: boolean;
+  next_action: { action_type: string; label: string; route: string; reason: string } | null;
+}
+
+export interface JobLearningOutcome {
+  user_id: number;
+  course_id: number;
+  status: "insufficient_data" | "baseline_only" | "comparable";
+  assessment_count: number;
+  baseline_assessment_id: string | null;
+  latest_assessment_id: string | null;
+  baseline_score: number | null;
+  latest_score: number | null;
+  score_change: number | null;
+  ability_changes: Array<{
+    code: string;
+    label: string;
+    before_score: number | null;
+    after_score: number | null;
+    change: number | null;
+    assessment_status: JobAbilityAssessmentStatus;
+  }>;
+  coaching: {
+    total: number;
+    planned: number;
+    in_progress: number;
+    completed: number;
+    abandoned: number;
+    completion_rate: number;
+    helpful_count: number;
+    rated_count: number;
+    average_rating: number | null;
+  };
+  summary: string;
+}
+
+export interface JobKnowledgeCatalogItem {
+  id: string;
+  title: string;
+  ability_dimension: string;
+  ability_unit: string;
+  knowledge_point: string;
+  skill_point: string;
+  applicable_scenario: string;
+  common_error: string;
+  learning_advice: string;
+  safety_notice: string;
+  source_path: string;
+  source_locator: string | null;
+  task_prompt: string;
+  deliverable: string;
+  acceptance_criteria: string;
+  estimated_minutes: number;
+}
+
+export interface JobKnowledgeCatalogResponse {
+  total: number;
+  ability_dimensions: string[];
+  items: JobKnowledgeCatalogItem[];
+}
+
+export interface JobCoachingRecord {
+  id: number;
+  user_id: number;
+  course_id: number;
+  source: string;
+  user_question: string;
+  advice_summary: string;
+  recommended_actions: string[];
+  status: JobCoachingStatus;
+  helpful: boolean | null;
+  rating: number | null;
+  feedback_note: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface JobTrialFeedback {
+  id: number;
+  user_id: number;
+  course_id: number;
+  participant_role: TrialParticipantRole;
+  identity_description: string;
+  trial_task: string;
+  strengths: string;
+  problems: string;
+  improvement_suggestions: string;
+  overall_rating: number;
+  consent_to_quote: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface ResourceSourceFileRef {
   file_id: number;
   display_name: string;
@@ -1528,6 +1651,91 @@ const askVideoInsightRequest = (payload: {
   );
 
 export const studentApi = {
+  getJobLearningOverview(userId: number, courseId = 401, timeoutMs = 8000) {
+    return requestAsUser<JobLearningOverview>(
+      `/student-portal/job-learning?user_id=${userId}&course_id=${courseId}`,
+      userId,
+      timeoutMs,
+    );
+  },
+  getJobLearningOutcomes(userId: number, courseId = 401, timeoutMs = 8000) {
+    return requestAsUser<JobLearningOutcome>(
+      `/student-portal/job-learning/outcomes?user_id=${userId}&course_id=${courseId}`,
+      userId,
+      timeoutMs,
+    );
+  },
+
+  getJobKnowledgeCatalog(abilityDimension?: string, timeoutMs = 8000) {
+    const query = abilityDimension ? `?ability_dimension=${encodeURIComponent(abilityDimension)}` : "";
+    return request<JobKnowledgeCatalogResponse>(
+      `/student-portal/job-learning/knowledge-catalog${query}`,
+      timeoutMs,
+    );
+  },
+  updateJobLearningGoal(payload: { user_id: number; course_id?: number; student_goal: string; goal_scene: string }, timeoutMs = 8000) {
+    return requestJsonAsUser<{ user_id: number; course_id: number; job_name: string; student_goal: string; goal_scene: string; updated_at: string | null }>(
+      "/student-portal/job-learning/goal",
+      { method: "PUT", body: JSON.stringify({ course_id: 401, ...payload }) },
+      payload.user_id,
+      timeoutMs,
+    );
+  },
+  listJobCoachingRecords(userId: number, courseId = 401, limit = 20, timeoutMs = 8000) {
+    return requestAsUser<{ total: number; items: JobCoachingRecord[] }>(
+      `/student-portal/job-learning/coaching-records?user_id=${userId}&course_id=${courseId}&limit=${limit}`,
+      userId,
+      timeoutMs,
+    );
+  },
+  createJobCoachingRecord(
+    payload: {
+      user_id: number;
+      course_id?: number;
+      source?: string;
+      user_question: string;
+      advice_summary: string;
+      recommended_actions?: string[];
+    },
+    timeoutMs = 8000,
+  ) {
+    return requestJsonAsUser<JobCoachingRecord>(
+      "/student-portal/job-learning/coaching-records",
+      { method: "POST", body: JSON.stringify({ course_id: 401, ...payload }) },
+      payload.user_id,
+      timeoutMs,
+    );
+  },
+  updateJobCoachingFeedback(
+    recordId: number,
+    payload: { user_id: number; status: JobCoachingStatus; helpful?: boolean; rating?: number; feedback_note?: string },
+    timeoutMs = 8000,
+  ) {
+    return requestJsonAsUser<JobCoachingRecord>(
+      `/student-portal/job-learning/coaching-records/${recordId}/feedback`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+      payload.user_id,
+      timeoutMs,
+    );
+  },
+  listJobTrialFeedback(userId: number, courseId = 401, limit = 20, timeoutMs = 8000) {
+    return requestAsUser<{ total: number; items: JobTrialFeedback[] }>(
+      `/student-portal/job-learning/trial-feedback?user_id=${userId}&course_id=${courseId}&limit=${limit}`,
+      userId,
+      timeoutMs,
+    );
+  },
+  createJobTrialFeedback(
+    payload: Omit<JobTrialFeedback, "id" | "created_at" | "updated_at">,
+    timeoutMs = 8000,
+  ) {
+    return requestJsonAsUser<JobTrialFeedback>(
+      "/student-portal/job-learning/trial-feedback",
+      { method: "POST", body: JSON.stringify(payload) },
+      payload.user_id,
+      timeoutMs,
+    );
+  },
   listCategories() {
     return request<CourseCategory[]>("/course/categories");
   },

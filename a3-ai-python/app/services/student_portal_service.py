@@ -2,7 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.schemas.course import CourseCardResponse, LearningCourseDetailResponse
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db.models.job_coaching_record import JobCoachingRecord
+from app.db.models.job_trial_feedback import JobTrialFeedback
+from app.db.repositories.job_coaching_record_repository import (
+    JobCoachingRecordRepository,
+)
+from app.db.repositories.job_trial_feedback_repository import (
+    JobTrialFeedbackRepository,
+)
+from app.db.repositories.personalized_learning_state_repository import (
+    PersonalizedLearningStateRepository,
+)
+from app.db.session import async_session_factory
+from app.schemas.course import LearningCourseDetailResponse
 from app.schemas.evaluation import EvaluationHistoryItem, EvaluationTrendResponse
 from app.schemas.plan import LearningPlanResponse
 from app.schemas.profile_conversation import ProfileSummary
@@ -10,6 +24,25 @@ from app.schemas.student_portal import (
     CapabilityAchievementItem,
     CapabilityAxisItem,
     CapabilityProfileResponse,
+    JobAbilityChange,
+    JobAbilityDimension,
+    JobCoachingFeedbackRequest,
+    JobCoachingOutcomeSummary,
+    JobCoachingRecordCreateRequest,
+    JobCoachingRecordListResponse,
+    JobCoachingRecordResponse,
+    JobLearningGoalResponse,
+    JobLearningGoalUpdateRequest,
+    JobLearningOutcomeResponse,
+    JobLearningOverviewResponse,
+    JobLearningPathItem,
+    JobLearningResourceItem,
+    JobNextAction,
+    JobSafetyNotice,
+    JobTrialFeedbackCreateRequest,
+    JobTrialFeedbackListResponse,
+    JobTrialFeedbackResponse,
+    JobWeakAbility,
     PortalActivityItem,
     PortalDashboardResponse,
     PortalMetricItem,
@@ -21,15 +54,49 @@ from app.services.course_service import CourseService
 from app.services.evaluation_history_service import EvaluationHistoryService
 from app.services.plan_service import PlanService
 from app.services.profile_conversation_service import ProfileConversationService
-from app.db.session import async_session_factory
 
 
 class StudentPortalService:
     DEFAULT_USER_ID = 1001
+    DEFAULT_JOB_NAME = "软件开发工程师"
+    DEFAULT_STUDENT_GOAL = "完成软件开发岗位实习准备"
+    DEFAULT_GOAL_SCENE = "internship"
+    JOB_ABILITY_RULES = (
+        (
+            "requirement_analysis",
+            "需求理解与分析",
+            ("需求", "用例", "业务", "用户故事", "规格说明"),
+            "完成一轮需求提取与验收标准练习。",
+        ),
+        (
+            "system_design",
+            "系统设计",
+            ("设计", "架构", "模块", "接口", "数据库"),
+            "补做模块划分、接口设计和数据建模练习。",
+        ),
+        (
+            "coding_implementation",
+            "编码实现",
+            ("编码", "代码", "实现", "算法", "调试"),
+            "完成一个可运行的编码任务并记录调试过程。",
+        ),
+        (
+            "software_testing",
+            "软件测试",
+            ("测试", "缺陷", "断言", "边界值", "质量"),
+            "完成测试点提取、测试用例设计和缺陷复盘。",
+        ),
+        (
+            "project_collaboration",
+            "项目协作与交付",
+            ("项目", "协作", "版本", "交付", "文档", "进度"),
+            "按任务、版本和交付物整理一次项目协作记录。",
+        ),
+    )
 
     async def get_dashboard(self, *, user_id: int, course_id: int | None = None) -> PortalDashboardResponse:
         featured_courses = await CourseService().list_recommend_courses("best")
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         profile_summary = await self._get_profile_summary(user_id)
         evaluation_trend = await self._get_evaluation_trend(user_id=user_id, course_id=current_course.id if current_course else None)
         latest_evaluations = await self._get_latest_evaluations(user_id=user_id, course_id=current_course.id if current_course else None)
@@ -63,7 +130,7 @@ class StudentPortalService:
         )
 
     async def get_capability_profile(self, *, user_id: int, course_id: int | None = None) -> CapabilityProfileResponse:
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         profile_summary = await self._get_profile_summary(user_id)
         evaluation_trend = await self._get_evaluation_trend(user_id=user_id, course_id=current_course.id if current_course else None)
         latest_plan = await self._get_latest_plan(
@@ -95,7 +162,7 @@ class StudentPortalService:
         )
 
     async def get_study_report(self, *, user_id: int, course_id: int | None = None) -> StudyReportResponse:
-        current_course = await self._resolve_current_course(course_id)
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
         profile_summary = await self._get_profile_summary(user_id)
         evaluation_trend = await self._get_evaluation_trend(user_id=user_id, course_id=current_course.id if current_course else None)
         latest_plan = await self._get_latest_plan(
@@ -125,10 +192,598 @@ class StudentPortalService:
             recommendations=self._build_recommendations(current_course, evaluation_trend, latest_plan),
         )
 
-    async def _resolve_current_course(self, course_id: int | None) -> LearningCourseDetailResponse | None:
+    async def get_job_learning_overview(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+    ) -> JobLearningOverviewResponse:
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
+        if current_course is None:
+            raise ValueError("course not found")
+
+        goal = await self._get_job_goal(user_id=user_id, course_id=current_course.id)
+        evaluation_trend = await self._get_evaluation_trend(
+            user_id=user_id,
+            course_id=current_course.id,
+        )
+        latest_evaluations = await self._get_latest_evaluations(
+            user_id=user_id,
+            course_id=current_course.id,
+        )
+        latest_evaluation = latest_evaluations[0] if latest_evaluations else None
+        latest_plan = await self._get_latest_plan(
+            user_id=user_id,
+            course_id=current_course.id,
+            course_code=current_course.course_code,
+        )
+        ability_dimensions = self._build_job_ability_dimensions(
+            latest_evaluation=latest_evaluation,
+            evaluation_trend=evaluation_trend,
+        )
+        weak_abilities = self._build_job_weak_abilities(ability_dimensions)
+        recommended_path = self._build_job_path(latest_plan)
+        recommended_resources = self._build_job_resources(latest_plan)
+        return JobLearningOverviewResponse(
+            user_id=user_id,
+            course_id=current_course.id,
+            course_code=current_course.course_code,
+            course_name=current_course.name,
+            job_name=goal["job_name"],
+            student_goal=goal["student_goal"],
+            goal_scene=goal["goal_scene"],
+            assessment_id=(
+                f"assessment-{latest_evaluation.record_id}"
+                if latest_evaluation
+                else None
+            ),
+            assessment_updated_at=latest_evaluation.created_at if latest_evaluation else None,
+            ability_dimensions=ability_dimensions,
+            weak_abilities=weak_abilities,
+            recommended_path=recommended_path,
+            recommended_resources=recommended_resources,
+            citations=[],
+            safety_notices=self._build_job_safety_notices(),
+            ai_generated=latest_plan is not None,
+            next_action=self._build_job_next_action(
+                course_id=current_course.id,
+                latest_evaluation=latest_evaluation,
+                latest_plan=latest_plan,
+            ),
+        )
+
+    async def get_job_learning_outcomes(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+    ) -> JobLearningOutcomeResponse:
+        current_course = await self._resolve_current_course(course_id, user_id=user_id)
+        if current_course is None:
+            raise ValueError("course not found")
+
+        history = await EvaluationHistoryService().list_history(
+            user_id=user_id,
+            course_id=current_course.id,
+            limit=100,
+        )
+        evaluations = history.items
+        latest = evaluations[0] if evaluations else None
+        baseline = evaluations[-1] if len(evaluations) >= 2 else None
+
+        async with async_session_factory() as session:
+            coaching_values = (
+                await JobCoachingRecordRepository().summarize_by_user_course(
+                    session,
+                    user_id=user_id,
+                    course_id=current_course.id,
+                )
+            )
+        coaching = JobCoachingOutcomeSummary(**coaching_values)
+        status = (
+            "comparable"
+            if len(evaluations) >= 2
+            else "baseline_only"
+            if evaluations
+            else "insufficient_data"
+        )
+        baseline_score = float(baseline.overall_score) if baseline else None
+        latest_score = float(latest.overall_score) if latest else None
+        score_change = (
+            round(latest_score - baseline_score, 2)
+            if latest_score is not None and baseline_score is not None
+            else None
+        )
+        return JobLearningOutcomeResponse(
+            user_id=user_id,
+            course_id=current_course.id,
+            status=status,
+            assessment_count=len(evaluations),
+            baseline_assessment_id=(
+                f"assessment-{baseline.record_id}" if baseline else None
+            ),
+            latest_assessment_id=(
+                f"assessment-{latest.record_id}" if latest else None
+            ),
+            baseline_score=baseline_score,
+            latest_score=latest_score,
+            score_change=score_change,
+            ability_changes=self._build_job_ability_changes(
+                baseline=baseline,
+                latest=latest,
+            ),
+            coaching=coaching,
+            summary=self._build_job_outcome_summary(
+                status=status,
+                score_change=score_change,
+                coaching=coaching,
+            ),
+        )
+
+    async def update_job_learning_goal(
+        self,
+        request: JobLearningGoalUpdateRequest,
+    ) -> JobLearningGoalResponse:
+        current_course = await self._resolve_current_course(
+            request.course_id,
+            user_id=request.user_id,
+        )
+        if current_course is None:
+            raise ValueError("course not found")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        async with async_session_factory() as session:
+            state = await PersonalizedLearningStateRepository().update_job_goal(
+                session,
+                user_id=request.user_id,
+                course_id=current_course.id,
+                student_goal=request.student_goal.strip(),
+                goal_scene=request.goal_scene,
+                job_name=self.DEFAULT_JOB_NAME,
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+        return JobLearningGoalResponse(
+            user_id=request.user_id,
+            course_id=current_course.id,
+            job_name=state.job_name or self.DEFAULT_JOB_NAME,
+            student_goal=state.student_goal or self.DEFAULT_STUDENT_GOAL,
+            goal_scene=state.goal_scene or self.DEFAULT_GOAL_SCENE,
+            updated_at=state.updated_at,
+        )
+
+    async def create_job_coaching_record(
+        self,
+        request: JobCoachingRecordCreateRequest,
+    ) -> JobCoachingRecordResponse:
+        current_course = await self._resolve_current_course(
+            request.course_id,
+            user_id=request.user_id,
+        )
+        if current_course is None:
+            raise ValueError("course not found")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        actions = [item.strip() for item in request.recommended_actions if item.strip()]
+        async with async_session_factory() as session:
+            record = await JobCoachingRecordRepository().create(
+                session,
+                user_id=request.user_id,
+                course_id=current_course.id,
+                source=request.source.strip(),
+                user_question=request.user_question.strip(),
+                advice_summary=request.advice_summary.strip(),
+                recommended_actions=actions,
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+        return self._to_job_coaching_response(record)
+
+    async def list_job_coaching_records(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+        limit: int,
+    ) -> JobCoachingRecordListResponse:
+        async with async_session_factory() as session:
+            records, total = await JobCoachingRecordRepository().list_by_user_course(
+                session,
+                user_id=user_id,
+                course_id=course_id,
+                limit=limit,
+            )
+        return JobCoachingRecordListResponse(
+            total=total,
+            items=[self._to_job_coaching_response(item) for item in records],
+        )
+
+    async def update_job_coaching_feedback(
+        self,
+        *,
+        record_id: int,
+        request: JobCoachingFeedbackRequest,
+    ) -> JobCoachingRecordResponse | None:
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        async with async_session_factory() as session:
+            repository = JobCoachingRecordRepository()
+            record = await repository.get_by_id_user(
+                session,
+                record_id=record_id,
+                user_id=request.user_id,
+            )
+            if record is None:
+                return None
+            record = await repository.update_feedback(
+                session,
+                record=record,
+                status=request.status,
+                helpful=request.helpful,
+                rating=request.rating,
+                feedback_note=(request.feedback_note or "").strip() or None,
+                updated_at=now,
+            )
+            await session.commit()
+        return self._to_job_coaching_response(record)
+
+    async def create_job_trial_feedback(
+        self,
+        request: JobTrialFeedbackCreateRequest,
+    ) -> JobTrialFeedbackResponse:
+        current_course = await self._resolve_current_course(
+            request.course_id,
+            user_id=request.user_id,
+        )
+        if current_course is None:
+            raise ValueError("course not found")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        async with async_session_factory() as session:
+            feedback = await JobTrialFeedbackRepository().create(
+                session,
+                user_id=request.user_id,
+                course_id=current_course.id,
+                participant_role=request.participant_role,
+                identity_description=request.identity_description.strip(),
+                trial_task=request.trial_task.strip(),
+                strengths=request.strengths.strip(),
+                problems=request.problems.strip(),
+                improvement_suggestions=request.improvement_suggestions.strip(),
+                overall_rating=request.overall_rating,
+                consent_to_quote=request.consent_to_quote,
+                created_at=now,
+                updated_at=now,
+            )
+            await session.commit()
+        return self._to_job_trial_feedback_response(feedback)
+
+    async def list_job_trial_feedback(
+        self,
+        *,
+        user_id: int,
+        course_id: int,
+        limit: int,
+    ) -> JobTrialFeedbackListResponse:
+        async with async_session_factory() as session:
+            records, total = await JobTrialFeedbackRepository().list_by_user_course(
+                session,
+                user_id=user_id,
+                course_id=course_id,
+                limit=limit,
+            )
+        return JobTrialFeedbackListResponse(
+            total=total,
+            items=[self._to_job_trial_feedback_response(item) for item in records],
+        )
+
+    @staticmethod
+    def _to_job_coaching_response(
+        record: JobCoachingRecord,
+    ) -> JobCoachingRecordResponse:
+        return JobCoachingRecordResponse(
+            id=record.id,
+            user_id=record.user_id,
+            course_id=record.course_id,
+            source=record.source,
+            user_question=record.user_question,
+            advice_summary=record.advice_summary,
+            recommended_actions=record.recommended_actions or [],
+            status=record.status,
+            helpful=record.helpful,
+            rating=record.rating,
+            feedback_note=record.feedback_note,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    @staticmethod
+    def _to_job_trial_feedback_response(
+        feedback: JobTrialFeedback,
+    ) -> JobTrialFeedbackResponse:
+        return JobTrialFeedbackResponse(
+            id=feedback.id,
+            user_id=feedback.user_id,
+            course_id=feedback.course_id,
+            participant_role=feedback.participant_role,
+            identity_description=feedback.identity_description,
+            trial_task=feedback.trial_task,
+            strengths=feedback.strengths,
+            problems=feedback.problems,
+            improvement_suggestions=feedback.improvement_suggestions,
+            overall_rating=feedback.overall_rating,
+            consent_to_quote=feedback.consent_to_quote,
+            created_at=feedback.created_at,
+            updated_at=feedback.updated_at,
+        )
+
+    async def _get_job_goal(self, *, user_id: int, course_id: int) -> dict[str, str]:
+        state = None
+        try:
+            async with async_session_factory() as session:
+                state = await PersonalizedLearningStateRepository().get_by_user_course(
+                    session,
+                    user_id=user_id,
+                    course_id=course_id,
+                )
+        except SQLAlchemyError:
+            state = None
+        return {
+            "job_name": (state.job_name if state else None) or self.DEFAULT_JOB_NAME,
+            "student_goal": (state.student_goal if state else None) or self.DEFAULT_STUDENT_GOAL,
+            "goal_scene": (state.goal_scene if state else None) or self.DEFAULT_GOAL_SCENE,
+        }
+
+    @classmethod
+    def _build_job_ability_dimensions(
+        cls,
+        *,
+        latest_evaluation: EvaluationHistoryItem | None,
+        evaluation_trend: EvaluationTrendResponse | None,
+    ) -> list[JobAbilityDimension]:
+        if latest_evaluation is None:
+            return [
+                JobAbilityDimension(
+                    code=code,
+                    label=label,
+                    score=None,
+                    assessment_status="not_assessed",
+                    evidence=["尚未完成岗位能力诊断。"],
+                )
+                for code, label, _, _ in cls.JOB_ABILITY_RULES
+            ]
+
+        base_score = round(float(latest_evaluation.overall_score))
+        weak_signals = [
+            *latest_evaluation.weak_points,
+            *(evaluation_trend.focus_knowledge_points if evaluation_trend else []),
+        ]
+        dimensions: list[JobAbilityDimension] = []
+        for code, label, keywords, _ in cls.JOB_ABILITY_RULES:
+            matched_signals = [
+                signal
+                for signal in weak_signals
+                if any(keyword in str(signal) for keyword in keywords)
+            ]
+            penalty = min(18, len(matched_signals) * 8)
+            score = max(0, min(100, base_score - penalty))
+            evidence = [f"基于最近岗位诊断总分 {base_score} 按规则推导。"]
+            evidence.extend(f"薄弱点命中：{signal}" for signal in matched_signals[:2])
+            dimensions.append(
+                JobAbilityDimension(
+                    code=code,
+                    label=label,
+                    score=score,
+                    assessment_status="derived",
+                    evidence=evidence,
+                )
+            )
+        return dimensions
+
+    @classmethod
+    def _build_job_ability_changes(
+        cls,
+        *,
+        baseline: EvaluationHistoryItem | None,
+        latest: EvaluationHistoryItem | None,
+    ) -> list[JobAbilityChange]:
+        before_dimensions = cls._build_job_ability_dimensions(
+            latest_evaluation=baseline,
+            evaluation_trend=None,
+        )
+        after_dimensions = cls._build_job_ability_dimensions(
+            latest_evaluation=latest,
+            evaluation_trend=None,
+        )
+        before_by_code = {item.code: item for item in before_dimensions}
+        changes: list[JobAbilityChange] = []
+        for after in after_dimensions:
+            before = before_by_code[after.code]
+            change = (
+                after.score - before.score
+                if after.score is not None and before.score is not None
+                else None
+            )
+            changes.append(
+                JobAbilityChange(
+                    code=after.code,
+                    label=after.label,
+                    before_score=before.score,
+                    after_score=after.score,
+                    change=change,
+                    assessment_status=(
+                        "derived" if after.score is not None else "not_assessed"
+                    ),
+                )
+            )
+        return changes
+
+    @staticmethod
+    def _build_job_outcome_summary(
+        *,
+        status: str,
+        score_change: float | None,
+        coaching: JobCoachingOutcomeSummary,
+    ) -> str:
+        if status == "insufficient_data":
+            return "尚无岗位能力测评，暂不能判断学习效果。"
+        if status == "baseline_only":
+            return "已形成首次测评基线，完成学习任务后请再次测评以查看变化。"
+        direction = "提升" if (score_change or 0) > 0 else "下降" if (score_change or 0) < 0 else "持平"
+        change_text = abs(score_change or 0)
+        return (
+            f"前后测总分{direction} {change_text:g} 分；"
+            f"已完成 {coaching.completed}/{coaching.total} 条智能体建议。"
+        )
+
+    @classmethod
+    def _build_job_weak_abilities(
+        cls,
+        dimensions: list[JobAbilityDimension],
+    ) -> list[JobWeakAbility]:
+        recommendation_by_code = {
+            code: recommendation
+            for code, _, _, recommendation in cls.JOB_ABILITY_RULES
+        }
+        weak_items = [
+            item
+            for item in dimensions
+            if item.score is not None and item.score < item.benchmark
+        ]
+        weak_items.sort(key=lambda item: item.score if item.score is not None else 101)
+        return [
+            JobWeakAbility(
+                code=item.code,
+                label=item.label,
+                score=item.score,
+                reason=(
+                    item.evidence[-1]
+                    if len(item.evidence) > 1
+                    else "当前推导分数低于岗位基准。"
+                ),
+                recommended_action=recommendation_by_code[item.code],
+            )
+            for item in weak_items[:3]
+        ]
+
+    @classmethod
+    def _ability_codes_for_text(cls, text: str) -> list[str]:
+        return [
+            code
+            for code, _, keywords, _ in cls.JOB_ABILITY_RULES
+            if any(keyword in text for keyword in keywords)
+        ]
+
+    @classmethod
+    def _build_job_path(cls, latest_plan: LearningPlanResponse | None) -> list[JobLearningPathItem]:
+        if latest_plan is None:
+            return []
+        items: list[JobLearningPathItem] = []
+        for step in latest_plan.steps[:5]:
+            searchable_text = " ".join(
+                [
+                    step.title,
+                    *(step.weak_point_focus or []),
+                    *(step.knowledge_points or []),
+                ]
+            )
+            items.append(
+                JobLearningPathItem(
+                    step_id=step.step_id or f"day-{step.day}",
+                    title=step.title,
+                    status=step.status,
+                    duration_minutes=step.duration_minutes,
+                    ability_codes=cls._ability_codes_for_text(searchable_text),
+                    path_reason=step.path_reason,
+                )
+            )
+        return items
+
+    @classmethod
+    def _build_job_resources(
+        cls,
+        latest_plan: LearningPlanResponse | None,
+    ) -> list[JobLearningResourceItem]:
+        if latest_plan is None:
+            return []
+        items: list[JobLearningResourceItem] = []
+        seen: set[tuple[int | None, str]] = set()
+        for step in latest_plan.steps:
+            searchable_text = " ".join([step.title, *(step.knowledge_points or [])])
+            ability_codes = cls._ability_codes_for_text(searchable_text)
+            for resource in step.resource_pushes:
+                key = (resource.resource_id, resource.title)
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append(
+                    JobLearningResourceItem(
+                        resource_id=resource.resource_id,
+                        title=resource.resource_title or resource.title,
+                        resource_type=resource.resource_type,
+                        reason=resource.reason,
+                        open_url=resource.open_url,
+                        ability_codes=ability_codes,
+                    )
+                )
+                if len(items) >= 5:
+                    return items
+        return items
+
+    @staticmethod
+    def _build_job_safety_notices() -> list[JobSafetyNotice]:
+        return [
+            JobSafetyNotice(
+                code="production_isolation",
+                content="代码、脚本和数据库操作应先在隔离的开发或测试环境验证，禁止直接作用于生产环境。",
+                severity="critical",
+            ),
+            JobSafetyNotice(
+                code="data_desensitization",
+                content="测试数据和学习记录涉及个人信息时必须脱敏，不得上传真实账号、密钥或隐私数据。",
+            ),
+            JobSafetyNotice(
+                code="license_review",
+                content="引用第三方代码、数据和资料前应核对许可证、授权范围和来源。",
+                severity="info",
+            ),
+        ]
+
+    @staticmethod
+    def _build_job_next_action(
+        *,
+        course_id: int,
+        latest_evaluation: EvaluationHistoryItem | None,
+        latest_plan: LearningPlanResponse | None,
+    ) -> JobNextAction:
+        if latest_evaluation is None:
+            return JobNextAction(
+                action_type="start_assessment",
+                label="开始岗位能力诊断",
+                route=f"/evaluation?courseId={course_id}",
+                reason="尚未完成岗位能力诊断，先取得真实测评数据。",
+            )
+        if latest_plan is None:
+            return JobNextAction(
+                action_type="generate_plan",
+                label="生成岗位能力提升路径",
+                route=f"/path?courseId={course_id}",
+                reason="已有诊断结果，下一步生成针对薄弱能力的学习路径。",
+            )
+        return JobNextAction(
+            action_type="continue_plan",
+            label="继续岗位能力提升路径",
+            route=f"/path?courseId={course_id}",
+            reason="已有诊断和学习路径，继续完成当前阶段任务。",
+        )
+
+    async def _resolve_current_course(
+        self,
+        course_id: int | None,
+        *,
+        user_id: int,
+    ) -> LearningCourseDetailResponse | None:
         if course_id is None:
             course_id = 401
-        return await CourseService().get_learning_course_detail(course_id, user_id=self.DEFAULT_USER_ID)
+        return await CourseService().get_learning_course_detail(course_id, user_id=user_id)
 
     async def _get_profile_summary(self, user_id: int) -> ProfileSummary | None:
         async with async_session_factory() as session:
