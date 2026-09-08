@@ -21,6 +21,7 @@ $missingDirs = @($submitDirs | Where-Object { -not (Test-Path $_) })
 $sourcePackage = Join-Path $repo "deliverables\04-作品源码"
 $sensitive = @(Get-ChildItem -Path $sourcePackage -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\.env($|\.)|\.log$|\.sqlite$' })
 $legacySlides = @()
+Add-Type -AssemblyName System.IO.Compression
 foreach ($ppt in (Get-ChildItem -Path (Join-Path $repo "deliverables\03-作品说明") -Filter *.pptx -File -ErrorAction SilentlyContinue)) {
   $zip = [IO.Compression.ZipFile]::OpenRead($ppt.FullName)
   try {
