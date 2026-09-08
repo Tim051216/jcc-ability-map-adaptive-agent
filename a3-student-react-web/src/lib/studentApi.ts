@@ -466,6 +466,7 @@ export interface JobKnowledgeCatalogItem {
   ability_dimension: string;
   ability_unit: string;
   knowledge_point: string;
+  skill_point: string;
   applicable_scenario: string;
   common_error: string;
   learning_advice: string;

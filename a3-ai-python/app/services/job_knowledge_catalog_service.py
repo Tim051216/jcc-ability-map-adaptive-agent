@@ -58,6 +58,7 @@ class JobKnowledgeCatalogService:
                     ability_dimension=fields["能力维度"],
                     ability_unit=fields["能力单元"],
                     knowledge_point=fields["知识点"],
+                    skill_point=f"能够将“{heading.group(2).strip()}”应用到{fields['适用场景']}，并提交可审查的岗位产出。",
                     applicable_scenario=fields["适用场景"],
                     common_error=fields["常见错误"],
                     learning_advice=fields["学习建议"],

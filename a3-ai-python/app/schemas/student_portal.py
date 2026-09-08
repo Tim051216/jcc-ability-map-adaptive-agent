@@ -290,6 +290,7 @@ class JobKnowledgeCatalogItem(BaseModel):
     ability_dimension: str
     ability_unit: str
     knowledge_point: str
+    skill_point: str
     applicable_scenario: str
     common_error: str
     learning_advice: str
