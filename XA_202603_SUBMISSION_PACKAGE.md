@@ -45,6 +45,12 @@
 
 ## 封包前硬检查
 
+先在仓库根目录运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-xa202603.ps1
+```
+
 - [ ] 六个目录均存在且文件名以对应编号开头。
 - [ ] 作品名称、学校、团队和联系人信息完全一致。
 - [ ] 03 说明文件和 PPT 使用 XA-202603 口径。
