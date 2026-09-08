@@ -13,7 +13,7 @@
 | 每条可转为岗位练习 | 已完成 | 服务生成 `task_prompt`、`deliverable`、`acceptance_criteria` |
 | 学生可以查看目录 | 已完成 | `/job-learning/knowledge-catalog` |
 | 学生可以提交任务产出 | 已完成 | 目录页写入岗位辅导记录并更新为 `completed` |
-| 技能点单独字段 | 待增强 | 当前有知识点和任务产出，建议封版前增加 `skill_point` 字段并在页面展示 |
+| 技能点单独字段 | 接口已完成 | 后端接口已提供 `skill_point`；目录正文和前端详情仍可在封版时补充显式展示 |
 
 ## 二、比赛主闭环
 
