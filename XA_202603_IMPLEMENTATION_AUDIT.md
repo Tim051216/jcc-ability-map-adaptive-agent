@@ -53,3 +53,13 @@
 - PR #2 已合并到 `main`，合并提交：`cad06eee`。
 - 合并前 CI 已通过 Java 核心服务、Python 服务、前端构建、Harness、Clone Readiness 和镜像构建检查。
 - 后端功能分支仍保留为 `feat/xfyun-agent-backend`，用于追溯开发历史；队友日常开发应从最新 `main` 创建新分支。
+
+### 最新主分支 CI 复核（2026-09-08）
+
+- 工作流：`Build And Push Images`
+- Run：`34223118829`
+- 提交：`da2a3eeb24ed838c0de7af6aac576cf09f3b324f`
+- 结论：`success`
+- 已成功的作业：K8s 清单渲染、Java JAR 构建、学习服务镜像、学生端镜像、认证服务镜像、AI Python 镜像、网关镜像。
+
+该结果只能证明主分支构建和自动化检查通过，不替代教师复核、真实用户试用或星辰平台现场证据。
