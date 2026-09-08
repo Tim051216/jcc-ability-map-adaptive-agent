@@ -37,9 +37,9 @@ foreach ($ppt in (Get-ChildItem -Path (Join-Path $repo "deliverables\03-作品�
 Write-Host "XA-202603 offline audit"
 Write-Host "catalog_entries=$($ids.Count) skill_points=$skillCount sources=$($sourceLines.Count)"
 Write-Host "dimensions=$($dimensions -join ',')"
-if ($ids.Count -ne 50) { throw "知识目录应为 50 条，当前为 $($ids.Count)" }
-if ($skillCount -ne 50) { throw "技能点应为 50 条，当前为 $skillCount" }
-if ($sourceLines.Count -ne 50) { throw "来源应为 50 条，当前为 $($sourceLines.Count)" }
+if ($ids.Count -lt 80) { throw "知识目录应至少为 80 条（团队目标），当前为 $($ids.Count)" }
+if ($skillCount -ne $ids.Count) { throw "技能点数量必须与目录条目一致，当前为 $skillCount/$($ids.Count)" }
+if ($sourceLines.Count -ne $ids.Count) { throw "来源数量必须与目录条目一致，当前为 $($sourceLines.Count)/$($ids.Count)" }
 if (@($dimensions | Where-Object { $_ -notin $required }).Count -gt 0 -or @($required | Where-Object { $_ -notin $dimensions }).Count -gt 0) { throw "五个能力维度覆盖不完整" }
 if ($missing.Count -gt 0) { throw "存在不存在的来源文件：$($missing -join ', ')" }
 if ($missingDirs.Count -gt 0) { throw "提交目录缺失：$($missingDirs -join ', ')" }

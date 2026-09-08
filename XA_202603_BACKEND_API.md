@@ -81,7 +81,7 @@ GET /api/v1/student-portal/job-learning/knowledge-catalog
 GET /api/v1/student-portal/job-learning/knowledge-catalog?ability_dimension=system_design
 ```
 
-返回仓库内 `software-job-ability-knowledge-catalog.md` 的结构化条目。支持按 `ability_dimension` 筛选；当前首批目录共 50 条，覆盖 `requirement_analysis`、`system_design`、`coding_implementation`、`software_testing`、`project_collaboration` 五类能力。每条还返回 `task_prompt`、`deliverable`、`acceptance_criteria` 和 `estimated_minutes`，可直接用于岗位学习任务提交。接口为只读接口，不写入用户数据。
+返回仓库内 `software-job-ability-knowledge-catalog.md` 的结构化条目。支持按 `ability_dimension` 筛选；当前目录共 80 条，覆盖 `requirement_analysis`、`system_design`、`coding_implementation`、`software_testing`、`project_collaboration` 五类能力。每条还返回 `task_prompt`、`deliverable`、`acceptance_criteria` 和 `estimated_minutes`，可直接用于岗位学习任务提交。接口为只读接口，不写入用户数据。
 
 ## 4. 保存岗位学习目标
 

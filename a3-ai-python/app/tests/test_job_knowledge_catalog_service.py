@@ -4,8 +4,8 @@ from app.services.job_knowledge_catalog_service import JobKnowledgeCatalogServic
 def test_catalog_exposes_all_entries_as_actionable_tasks() -> None:
     response = JobKnowledgeCatalogService.list_items()
 
-    assert response.total == 50
-    assert [item.id for item in response.items] == [f"K{index:03d}" for index in range(1, 51)]
+    assert response.total == 80
+    assert [item.id for item in response.items] == [f"K{index:03d}" for index in range(1, 81)]
     assert all(item.task_prompt for item in response.items)
     assert all(item.skill_point for item in response.items)
     assert all("可审查" in item.skill_point for item in response.items)

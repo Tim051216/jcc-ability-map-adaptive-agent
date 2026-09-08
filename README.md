@@ -11,7 +11,7 @@
 当前版本已经完成以下核心方向：
 
 - 岗位自适应学习主入口：`/job-learning`
-- 岗位能力知识目录：`/job-learning/knowledge-catalog`，覆盖 K001-K050 五类能力维度
+- 岗位能力知识目录：`/job-learning/knowledge-catalog`，覆盖 K001-K080 五类能力维度
 - 岗位学习效果与反馈：`/job-learning/outcomes`、`/trial-feedback`
 
 - 个性化学生画像：支持画像维度抽取、阶段判断、成长图谱与能力可视化

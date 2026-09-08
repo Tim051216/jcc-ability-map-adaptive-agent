@@ -6,9 +6,9 @@
 
 | 要求 | 当前状态 | 证据 |
 | --- | --- | --- |
-| 不少于 50 条专业知识 | 已完成 | `a3-ai-python/xfyun_agent/knowledge/software-job-ability-knowledge-catalog.md` 含 K001-K050 |
+| 不少于 50 条专业知识 | 已完成（达到团队目标） | `a3-ai-python/xfyun_agent/knowledge/software-job-ability-knowledge-catalog.md` 含 K001-K080 共 80 条 |
 | 五个岗位能力维度覆盖 | 已完成 | 目录字段 `能力维度`；后端接口返回五个维度 |
-| 每条有场景、错误、建议和安全提示 | 已完成 | K001-K050 均有对应字段 |
+| 每条有场景、错误、建议和安全提示 | 已完成 | K001-K080 均有对应字段 |
 | 每条有可核验来源 | 已完成（路径级） | 50 个来源路径已在仓库中存在；教师内容复核尚未完成 |
 | 每条可转为岗位练习 | 已完成 | 服务生成 `task_prompt`、`deliverable`、`acceptance_criteria` |
 | 学生可以查看目录 | 已完成 | `/job-learning/knowledge-catalog` |
@@ -30,7 +30,7 @@
 ## 三、当前可以直接由代码完成的工作
 
 1. 给目录条目增加单独的 `技能点` 字段，并同步 Python schema、解析器、TypeScript 类型和目录页面。
-2. 为目录接口增加字段完整性测试，保证 50 条都包含技能点、来源和安全提示。
+2. 为目录接口增加字段完整性测试，保证 80 条都包含技能点、来源和安全提示。（已完成）
 3. 为比赛主链路增加一个离线冒烟测试：目标选择、目录查询、任务提交和完成状态查询。
 4. 审计 `/profile`、`/path`、`/evaluation`、`/report`、`/resources`、`/learn`、`/tutor` 的岗位名称、来源和 AI 标识。
 5. 更新 PPT、演示视频字幕、项目说明和最终 `01-06` 提交目录中的旧赛题口径。

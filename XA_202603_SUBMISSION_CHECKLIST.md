@@ -4,7 +4,7 @@
 
 - [x] 固定软件技术专业群、软件开发工程师岗位和个性化自适应学习方向。
 - [x] `/job-learning` 主入口可完成目标选择、能力概览、路径和资源跳转。
-- [x] `/job-learning/knowledge-catalog` 提供 K001-K050 共 50 条有来源知识。
+- [x] `/job-learning/knowledge-catalog` 提供 K001-K080 共 80 条有来源知识，达到团队目标区间。
 - [x] 每条知识具备可执行任务、提交产出、验收标准和建议用时。
 - [x] 任务提交写入岗位辅导记录，并支持 `completed` 状态。
 - [x] `/job-learning/outcomes` 展示前后测变化和建议执行情况。
