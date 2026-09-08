@@ -281,3 +281,16 @@ python scripts/seed_job_trial_feedback_demo.py
 5. 路由字段由后端返回相对路径，前端负责站内跳转。
 6. 新增或修改字段必须先更新本文件，再同步三个前端负责人。
 7. 智能体给出正式建议后调用第 4 节接口；学生执行或放弃后调用第 6 节接口，形成可展示的学习反馈闭环。
+
+## 10. 知识目录字段完整性
+
+`GET /api/v1/student-portal/job-learning/knowledge-catalog` 的每个条目必须同时返回：
+
+```text
+id, title, ability_dimension, ability_unit, knowledge_point, skill_point,
+applicable_scenario, common_error, learning_advice, safety_notice,
+source_path, source_locator, task_prompt, deliverable, acceptance_criteria,
+estimated_minutes
+```
+
+其中 `skill_point` 是可观察的岗位技能产出，不等同于知识点复述；`source_path` 和 `source_locator` 用于教师复核和比赛材料引用。目录接口不应在缺少来源时生成教材页码或标准编号。
