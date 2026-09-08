@@ -10,7 +10,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "A3个性化学习智能体系统项目文档.docx"
+OUTPUT = ROOT / "XA-202603岗位自适应学习智能体项目文档.docx"
 
 
 def set_run_font(run, name="宋体", size=12, bold=False, color=None):
@@ -125,7 +125,7 @@ def add_cover(doc):
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(90)
     p.paragraph_format.space_after = Pt(18)
-    r = p.add_run("A3个性化学习智能体系统")
+    r = p.add_run("BiliLearn 岗学智练")
     set_run_font(r, name="黑体", size=22, bold=True, color=(31, 78, 121))
 
     p2 = doc.add_paragraph()
@@ -185,7 +185,7 @@ def build():
 
     add_heading(doc, "1. 项目概述和需求分析", 1)
     add_heading(doc, "1.1 项目背景", 3)
-    add_text(doc, "A3个性化学习智能体系统面向高校与职业教育场景，目标是将课程学习、资源推荐、学习路径规划、智能辅导、测评反馈和后台运营管理整合到统一平台中。项目在原有学习业务微服务基础上引入独立 AI 中台，通过多智能体协同、RAG 知识检索和学习数据分析，提升教学效率、学习个性化程度以及系统可运营能力。")
+    add_text(doc, "BiliLearn 岗学智练面向 XA-202603 职业教育赛题，固定软件技术专业群与软件开发工程师岗位，目标是将岗位目标、能力诊断、学习路径、资源推荐、智能辅导和测评反馈整合到统一的个性化自适应学习闭环中。")
     add_text(doc, "从当前仓库结构来看，项目已经形成“Java 微服务业务底座 + Python AI 中台 + 学生端 React 前端 + 管理端 React 前端”的完整方案，具备课程浏览、学习计划、资源生成、智能问答、测评分析、运营总览等可答辩的核心能力。")
 
     add_heading(doc, "1.2 系统目标", 3)
@@ -250,7 +250,7 @@ def build():
     add_table(doc, ["数据库主题", "脚本文件", "主要用途"], db_rows, [1.4, 2.2, 2.9])
 
     add_heading(doc, "2.2.2 数据特点", 4)
-    add_text(doc, "当前项目的 SQL 目录同时包含基础业务初始化脚本与 A3 扩展示例数据脚本。基础脚本服务于 Java 微服务正常启动，扩展脚本主要服务于学习路径、测评演示、画像生成和资源生成等答辩场景。这样既保留了原业务底座，又补齐了比赛和课程设计需要展示的 AI 能力数据。")
+    add_text(doc, "当前项目的 SQL 目录同时包含基础业务初始化脚本与岗位自适应学习演示数据脚本。基础脚本服务于 Java 微服务正常启动，扩展脚本主要服务于学习路径、测评演示、画像生成和资源生成等比赛场景。这样既保留了原业务底座，又补齐了 XA-202603 需要展示的 AI 能力数据。")
 
     add_heading(doc, "2.3 系统模块架构", 3)
     add_heading(doc, "2.3.1 后端模块结构", 4)
@@ -345,7 +345,7 @@ def build():
     add_bullet(doc, "项目文档、SQL 脚本、启动脚本和演示总结已逐步收口，便于交付和复现。")
 
     add_heading(doc, "6.2 总结", 3)
-    add_text(doc, "综合当前代码仓库与说明文档，A3个性化学习智能体系统已经具备较完整的智能教学平台雏形。它既保留了传统学习平台在课程、学习、测评和管理方面的业务基础，又通过独立 AI 中台补充了多智能体协同、知识库检索、资源生成和学习评估等创新能力。后续如果继续完善联调稳定性、答辩素材与页面细节，本项目能够较好支撑课程设计、比赛答辩和项目展示等场景。")
+    add_text(doc, "综合当前代码仓库与说明文档，BiliLearn 岗学智练已经具备面向软件开发岗位的个性化自适应学习智能体雏形。它保留课程、学习、测评和管理业务基础，并通过独立 AI 中台补充多智能体协同、知识库检索、资源生成和学习评估能力，可支撑 XA-202603 比赛演示与项目交付。")
 
     doc.save(OUTPUT)
     print(OUTPUT)

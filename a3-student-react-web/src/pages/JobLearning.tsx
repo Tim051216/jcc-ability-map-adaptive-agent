@@ -6,16 +6,25 @@ import { studentApi, type JobLearningOverview } from "../lib/studentApi";
 
 export default function JobLearning() {
   const userId = getCurrentLoggedInUserId();
-  const [data, setData] = useState<JobLearningOverview | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `job-learning-overview:${userId}:401`;
+  const [data, setData] = useState<JobLearningOverview | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(cacheKey);
+      return raw ? (JSON.parse(raw) as JobLearningOverview) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(() => data === null);
   const [error, setError] = useState<string | null>(null);
-  const [goal, setGoal] = useState("");
-  const [goalScene, setGoalScene] = useState("internship");
+  const [goal, setGoal] = useState(() => data?.student_goal || "");
+  const [goalScene, setGoalScene] = useState(() => data?.goal_scene || "internship");
   const [savingGoal, setSavingGoal] = useState(false);
 
   useEffect(() => {
     let active = true;
     studentApi.getJobLearningOverview(userId, 401, 30000).then((next) => {
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(next)); } catch { /* Ignore storage limits. */ }
       if (active) { setData(next); setGoal(next.student_goal || ""); setGoalScene(next.goal_scene || "internship"); }
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "岗位学习数据暂时不可用");
@@ -23,7 +32,7 @@ export default function JobLearning() {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [userId]);
+  }, [cacheKey, userId]);
 
   if (loading) return <PageState><LoaderCircle className="animate-spin" />正在读取岗位学习数据...</PageState>;
   if (error) return <PageState><CircleAlert />{error}</PageState>;
@@ -35,7 +44,9 @@ export default function JobLearning() {
         <div className="flex items-center gap-3 text-sm font-bold text-[#e4002b]"><BriefcaseBusiness size={18} />岗位自适应学习</div>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <div><h1 className="text-3xl font-black tracking-tight text-[#141414]">{data.job_name}</h1><p className="mt-2 text-sm text-[#5b6168]">{data.professional_group} · {data.course_name}</p></div>
+          <div className="flex flex-wrap items-center gap-2"><Link to="/job-learning/knowledge-catalog" className="inline-flex items-center gap-2 border border-[#dfe3e8] px-4 py-2 text-sm font-bold text-[#141414] hover:border-[#e4002b] hover:text-[#e4002b]">查看知识目录</Link>
           <Link to="/job-learning/outcomes" className="inline-flex items-center gap-2 border border-[#141414] px-4 py-2 text-sm font-bold text-[#141414] hover:bg-[#141414] hover:text-white">查看学习效果 <ArrowRight size={16} /></Link>
+          </div>
         </div>
       </header>
 

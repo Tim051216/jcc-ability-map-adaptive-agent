@@ -282,3 +282,27 @@ class JobLearningOverviewResponse(BaseModel):
     safety_notices: list[JobSafetyNotice] = Field(default_factory=list)
     ai_generated: bool = False
     next_action: JobNextAction
+
+
+class JobKnowledgeCatalogItem(BaseModel):
+    id: str
+    title: str
+    ability_dimension: str
+    ability_unit: str
+    knowledge_point: str
+    applicable_scenario: str
+    common_error: str
+    learning_advice: str
+    safety_notice: str
+    source_path: str
+    source_locator: str | None = None
+    task_prompt: str
+    deliverable: str
+    acceptance_criteria: str
+    estimated_minutes: int = Field(default=30, ge=5, le=240)
+
+
+class JobKnowledgeCatalogResponse(BaseModel):
+    total: int
+    ability_dimensions: list[str] = Field(default_factory=list)
+    items: list[JobKnowledgeCatalogItem] = Field(default_factory=list)

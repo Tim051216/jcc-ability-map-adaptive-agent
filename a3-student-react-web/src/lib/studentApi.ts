@@ -460,6 +460,30 @@ export interface JobLearningOutcome {
   summary: string;
 }
 
+export interface JobKnowledgeCatalogItem {
+  id: string;
+  title: string;
+  ability_dimension: string;
+  ability_unit: string;
+  knowledge_point: string;
+  applicable_scenario: string;
+  common_error: string;
+  learning_advice: string;
+  safety_notice: string;
+  source_path: string;
+  source_locator: string | null;
+  task_prompt: string;
+  deliverable: string;
+  acceptance_criteria: string;
+  estimated_minutes: number;
+}
+
+export interface JobKnowledgeCatalogResponse {
+  total: number;
+  ability_dimensions: string[];
+  items: JobKnowledgeCatalogItem[];
+}
+
 export interface JobCoachingRecord {
   id: number;
   user_id: number;
@@ -1637,6 +1661,14 @@ export const studentApi = {
     return requestAsUser<JobLearningOutcome>(
       `/student-portal/job-learning/outcomes?user_id=${userId}&course_id=${courseId}`,
       userId,
+      timeoutMs,
+    );
+  },
+
+  getJobKnowledgeCatalog(abilityDimension?: string, timeoutMs = 8000) {
+    const query = abilityDimension ? `?ability_dimension=${encodeURIComponent(abilityDimension)}` : "";
+    return request<JobKnowledgeCatalogResponse>(
+      `/student-portal/job-learning/knowledge-catalog${query}`,
       timeoutMs,
     );
   },

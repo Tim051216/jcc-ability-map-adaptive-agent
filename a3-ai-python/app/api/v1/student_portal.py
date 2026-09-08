@@ -9,6 +9,7 @@ from app.schemas.student_portal import (
     JobCoachingRecordResponse,
     JobLearningGoalResponse,
     JobLearningGoalUpdateRequest,
+    JobKnowledgeCatalogResponse,
     JobLearningOutcomeResponse,
     JobLearningOverviewResponse,
     JobTrialFeedbackCreateRequest,
@@ -18,6 +19,7 @@ from app.schemas.student_portal import (
     StudyReportResponse,
 )
 from app.services.student_portal_service import StudentPortalService
+from app.services.job_knowledge_catalog_service import JobKnowledgeCatalogService
 
 router = APIRouter()
 
@@ -55,6 +57,16 @@ async def get_job_learning_overview(
         user_id=user_id,
         course_id=course_id,
     )
+
+
+@router.get(
+    "/job-learning/knowledge-catalog",
+    response_model=JobKnowledgeCatalogResponse,
+)
+async def get_job_knowledge_catalog(
+    ability_dimension: str | None = Query(default=None),
+) -> JobKnowledgeCatalogResponse:
+    return JobKnowledgeCatalogService.list_items(ability_dimension)
 
 
 @router.get(
