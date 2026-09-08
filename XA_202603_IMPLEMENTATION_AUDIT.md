@@ -53,7 +53,6 @@
 - PR #2 已合并到 `main`，合并提交：`cad06eee`。
 - 合并前 CI 已通过 Java 核心服务、Python 服务、前端构建、Harness、Clone Readiness 和镜像构建检查。
 - 后端功能分支仍保留为 `feat/xfyun-agent-backend`，用于追溯开发历史；队友日常开发应从最新 `main` 创建新分支。
-
 ### 最新主分支 CI 复核（2026-09-08）
 
 - 工作流：`Build And Push Images`
