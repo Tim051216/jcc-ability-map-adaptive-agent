@@ -70,6 +70,31 @@ export default function JobLearning() {
         <SummaryList title="推荐学习资源" items={data.recommended_resources} empty="完成诊断后生成岗位匹配资源。" />
       </section>
 
+      <section className="grid gap-4 border-t border-[#dfe3e8] pt-6 md:grid-cols-[1fr_1.4fr]">
+        <div className="border border-[#dfe3e8] p-5">
+          <h2 className="text-lg font-black text-[#141414]">结果可信度</h2>
+          <p className="mt-2 text-sm leading-6 text-[#69717a]">
+            {data.ai_generated ? "本页路径和建议由 AI 根据岗位数据生成，提交前请结合学习证据复核。" : "本页结果来自已保存的岗位学习数据。"}
+          </p>
+          <span className="mt-4 inline-flex border border-[#e4002b] px-2 py-1 text-xs font-bold text-[#e4002b]">
+            {data.ai_generated ? "AI 生成内容" : "系统记录"}
+          </span>
+        </div>
+        <div className="border border-[#dfe3e8] p-5">
+          <h2 className="text-lg font-black text-[#141414]">依据与安全提示</h2>
+          {data.citations.length ? (
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#52606d]">
+              {data.citations.slice(0, 3).map((citation, index) => (
+                <li key={`${String(citation.id || citation.source || index)}`} className="border-l-2 border-[#141414] pl-3">
+                  {String(citation.title || citation.source || citation.name || "岗位学习依据")}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="mt-3 text-sm text-[#69717a]">当前没有可展示的引用；请在知识目录查看条目来源。</p>}
+          {data.safety_notices.length ? <p className="mt-4 border-t border-[#edf0f2] pt-3 text-xs leading-5 text-[#69717a]">安全提示：{data.safety_notices[0]}</p> : null}
+        </div>
+      </section>
+
       <section className="border-t border-[#dfe3e8] pt-6"><h2 className="text-xl font-black text-[#141414]">继续主流程</h2><div className="mt-4 grid gap-3 sm:grid-cols-3"><FlowLink to="/evaluation" title="岗位能力诊断" detail="完成一次真实测评" /><FlowLink to="/profile" title="岗位能力画像" detail="查看能力证据和标签" /><FlowLink to="/report" title="学习报告" detail="回顾学习和测评结果" /></div></section>
 
       <section className="border-t border-[#dfe3e8] pt-6"><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-[#e4002b]" /><h2 className="text-xl font-black text-[#141414]">下一步</h2></div><div className="mt-3 border-l-2 border-[#e4002b] bg-[#fafafa] p-4"><p className="font-bold text-[#141414]">{data.next_action?.label || "完成岗位诊断"}</p><p className="mt-1 text-sm text-[#69717a]">{data.next_action?.reason || "完成真实测评后，系统会生成可核验的岗位学习建议。"}</p>{data.next_action?.route ? <Link className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#e4002b]" to={data.next_action.route}>立即进入 <ArrowRight size={15} /></Link> : null}</div></section>
