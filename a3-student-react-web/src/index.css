@@ -214,8 +214,32 @@ body,
   inset: 0;
   z-index: 3;
   background:
-    linear-gradient(90deg, rgba(247, 247, 248, 0.78) 0%, rgba(247, 247, 248, 0.66) 42%, rgba(247, 247, 248, 0.78) 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.48) 48%, rgba(255, 255, 255, 0.76) 100%);
+    linear-gradient(90deg, rgba(247, 247, 248, 0.46) 0%, rgba(247, 247, 248, 0.34) 42%, rgba(247, 247, 248, 0.48) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.24) 48%, rgba(255, 255, 255, 0.46) 100%);
+}
+
+/* Keep the themed background visible while giving dense catalog content a readable surface. */
+.job-knowledge-catalog-page {
+  position: relative;
+}
+
+.job-knowledge-catalog-header,
+.job-knowledge-catalog-filters {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 18px 20px;
+  backdrop-filter: blur(5px);
+}
+
+.job-knowledge-catalog-filters {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.job-knowledge-catalog-list,
+.job-knowledge-catalog-detail {
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(4px);
 }
 
 .global-frame-image {
@@ -241,14 +265,14 @@ body,
 @keyframes global-frame-portrait {
   0%,
   44% {
-    opacity: 0.3;
+    opacity: 0.52;
   }
   52%,
   92% {
     opacity: 0;
   }
   100% {
-    opacity: 0.3;
+    opacity: 0.52;
   }
 }
 
@@ -259,7 +283,7 @@ body,
   }
   52%,
   92% {
-    opacity: 0.32;
+    opacity: 0.56;
   }
   100% {
     opacity: 0;
