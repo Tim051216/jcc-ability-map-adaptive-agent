@@ -73,12 +73,12 @@ def add_cover(document: Document):
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(80)
     p.paragraph_format.space_after = Pt(24)
-    r = p.add_run("BiliLearn个性化学习多智能体系统\n项目说明文档")
+    r = p.add_run("岗课赛一体化软件开发岗位能力自适应学习智能体\n项目说明文档")
     set_font(r, "黑体", 22, True)
 
     for text in [
         "赛题名称：XA-202603 面向职业教育高水平专业群建设的教学实训与岗位技能智能体开发",
-        "项目名称：BiliLearn",
+        "项目名称：岗课赛一体化软件开发岗位能力自适应学习智能体（BiliLearn）",
         "文档类型：项目总体设计与使用说明",
         "版本：V1.0",
         "日期：2026年6月18日",
@@ -170,7 +170,7 @@ def build():
 
     doc.add_heading("1. 项目概述和需求分析", level=1)
     doc.add_heading("1.1 项目背景", level=3)
-    add_paragraph(doc, "BiliLearn 岗学智练面向 XA-202603 赛题，固定软件技术专业群与软件开发工程师岗位，围绕个性化自适应学习完成业务重构、AI 能力接入与学生端体验升级。系统把岗位学习过程拆解为目标、诊断、路径、资源、辅导、测评与反馈等连续环节，通过智能体协同推动学生形成可验证的学习闭环。")
+    add_paragraph(doc, "本项目面向 XA-202603 赛题，固定软件技术专业群与软件开发工程师岗位，以岗—课—赛贯通为主线：将岗位典型任务映射到课程知识，再转化为综合实训与技能竞赛任务，通过诊断、训练、产出和评价形成可验证闭环。")
     add_paragraph(doc, "当前仓库采用“Java 稳定业务链路 + Python AI 中台 + 双前端呈现”的组合式架构，既保留课程、学习路径、测评、报告等核心教学业务的稳定性，也具备 RAG 检索、智能问答、资源生成、AI 导师、运营治理等智能化扩展能力。")
 
     doc.add_heading("1.2 系统目标", level=3)

@@ -329,7 +329,7 @@ class ChatService:
     ) -> ChatResponse:
         course_label = course_context.course_name or course_context.course_code
         answer = (
-            f"本次测评结果已接入 {course_label} 的学习闭环。"
+            f"本次岗位能力测评结果已接入 {course_label} 的岗课赛训练闭环。"
             "建议先完成一轮错题复盘，重点解释自己为什么会错；"
             "然后围绕当前薄弱点补做 1 组针对性练习；"
             "最后回到学习路径页查看系统刚生成的下一阶段任务。"

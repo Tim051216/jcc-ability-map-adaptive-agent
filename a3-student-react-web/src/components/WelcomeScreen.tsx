@@ -236,7 +236,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
         <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-pink-400 via-[#fb7299] to-purple-500 animate-gradient-x" />
         <div className="absolute top-4 left-6 flex items-center gap-2 text-[9px] font-mono text-slate-500/80 tracking-widest uppercase">
           <Terminal className="w-3.5 h-3.5 text-[#fb7299] animate-spin" />
-          <span>BiliLearn Mental Connection Sandbox v2.5 :: Secure Auth Terminal</span>
+          <span>岗课赛智能体 · 软件开发岗位能力工作台</span>
         </div>
 
         {/* Audio control button */}
@@ -272,7 +272,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
               animate={{ letterSpacing: "3px" }}
               className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 tracking-wider flex items-center justify-center gap-3 drop-shadow-sm"
             >
-              BiliLearn 双生智慧主脑舱
+              岗课赛双生智慧主脑舱
             </motion.h1>
             <p className="text-slate-700 text-xs md:text-sm font-semibold max-w-xl mx-auto leading-relaxed">
               融合 <span className="text-pink-600 font-extrabold">灰原哀 (Ai Haibara)</span> 的冷静逻辑计算，与 <span className="text-amber-600 font-extrabold">乌萨奇 (Usagi Perfect)</span> 的无敌应援动力。双核驱策，引燃你的考研与程序研学潜能！
@@ -451,7 +451,7 @@ export default function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
               }}
               className="w-full rounded-2xl border border-pink-200 bg-white px-8 py-4 text-sm font-black text-[#fb7299] transition-all duration-300 hover:border-pink-300 hover:bg-pink-50 md:w-auto"
             >
-              <span>进入 BiliLearn</span>
+              <span>进入岗课赛智能体</span>
             </button>
           </div>
 

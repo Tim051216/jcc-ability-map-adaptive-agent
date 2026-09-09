@@ -195,7 +195,7 @@ class MCPToolRegistry:
         )
         self._register(
             name="course_knowledge_search",
-            description="Search the local course knowledge base for BiliLearn course answers.",
+            description="Search the local岗课赛课程与岗位能力知识库 for grounded answers.",
             fields={
                 "query": (str, Field(..., description="Course knowledge question.")),
                 "course_code": (

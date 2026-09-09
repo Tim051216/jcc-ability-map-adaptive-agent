@@ -125,7 +125,7 @@ def add_cover(doc):
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(90)
     p.paragraph_format.space_after = Pt(18)
-    r = p.add_run("BiliLearn 岗学智练")
+    r = p.add_run("岗课赛一体化软件开发岗位能力自适应学习智能体")
     set_run_font(r, name="黑体", size=22, bold=True, color=(31, 78, 121))
 
     p2 = doc.add_paragraph()
@@ -185,7 +185,7 @@ def build():
 
     add_heading(doc, "1. 项目概述和需求分析", 1)
     add_heading(doc, "1.1 项目背景", 3)
-    add_text(doc, "BiliLearn 岗学智练面向 XA-202603 职业教育赛题，固定软件技术专业群与软件开发工程师岗位，目标是将岗位目标、能力诊断、学习路径、资源推荐、智能辅导和测评反馈整合到统一的个性化自适应学习闭环中。")
+    add_text(doc, "本项目面向 XA-202603 职业教育赛题，固定软件技术专业群与软件开发工程师岗位，贯通岗位任务、课程知识和竞赛/实训产出，将能力诊断、任务生成、资源推荐、智能辅导和评价反馈整合到岗课赛自适应训练闭环中。")
     add_text(doc, "从当前仓库结构来看，项目已经形成“Java 微服务业务底座 + Python AI 中台 + 学生端 React 前端 + 管理端 React 前端”的完整方案，具备课程浏览、学习计划、资源生成、智能问答、测评分析、运营总览等可答辩的核心能力。")
 
     add_heading(doc, "1.2 系统目标", 3)
