@@ -33,6 +33,9 @@ const routeImporters = {
   legacyOverview: () => import("./pages/Overview"),
   trialFeedback: () => import("./pages/TrialFeedback"),
   jobKnowledgeCatalog: () => import("./pages/JobKnowledgeCatalog"),
+  industryDashboard: () => import("./pages/IndustryDashboard"),
+  learningTaskFactory: () => import("./pages/LearningTaskFactory"),
+  jobAbilityGraph: () => import("./pages/JobAbilityGraph"),
 };
 
 const Header = lazy(routeImporters.header);
@@ -55,6 +58,9 @@ const JobLearning = lazy(routeImporters.jobLearning);
 const JobLearningOutcomes = lazy(routeImporters.jobLearningOutcomes);
 const TrialFeedback = lazy(routeImporters.trialFeedback);
 const JobKnowledgeCatalog = lazy(routeImporters.jobKnowledgeCatalog);
+const IndustryDashboard = lazy(routeImporters.industryDashboard);
+const LearningTaskFactory = lazy(routeImporters.learningTaskFactory);
+const JobAbilityGraph = lazy(routeImporters.jobAbilityGraph);
 
 // Warm route chunks after the first screen settles so the first navigation is not a cold import.
 if (typeof window !== "undefined") {
@@ -116,6 +122,12 @@ function preloadRoute(path: string) {
                                     ? routeImporters.trialFeedback
                               : normalizedPath === "/job-learning/knowledge-catalog"
                                 ? routeImporters.jobKnowledgeCatalog
+                              : normalizedPath === "/industry-dashboard"
+                                ? routeImporters.industryDashboard
+                              : normalizedPath === "/learning-task-factory"
+                                ? routeImporters.learningTaskFactory
+                              : normalizedPath === "/job-ability-graph"
+                                ? routeImporters.jobAbilityGraph
                               : null;
 
   if (importer) {
@@ -374,13 +386,13 @@ function GlobalAIAssistantBar() {
       nextAction: "先继续最近的任务，再补充关键资料。",
     },
     "/resources": {
-      title: "资源中心",
+      title: "课程与竞赛资源",
       agent: "资源生成智能体",
       status: "资源已按课程和当前检索意图整理。",
       nextAction: "优先打开最贴近当前卡点的讲义或视频。",
     },
     "/evaluation": {
-      title: "测评",
+      title: "岗位能力诊断",
       agent: "评估反馈智能体",
       status: "保留关键步骤，先完成本轮作答。",
       nextAction: "完成短测后，再看结果并继续追问。",
@@ -392,28 +404,28 @@ function GlobalAIAssistantBar() {
       nextAction: "先看最该补的点，再决定是补资源、调路径还是继续练题。",
     },
     "/collection": {
-      title: "收藏",
+      title: "我的任务资料",
       agent: "复习收藏智能体",
       status: "这里适合快速回看高频复习内容。",
       nextAction: "优先整理本周一定会复习的内容。",
     },
     "/learn": {
-      title: "课堂",
+      title: "课程实训",
       agent: "课堂学习智能体",
       status: "当前页面更适合边学边问，不需要跳走。",
       nextAction: "有卡点时直接打开右侧 AI 导师。",
     },
     "/path": {
-      title: "个性化学习路径",
+      title: "岗课赛训练路径",
       agent: "路径规划智能体",
       status: "这条路径会结合你的学习画像、当前课程进度和薄弱点，拆出接下来每一阶段具体该学什么、练什么、产出什么。",
       nextAction: "先完成当前阶段的首个关键任务，再由系统继续生成下一步学习动作。",
     },
     "/profile": {
-      title: "画像",
-      agent: "学习画像智能体",
-      status: "画像只保留对后续学习决策有帮助的信息。",
-      nextAction: "对照薄弱项调整资源和练习顺序。",
+      title: "岗位能力图谱",
+      agent: "岗位能力图谱智能体",
+      status: "围绕产业链、岗位群、能力单元和知识技能点组织岗位要求。",
+      nextAction: "先选择目标岗位，再查看能力缺口与学习任务。",
     },
     "/im": {
       title: "IM 通讯",
@@ -546,17 +558,19 @@ function MainLayout({
         : `mx-auto w-full max-w-[1480px] px-4 py-6 pb-24 transition-[padding] duration-300 md:px-8 md:py-8 md:pb-8 lg:px-10 xl:px-12 ${desktopTutorWidthClass}`;
 
   const navItems = [
-    { label: "概览", id: "overview", path: "/overview", icon: Layers },
-    { label: "路径", id: "path", path: "/path", icon: Compass },
-    { label: "课堂", id: "learn", path: "/learn", icon: Tv },
-    { label: "资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
-    { label: "收藏", id: "collection", path: "/collection", icon: Heart },
-    { label: "评估", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
-    { label: "报告", id: "report", path: "/report", icon: BarChart2 },
-    { label: "画像", id: "profile", path: "/profile", icon: User },
-    { label: "岗位学习", id: "job-learning", path: "/job-learning", icon: Compass },
-    { label: "知识目录", id: "job-knowledge-catalog", path: "/job-learning/knowledge-catalog", icon: BookOpen },
-    { label: "试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardCheck },
+    { label: "岗课赛工作台", id: "overview", path: "/overview", icon: Layers },
+    { label: "训练路径", id: "path", path: "/path", icon: Compass },
+    { label: "课程实训", id: "learn", path: "/learn", icon: Tv },
+    { label: "课程与竞赛资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
+    { label: "我的任务资料", id: "collection", path: "/collection", icon: Heart },
+    { label: "岗位能力诊断", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
+    { label: "能力与实训报告", id: "report", path: "/report", icon: BarChart2 },
+    { label: "岗位能力图谱", id: "job-ability-graph", path: "/job-ability-graph", icon: User },
+    { label: "岗课赛学习", id: "job-learning", path: "/job-learning", icon: Compass },
+    { label: "产业岗位分析", id: "industry-dashboard", path: "/industry-dashboard", icon: BarChart2 },
+    { label: "岗位任务转学习卡", id: "learning-task-factory", path: "/learning-task-factory", icon: ClipboardCheck },
+    { label: "岗课赛知识目录", id: "job-knowledge-catalog", path: "/job-learning/knowledge-catalog", icon: BookOpen },
+    { label: "岗课赛试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardCheck },
     { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
   ];
 
@@ -1533,7 +1547,7 @@ export default function App() {
                 path="/profile"
                 element={
                   <ProtectedRoute>
-                    <CapabilityModel user={user} />
+                    <Navigate to="/job-ability-graph" replace />
                   </ProtectedRoute>
                 }
               />
@@ -1665,6 +1679,9 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="/industry-dashboard" element={<ProtectedRoute><IndustryDashboard /></ProtectedRoute>} />
+              <Route path="/learning-task-factory" element={<ProtectedRoute><LearningTaskFactory /></ProtectedRoute>} />
+              <Route path="/job-ability-graph" element={<ProtectedRoute><JobAbilityGraph /></ProtectedRoute>} />
               <Route
                 path="/trial-feedback"
                 element={
