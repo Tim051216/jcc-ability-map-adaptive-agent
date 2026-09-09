@@ -10,6 +10,48 @@ const AI_ORIGIN = AI_BASE_URL.replace(/\/api\/v1$/, "");
 const LOCAL_AI_BASE_URL = (import.meta.env.VITE_LOCAL_AI_BASE_URL || "http://127.0.0.1:18080/api/v1").replace(/\/$/, "");
 const DEMO_AUTHORIZATION = "Bearer student-demo";
 
+export interface IndustryAnalysisResponse {
+  professional_group: string;
+  core_job: string;
+  collected_at: string;
+  collection_mode: string;
+  source_urls: string[];
+  sample_count: number;
+  skills: Array<{ name: string; current: number; previous: number; match: number; growth: number }>;
+  trend_months: string[];
+  trend_series: Record<string, number[]>;
+  trend_source: string;
+  alerts: Array<{ title: string; detail: string }>;
+  recommendations: string[];
+  ai_generated: boolean;
+  safety_notice: string;
+}
+
+export interface LearningTaskResponse {
+  task_id: string;
+  task_name: string;
+  task_description: string;
+  work_context: string;
+  steps: string[];
+  safety_points: string[];
+  knowledge_points: string[];
+  skill_points: string[];
+  resources: string[];
+  citations: string[];
+  ai_generated: boolean;
+}
+export interface JobAbilityResponse {
+  job_name: string; industry_chain: string; job_group: string; typical_tasks: string[];
+  abilities: Array<{ name: string; score: number; ability_units: string[]; skill_points: string[]; knowledge_points: string[] }>;
+  citations: string[]; ai_generated: boolean;
+}
+export interface AdaptiveLearningResponse {
+  goal: string; goal_scene: string; job_name: string; diagnostic_summary: string;
+  weak_areas: Array<{ code: string; label: string; score: number; reason: string }>;
+  next_steps: Array<{ title: string; kind: string; description: string; resource: string; unlock_condition: string }>;
+  progress: number; badges: string[]; ai_generated: boolean; safety_notice: string;
+}
+
 function getCurrentUserId() {
   if (typeof window === "undefined") return null;
   try {
@@ -423,7 +465,7 @@ export interface JobLearningOverview {
   recommended_path: Array<Record<string, unknown>>;
   recommended_resources: Array<Record<string, unknown>>;
   citations: Array<Record<string, unknown>>;
-  safety_notices: string[];
+  safety_notices: Array<string | { code?: string; content?: string; severity?: string }>;
   ai_generated: boolean;
   next_action: { action_type: string; label: string; route: string; reason: string } | null;
 }
@@ -1651,6 +1693,20 @@ const askVideoInsightRequest = (payload: {
   );
 
 export const studentApi = {
+  getIndustryAnalysis(refresh = false, timeoutMs = 8000, professionalGroup = "软件技术专业群", coreJob?: string) {
+    const query = new URLSearchParams({ refresh: String(refresh), professional_group: professionalGroup });
+    if (coreJob) query.set("core_job", coreJob);
+    return request<IndustryAnalysisResponse>(`/xa-competition/industry/jobs-analysis?${query.toString()}`, timeoutMs);
+  },
+  generateLearningTask(payload: { work_task: string; job_name?: string; professional_group?: string; industry_context?: string; ability_focus?: string[] }, timeoutMs = 10000) {
+    return requestJson<LearningTaskResponse>("/xa-competition/learning-task/generate", { method: "POST", body: JSON.stringify(payload) }, timeoutMs);
+  },
+  generateJobAbility(payload: { job_name: string; professional_group?: string }, timeoutMs = 10000) {
+    return requestJson<JobAbilityResponse>("/xa-competition/job-ability/generate", { method: "POST", body: JSON.stringify(payload) }, timeoutMs);
+  },
+  recommendAdaptiveLearning(payload: { goal: string; goal_scene?: string; job_name?: string; assessment_scores?: Record<string, number>; completed_skills?: string[] }, timeoutMs = 10000) {
+    return requestJson<AdaptiveLearningResponse>("/xa-competition/adaptive-learning/recommend", { method: "POST", body: JSON.stringify(payload) }, timeoutMs);
+  },
   getJobLearningOverview(userId: number, courseId = 401, timeoutMs = 8000) {
     return requestAsUser<JobLearningOverview>(
       `/student-portal/job-learning?user_id=${userId}&course_id=${courseId}`,

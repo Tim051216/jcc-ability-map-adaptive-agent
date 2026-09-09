@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, BriefcaseBusiness, CircleAlert, LoaderCircle, Save, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getCurrentLoggedInUserId } from "../lib/currentUser";
-import { studentApi, type JobLearningOverview } from "../lib/studentApi";
+import { studentApi, type AdaptiveLearningResponse, type JobLearningOverview } from "../lib/studentApi";
 
 export default function JobLearning() {
   const userId = getCurrentLoggedInUserId();
@@ -20,6 +20,8 @@ export default function JobLearning() {
   const [goal, setGoal] = useState(() => data?.student_goal || "");
   const [goalScene, setGoalScene] = useState(() => data?.goal_scene || "internship");
   const [savingGoal, setSavingGoal] = useState(false);
+  const [adaptive, setAdaptive] = useState<AdaptiveLearningResponse | null>(null);
+  const [adaptiveLoading, setAdaptiveLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -33,6 +35,19 @@ export default function JobLearning() {
     });
     return () => { active = false; };
   }, [cacheKey, userId]);
+
+  useEffect(() => {
+    if (!data?.student_goal || data.student_goal.length < 2) return;
+    let active = true;
+    setAdaptiveLoading(true);
+    void studentApi.recommendAdaptiveLearning({
+      goal: data.student_goal,
+      goal_scene: data.goal_scene || "internship",
+      job_name: data.job_name,
+      assessment_scores: Object.fromEntries(data.ability_dimensions.map((item) => [item.code, item.score ?? 0])),
+    }).then((result) => { if (active) setAdaptive(result); }).catch(() => { if (active) setAdaptive(null); }).finally(() => { if (active) setAdaptiveLoading(false); });
+    return () => { active = false; };
+  }, [data?.student_goal, data?.goal_scene, data?.job_name, data?.ability_dimensions]);
 
   if (loading) return <PageState><LoaderCircle className="animate-spin" />正在读取岗位学习数据...</PageState>;
   if (error) return <PageState><CircleAlert />{error}</PageState>;
@@ -51,6 +66,8 @@ export default function JobLearning() {
       </header>
 
       <section className="border border-[#dfe3e8] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black text-[#141414]">学习目标</h2><p className="mt-1 text-sm text-[#69717a]">目标会保存到你的岗位学习状态，供路径和建议使用。</p></div><button type="button" disabled={savingGoal || goal.trim().length < 2} onClick={async () => { setSavingGoal(true); try { const saved = await studentApi.updateJobLearningGoal({ user_id: userId, course_id: data.course_id, student_goal: goal.trim(), goal_scene: goalScene }); setData((current) => current ? { ...current, student_goal: saved.student_goal, goal_scene: saved.goal_scene } : current); } catch (reason) { setError(reason instanceof Error ? reason.message : "目标保存失败"); } finally { setSavingGoal(false); } }} className="inline-flex items-center gap-2 bg-[#e4002b] px-4 py-2 text-sm font-bold text-white disabled:opacity-40"><Save size={15} />{savingGoal ? "保存中" : "保存目标"}</button></div><div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]"><input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={200} placeholder="例如：完成软件开发岗位实习准备" className="border border-[#cfd5db] px-3 py-2 text-sm outline-none focus:border-[#e4002b]" /><select value={goalScene} onChange={(event) => setGoalScene(event.target.value)} className="border border-[#cfd5db] bg-white px-3 py-2 text-sm outline-none focus:border-[#e4002b]"><option value="course">课程达标</option><option value="training">综合实训</option><option value="competition">技能竞赛</option><option value="internship">岗位实习</option></select></div></section>
+
+      <section className="border border-[#dfe3e8] bg-[#fffafa] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black text-[#141414]">目标驱动的岗·课·赛自适应建议</h2><p className="mt-1 text-sm text-[#69717a]">根据目标设定与当前诊断分数，动态定位薄弱项并调整学习顺序。</p></div>{adaptiveLoading ? <span className="text-xs text-[#69717a]">正在诊断...</span> : adaptive ? <span className="text-xs font-bold text-[#16803c]">路径进度 {adaptive.progress}%</span> : null}</div>{adaptive ? <><p className="mt-3 text-sm leading-6 text-[#52606d]">{adaptive.diagnostic_summary}</p><div className="mt-3 flex flex-wrap gap-2">{adaptive.badges.map((badge) => <span key={badge} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#e4002b]">{badge}</span>)}</div><div className="mt-4 grid gap-3 md:grid-cols-3">{adaptive.next_steps.map((step) => <article key={step.title} className="border border-[#f0d7df] bg-white p-3"><div className="text-xs font-black text-[#e4002b]">{step.kind}</div><h3 className="mt-1 text-sm font-bold">{step.title}</h3><p className="mt-2 text-xs leading-5 text-[#69717a]">{step.description}</p><div className="mt-2 text-[11px] text-[#52606d]">解锁：{step.unlock_condition}</div></article>)}</div><p className="mt-3 text-xs text-[#69717a]">{adaptive.safety_notice}</p></> : <p className="mt-3 text-sm text-[#69717a]">保存学习目标并完成诊断后，将在这里生成个性化路径。</p>}</section>
 
       <section className="grid gap-4 border-b border-[#dfe3e8] pb-6 md:grid-cols-3">
         <Info label="学习目标" value={data.student_goal || "尚未设置"} />
@@ -91,7 +108,7 @@ export default function JobLearning() {
               ))}
             </ul>
           ) : <p className="mt-3 text-sm text-[#69717a]">当前没有可展示的引用；请在知识目录查看条目来源。</p>}
-          {data.safety_notices.length ? <p className="mt-4 border-t border-[#edf0f2] pt-3 text-xs leading-5 text-[#69717a]">安全提示：{data.safety_notices[0]}</p> : null}
+          {data.safety_notices.length ? <p className="mt-4 border-t border-[#edf0f2] pt-3 text-xs leading-5 text-[#69717a]">安全提示：{typeof data.safety_notices[0] === "string" ? data.safety_notices[0] : data.safety_notices[0]?.content || "请结合来源和学习证据进行人工复核。"}</p> : null}
         </div>
       </section>
 
