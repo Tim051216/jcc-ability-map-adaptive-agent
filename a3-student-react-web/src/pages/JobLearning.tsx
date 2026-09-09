@@ -41,10 +41,10 @@ export default function JobLearning() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-8">
       <header className="border-b border-[#dfe3e8] pb-6">
-        <div className="flex items-center gap-3 text-sm font-bold text-[#e4002b]"><BriefcaseBusiness size={18} />岗位自适应学习</div>
+        <div className="flex items-center gap-3 text-sm font-bold text-[#e4002b]"><BriefcaseBusiness size={18} />岗课赛自适应学习</div>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <div><h1 className="text-3xl font-black tracking-tight text-[#141414]">{data.job_name}</h1><p className="mt-2 text-sm text-[#5b6168]">{data.professional_group} · {data.course_name}</p></div>
-          <div className="flex flex-wrap items-center gap-2"><Link to="/job-learning/knowledge-catalog" className="inline-flex items-center gap-2 border border-[#dfe3e8] px-4 py-2 text-sm font-bold text-[#141414] hover:border-[#e4002b] hover:text-[#e4002b]">查看知识目录</Link>
+          <div><h1 className="text-3xl font-black tracking-tight text-[#141414]">{data.job_name}</h1><p className="mt-2 text-sm text-[#5b6168]">岗位：{data.job_name} · 专业群：{data.professional_group} · 课程：{data.course_name}</p></div>
+          <div className="flex flex-wrap items-center gap-2"><Link to="/industry-dashboard" className="inline-flex items-center gap-2 border border-[#e4002b] px-4 py-2 text-sm font-bold text-[#e4002b] hover:bg-[#fff7f8]">产业岗位分析</Link><Link to="/learning-task-factory" className="inline-flex items-center gap-2 border border-[#dfe3e8] px-4 py-2 text-sm font-bold text-[#141414] hover:border-[#e4002b] hover:text-[#e4002b]">任务转学习卡</Link><Link to="/job-learning/knowledge-catalog" className="inline-flex items-center gap-2 border border-[#dfe3e8] px-4 py-2 text-sm font-bold text-[#141414] hover:border-[#e4002b] hover:text-[#e4002b]">查看知识目录</Link>
           <Link to="/job-learning/outcomes" className="inline-flex items-center gap-2 border border-[#141414] px-4 py-2 text-sm font-bold text-[#141414] hover:bg-[#141414] hover:text-white">查看学习效果 <ArrowRight size={16} /></Link>
           </div>
         </div>
@@ -54,7 +54,7 @@ export default function JobLearning() {
 
       <section className="grid gap-4 border-b border-[#dfe3e8] pb-6 md:grid-cols-3">
         <Info label="学习目标" value={data.student_goal || "尚未设置"} />
-        <Info label="目标场景" value={data.goal_scene || "尚未设置"} />
+        <Info label="课/赛目标场景" value={data.goal_scene || "尚未设置"} />
         <Info label="诊断状态" value={data.assessment_id ? "已有诊断记录" : "尚未测评"} />
       </section>
 
@@ -66,8 +66,8 @@ export default function JobLearning() {
       </section>
 
       <section className="grid gap-4 border-t border-[#dfe3e8] pt-6 md:grid-cols-2">
-        <SummaryList title="推荐学习路径" items={data.recommended_path} empty="完成诊断后生成岗位阶段任务。" />
-        <SummaryList title="推荐学习资源" items={data.recommended_resources} empty="完成诊断后生成岗位匹配资源。" />
+        <SummaryList title="课程学习与实训路径" items={data.recommended_path} empty="完成岗位诊断后生成课程—实训阶段任务。" />
+        <SummaryList title="课程资源与竞赛参考" items={data.recommended_resources} empty="完成岗位诊断后生成课程和竞赛匹配资源。" />
       </section>
 
       <section className="grid gap-4 border-t border-[#dfe3e8] pt-6 md:grid-cols-[1fr_1.4fr]">
@@ -95,7 +95,7 @@ export default function JobLearning() {
         </div>
       </section>
 
-      <section className="border-t border-[#dfe3e8] pt-6"><h2 className="text-xl font-black text-[#141414]">继续主流程</h2><div className="mt-4 grid gap-3 sm:grid-cols-3"><FlowLink to="/evaluation" title="岗位能力诊断" detail="完成一次真实测评" /><FlowLink to="/profile" title="岗位能力画像" detail="查看能力证据和标签" /><FlowLink to="/report" title="学习报告" detail="回顾学习和测评结果" /></div></section>
+      <section className="border-t border-[#dfe3e8] pt-6"><h2 className="text-xl font-black text-[#141414]">继续主流程</h2><div className="mt-4 grid gap-3 sm:grid-cols-3"><FlowLink to="/evaluation" title="岗位能力诊断" detail="完成一次真实测评" /><FlowLink to="/job-ability-graph" title="岗位能力图谱" detail="查看产业链与能力要素" /><FlowLink to="/report" title="学习报告" detail="回顾学习和测评结果" /></div></section>
 
       <section className="border-t border-[#dfe3e8] pt-6"><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-[#e4002b]" /><h2 className="text-xl font-black text-[#141414]">下一步</h2></div><div className="mt-3 border-l-2 border-[#e4002b] bg-[#fafafa] p-4"><p className="font-bold text-[#141414]">{data.next_action?.label || "完成岗位诊断"}</p><p className="mt-1 text-sm text-[#69717a]">{data.next_action?.reason || "完成真实测评后，系统会生成可核验的岗位学习建议。"}</p>{data.next_action?.route ? <Link className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#e4002b]" to={data.next_action.route}>立即进入 <ArrowRight size={15} /></Link> : null}</div></section>
     </main>

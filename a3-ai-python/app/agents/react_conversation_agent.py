@@ -206,7 +206,7 @@ class ReActConversationAgent:
         user_profile: dict[str, Any] | None,
     ) -> dict[str, Any]:
         prompt = (
-            "You are BiliLearn ReAct conversation agent. Return strict JSON only.\n"
+            "You are the Gang-Ke-Sai ReAct conversation agent for software engineering job-course-competition learning. Return strict JSON only.\n"
             "Use Thought -> Action -> Observation. You only produce the next Thought and optional Action.\n"
             "Schema: {\"thought\":\"...\",\"action\":{\"tool_name\":\"...\",\"arguments\":{...}},\"final_answer\":null}\n"
             "If observations are enough, return {\"thought\":\"...\",\"action\":null,\"final_answer\":\"...\"}.\n"
@@ -245,7 +245,7 @@ class ReActConversationAgent:
         tool_results: list[MCPToolResult],
     ) -> str:
         prompt = (
-            "You are BiliLearn AI Tutor. Based on the ReAct trace, answer in concise Chinese.\n"
+            "You are the Gang-Ke-Sai AI Tutor. Based on the ReAct trace, answer in concise Chinese with job, course, and competition mapping.\n"
             "Do not expose hidden chain-of-thought. Summarize only the useful result.\n\n"
             f"Question: {query}\n"
             f"Trace: {json.dumps([step.model_dump() for step in trace], ensure_ascii=False)[:9000]}\n"

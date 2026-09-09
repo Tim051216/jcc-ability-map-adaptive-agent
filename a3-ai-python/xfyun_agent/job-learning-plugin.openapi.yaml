@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: 软件开发岗位能力学习插件
+  title: 岗课赛一体化软件开发岗位能力插件
   version: 1.0.0
-  description: 获取学生的软件开发岗位能力诊断、薄弱项、推荐路径、资源、安全提示和下一步动作。
+  description: 获取软件技术专业群学生的软件开发岗位诊断、课程映射、实训/竞赛任务、推荐路径、资源、安全提示和下一步动作。
 servers:
   - url: https://REPLACE_WITH_PUBLIC_API_DOMAIN
     description: 部署后替换为星辰云端可访问的 HTTPS 地址

@@ -140,11 +140,13 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
       { label: "收藏", id: "collection", path: "/collection", icon: Heart },
       { label: "评估", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
       { label: "岗位学习", id: "job-learning", path: "/job-learning", icon: BriefcaseBusiness },
+      { label: "产业岗位分析", id: "industry-dashboard", path: "/industry-dashboard", icon: BarChart2 },
+      { label: "任务转学习卡", id: "learning-task-factory", path: "/learning-task-factory", icon: ClipboardList },
       { label: "知识目录", id: "job-knowledge-catalog", path: "/job-learning/knowledge-catalog", icon: BookOpen },
       { label: "试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardList },
       { label: "报告", id: "report", path: "/report", icon: BarChart2 },
       { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
-      { label: "自画像", id: "profile", path: "/profile", icon: User },
+      { label: "岗位能力图谱", id: "job-ability-graph", path: "/job-ability-graph", icon: User },
     ],
     [],
   );
@@ -179,11 +181,11 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
             onPointerDown={() => onPreloadRoute?.("/")}
             className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#fb7299]/15 bg-[#fb7299]/5 px-3 py-1 font-sans text-xl font-extrabold ui-tracking-tighter text-[#fb7299] md:text-2xl"
           >
-            BiliLearn
+            岗课赛智能体
           </Link>
 
           <span className="hidden rounded-full bg-[#006689]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#006689] sm:inline-block">
-            Lv.4 研学者画像已接入
+            岗—课—赛能力画像已接入
           </span>
         </div>
 
@@ -321,12 +323,12 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
 
                     <Link
                       id="profile-dropdown-me"
-                      to="/profile"
+                      to="/job-ability-graph"
                       onClick={() => setShowDropdown(false)}
                       className="flex items-center gap-2 px-4 py-2 text-sm text-[#564145] transition-colors hover:bg-gray-50"
                     >
                       <User className="h-4 w-4 text-[#fb7299]" />
-                      我的自画像
+                      岗位能力图谱
                     </Link>
 
                     <Link

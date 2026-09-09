@@ -90,7 +90,7 @@ class LangChainToolCallingAgent:
                 [
                     (
                         "system",
-                        "You are BiliLearn AI Tutor. Select tools when needed, "
+                        "You are the Gang-Ke-Sai software engineering AI tutor. Map job requirements to courses and training/competition tasks. Select tools when needed, "
                         "fill tool arguments from the user intent, and answer concisely in Chinese.",
                     ),
                     ("human", "{input}"),
@@ -112,7 +112,7 @@ class LangChainToolCallingAgent:
     ) -> MCPToolPlan:
         specs = [spec.model_dump() for spec in self.registry.list_specs()]
         prompt = (
-            "You are the BiliLearn tool-calling planner.\n"
+            "You are the Gang-Ke-Sai job-course-competition tool-calling planner.\n"
             "Choose tools only when they are useful. Return strict JSON only.\n"
             "Schema: {\"tool_calls\":[{\"tool_name\":\"...\",\"arguments\":{...}}],\"final_answer\":\"optional\"}\n"
             "Rules:\n"
@@ -163,7 +163,7 @@ class LangChainToolCallingAgent:
 
         compact_results = [result.model_dump() for result in tool_results]
         prompt = (
-            "You are BiliLearn AI Tutor. Answer the user in concise Chinese.\n"
+            "You are the Gang-Ke-Sai software engineering AI tutor. Answer the user in concise Chinese and connect job, course, and competition practice.\n"
             "Use only the tool results below. Do not mention internal MCP, schema, or tool names unless necessary.\n"
             "If a tool failed, explain the useful part and say what information is missing.\n\n"
             f"User question: {query}\n"
