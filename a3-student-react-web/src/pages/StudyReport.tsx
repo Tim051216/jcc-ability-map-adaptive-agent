@@ -117,7 +117,7 @@ const FALLBACK_REPORT = {
     completedSteps: 5,
     totalSteps: 8,
     nextAction: "继续完成本周剩余强化节点，并把阶段测评结果回写到路径。",
-    summary: "学习路径可继续联动资源、测评与助教问答，保证页面浏览不断线。",
+    summary: "岗课赛训练路径可继续联动课程资源、能力测评与 AI 导师问答，形成可追踪的实训证据链。",
   },
   resource: {
     total: 6,
@@ -765,7 +765,7 @@ export default function StudyReport() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="path-label">
-                  学习报告
+                  能力与实训报告
                 </span>
                 <span className={`path-status-pill ${fallbackCount === 0 ? "path-status-pill--ok" : "path-status-pill--neutral"}`}>
                   <CheckCircle2 className="h-3.5 w-3.5" />
@@ -788,10 +788,10 @@ export default function StudyReport() {
 
             <div className="space-y-1.5">
               <h1 className="path-title max-w-3xl text-2xl font-extrabold text-[#171c22] lg:text-3xl">
-                {courseLabel} 阶段学习报告
+                {courseLabel} 岗课赛阶段报告
               </h1>
               <p className="path-summary max-w-3xl text-sm leading-7 text-[#4b5563]">
-                汇总画像、路径、资源、测评和答疑证据，给出当前判断与下一步行动。
+                汇总岗位能力画像、课程训练路径、实训资源、测评和答疑证据，给出当前判断与下一步行动。
               </p>
             </div>
 

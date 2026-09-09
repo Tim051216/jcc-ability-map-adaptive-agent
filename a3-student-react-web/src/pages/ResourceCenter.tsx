@@ -2314,7 +2314,7 @@ export default function ResourceCenter() {
   const currentCourseSummary =
     courseDetail?.introduce ||
     primaryCourseBundle?.summary ||
-    "围绕当前课程整理讲义、实践笔记、视频和 AI 补充资料，支持直接预览、收藏、追问和继续学习。";
+    "围绕岗位能力对应课程整理讲义、实践笔记、竞赛参考和 AI 补充资料，支持预览、任务关联和继续训练。";
   const nextResourceAction = generatingType
     ? "等待当前资源生成完成"
     : totalFileCount > 0
@@ -2329,7 +2329,7 @@ export default function ResourceCenter() {
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[10px] font-black text-[#006689] shadow-sm">
               <BookOpen className="h-3.5 w-3.5" />
-              课程资源工作台
+              课程与竞赛资源工作台
             </div>
             <h1 className="mt-2 text-[23px] font-black tracking-[-0.05em] text-[#111827] md:text-[28px]">
               {currentCourseTitle}资源包
@@ -2345,7 +2345,7 @@ export default function ResourceCenter() {
                 {recommendedFocusLabel}
               </span>
               <span className="rounded-full bg-[#fff4f8] px-3 py-1 text-[11px] font-bold text-[#d64d7b] shadow-sm">
-                资料页内按需补充
+              按岗位任务补充
               </span>
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-3">

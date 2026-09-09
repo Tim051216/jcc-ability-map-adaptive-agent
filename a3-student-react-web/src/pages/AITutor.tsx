@@ -1278,7 +1278,7 @@ function buildQuickLocalReply(text: string, title?: string, subtitle?: string) {
   }
 
   if (["你是谁", "你是干嘛的", "你能做什么", "你会什么"].includes(normalized)) {
-    return `我是右侧的 AI 导师，可以陪你看${title || "这节课"}，也能帮你解释概念、看截图，或者继续顺着${subtitle || "当前内容"}往下讲。`;
+    return `我是岗课赛 AI 导师，可以陪你看${title || "这节课程"}，把知识点连接到软件开发岗位任务，并继续安排${subtitle || "当前内容"}对应的实训或竞赛练习。`;
   }
 
   const asksForDemoSummary =

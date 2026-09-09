@@ -1597,7 +1597,7 @@ function mapPlanToPhases(plan: LearningPlanResponse, progress: PlanProgressRespo
     {
       id: "single-stage",
       title: plan.current_stage || "当前学习阶段",
-      summary: plan.summary || plan.next_action || "根据画像和测评结果生成的个性化学习路径。",
+      summary: plan.summary || plan.next_action || "根据岗位能力诊断和课程目标生成的岗课赛训练路径。",
       progress: Math.round(progress?.completion_rate ?? plan.completion_rate ?? 0),
       steps: normalizedSteps,
     },
@@ -1633,6 +1633,28 @@ export default function LearningPath() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [personalizedReady, setPersonalizedReady] = useState(false);
   const [learningGoal, setLearningGoal] = useState<StoredLearningGoal | null>(null);
+  const [xaTaskTitle, setXaTaskTitle] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("xa-learning-task") || "null") as { task_name?: string } | null;
+      return parsed?.task_name || "";
+    } catch { return ""; }
+  });
+  useEffect(() => {
+    let active = true;
+    studentApi.listJobCoachingRecords(activeUserId, numericCourseId, 50).then((result) => {
+      if (!active) return;
+      const record = result.items.find((item) => item.source === "xa-learning-task");
+      if (!record) return;
+      try {
+        const task = JSON.parse(record.advice_summary || "{}") as { task_name?: string };
+        if (task.task_name) {
+          setXaTaskTitle(task.task_name);
+          localStorage.setItem("xa-learning-task", record.advice_summary);
+        }
+      } catch { /* Keep the local task state when an older record is not JSON. */ }
+    }).catch(() => { /* Offline fallback remains visible when the service is unavailable. */ });
+    return () => { active = false; };
+  }, [activeUserId, numericCourseId]);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [dailyPlanExpanded, setDailyPlanExpanded] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
@@ -2034,7 +2056,7 @@ export default function LearningPath() {
         daily_study_minutes: activeGoal?.dailyMinutes || 35,
       });
       await loadPlanState({ silent: true });
-      setToastMessage("已重新生成学习路径，并同步刷新当前进度。");
+      setToastMessage("已重新生成岗课赛训练路径，并同步刷新当前进度。");
     } catch (generateError) {
       if (goalPath) {
         const personalizedPlan = buildPlanFromPersonalizedData({
@@ -2137,7 +2159,7 @@ export default function LearningPath() {
           <div className="max-w-3xl space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="path-label">
-                学习路径
+                岗课赛训练路径
               </span>
               <span
                 className={`path-status-pill ${
@@ -2167,6 +2189,13 @@ export default function LearningPath() {
                 <div className="path-metric-label">下一步</div>
                 <div className="path-metric-value path-metric-value--small">{heroNextActionTitle}</div>
               </div>
+            </div>
+            {xaTaskTitle ? <div className="mt-4 rounded-xl border border-[#dcebdc] bg-[#f4fbf4] px-3 py-2 text-xs font-bold text-[#16803c]">已接入岗位学习任务卡：{xaTaskTitle}</div> : null}
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-[#52606d]">
+              <span className="rounded-full border border-[#f3d5de] bg-[#fff7fa] px-3 py-1">岗：岗位目标已绑定</span>
+              <span className="rounded-full border border-[#d9edf3] bg-[#f4fbff] px-3 py-1">课：{plan?.course_name || course.name}</span>
+              <span className="rounded-full border border-[#dcebdc] bg-[#f4fbf4] px-3 py-1">赛：目标诊断后动态调整</span>
+              <span className="rounded-full border border-[#eadcf4] bg-[#fbf7ff] px-3 py-1">🏅 已完成 {completedStepCount} 个能力任务</span>
             </div>
           </div>
 

@@ -1717,7 +1717,7 @@ export default function Evaluation() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#e8edf2] bg-[#f7fafb] px-3 py-1 text-xs font-bold text-[#475467]">
                 <CheckCircle className="h-3.5 w-3.5 text-[#e4002b]" />
-                学习评估
+                岗位能力诊断
               </span>
               <span className="rounded-full border border-[#ffd6de] bg-[#fff7fa] px-3 py-1 text-xs font-bold text-[#e4002b]">
                 软件工程诊断
@@ -1726,10 +1726,10 @@ export default function Evaluation() {
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_310px]">
               <div className="min-w-0">
                 <h1 className="text-2xl font-black tracking-[-0.03em] text-[#171c22] md:text-3xl">
-                  阶段短测与学习闭环
+                  岗位能力短测与训练闭环
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5b6770]">
-                  完成 5 题短测后，系统会同步更新画像、路径、资源和 AI 导师上下文。
+                  完成 5 题短测后，系统会把薄弱能力同步到课程训练路径、实训资源和 AI 导师上下文。
                 </p>
               </div>
               <div className="grid grid-cols-3 overflow-hidden rounded-[18px] border border-[#e8edf2] bg-[#fbfcfd]">
