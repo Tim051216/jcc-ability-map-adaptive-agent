@@ -427,6 +427,48 @@ function GlobalAIAssistantBar() {
       status: "这里集中处理课程群、助教私聊和系统通知。",
       nextAction: "优先处理未读消息，再决定是否回到路径或课堂。",
     },
+    "/job-learning": {
+      title: "岗课赛学习",
+      agent: "岗位训练智能体",
+      status: "岗位要求、课程知识和实训任务已集中到当前工作台。",
+      nextAction: "先完成岗位能力诊断，再查看课程训练路径和任务产出。",
+    },
+    "/job-learning/knowledge-catalog": {
+      title: "岗课赛知识目录",
+      agent: "知识映射智能体",
+      status: "每个知识条目都连接岗位能力、课程知识和可验收任务。",
+      nextAction: "选择一个薄弱能力，查看对应知识点和实训验收标准。",
+    },
+    "/job-learning/outcomes": {
+      title: "岗位训练效果",
+      agent: "训练效果智能体",
+      status: "汇总岗位能力测评、课程训练和实训任务完成情况。",
+      nextAction: "查看当前证据是否足够，再决定下一轮训练。",
+    },
+    "/industry-dashboard": {
+      title: "产业岗位分析",
+      agent: "岗位需求分析智能体",
+      status: "采集岗位技能需求，为课程和竞赛实训优化提供依据。",
+      nextAction: "先确认目标专业群与岗位，再查看技能匹配和优化建议。",
+    },
+    "/learning-task-factory": {
+      title: "岗位任务转学习卡",
+      agent: "实训任务设计智能体",
+      status: "把岗位典型任务转化为课程实训和技能竞赛任务卡。",
+      nextAction: "输入一个软件开发岗位任务，生成步骤、知识点和验收产出。",
+    },
+    "/job-ability-graph": {
+      title: "岗位能力图谱",
+      agent: "岗位能力建模智能体",
+      status: "沿产业链、岗位群、能力单元和知识技能点拆解岗位要求。",
+      nextAction: "先选择软件开发工程师岗位，再查看能力缺口与课程映射。",
+    },
+    "/trial-feedback": {
+      title: "岗课赛试用反馈",
+      agent: "试用反馈智能体",
+      status: "记录岗位学习、课程映射和实训任务流程中的真实体验。",
+      nextAction: "完成体验后提交真实反馈；演示数据不能替代比赛用户证据。",
+    },
   };
 
   const currentMeta = pageMeta[location.pathname] || pageMeta["/"];
