@@ -20,8 +20,6 @@ const routeImporters = {
   resources: () => import("./pages/ResourceCenter"),
   resourcePreview: () => import("./pages/ResourceSourcePreview"),
   judgeResult: () => import("./pages/CodingJudgeResult"),
-  profile: () => import("./pages/CapabilityModel"),
-  profileConversation: () => import("./pages/ProfileConversation"),
   evaluation: () => import("./pages/Evaluation"),
   report: () => import("./pages/StudyReport"),
   collection: () => import("./pages/Collection"),
@@ -47,8 +45,6 @@ const SearchResults = lazy(routeImporters.search);
 const ResourceCenter = lazy(routeImporters.resources);
 const ResourceSourcePreview = lazy(routeImporters.resourcePreview);
 const CodingJudgeResult = lazy(routeImporters.judgeResult);
-const CapabilityModel = lazy(routeImporters.profile);
-const ProfileConversation = lazy(routeImporters.profileConversation);
 const Evaluation = lazy(routeImporters.evaluation);
 const StudyReport = lazy(routeImporters.report);
 const Collection = lazy(routeImporters.collection);
@@ -106,10 +102,8 @@ function preloadRoute(path: string) {
                     ? routeImporters.evaluation
                     : normalizedPath === "/report"
                       ? routeImporters.report
-                      : normalizedPath === "/profile"
-                        ? routeImporters.profile
-                        : normalizedPath === "/profile/conversation"
-                          ? routeImporters.profileConversation
+                      : normalizedPath === "/profile" || normalizedPath === "/profile/conversation"
+                        ? routeImporters.jobAbilityGraph
                           : normalizedPath === "/im"
                             ? routeImporters.im
                             : normalizedPath === "/login"
@@ -152,13 +146,13 @@ function scheduleRouteWarmup() {
       routeImporters.path,
       routeImporters.resources,
       routeImporters.evaluation,
-      routeImporters.profile,
+      routeImporters.jobAbilityGraph,
     ].filter((importer) => {
       if (currentPath === "/" && importer === routeImporters.overview) return false;
       if (currentPath === "/path" && importer === routeImporters.path) return false;
       if (currentPath === "/resources" && importer === routeImporters.resources) return false;
       if (currentPath === "/evaluation" && importer === routeImporters.evaluation) return false;
-      if (currentPath === "/profile" && importer === routeImporters.profile) return false;
+      if ((currentPath === "/profile" || currentPath === "/profile/conversation") && importer === routeImporters.jobAbilityGraph) return false;
       return true;
     });
     importers.forEach((importer, index) => {
@@ -398,10 +392,10 @@ function GlobalAIAssistantBar() {
       nextAction: "完成短测后，再看结果并继续追问。",
     },
     "/report": {
-      title: "报告",
-      agent: "学习报告智能体",
-      status: "这一阶段的关键结论、薄弱点和下一步方向都已经帮你收好。",
-      nextAction: "先看最该补的点，再决定是补资源、调路径还是继续练题。",
+      title: "能力与实训报告",
+      agent: "岗课赛评价智能体",
+      status: "岗位能力诊断、课程训练、实训产出和复测结果已汇总。",
+      nextAction: "先查看能力缺口和任务证据，再决定补资源、调路径还是继续训练。",
     },
     "/collection": {
       title: "我的任务资料",
@@ -1555,7 +1549,7 @@ export default function App() {
                 path="/profile/conversation"
                 element={
                   <ProtectedRoute>
-                    <ProfileConversation />
+                    <Navigate to="/job-ability-graph" replace />
                   </ProtectedRoute>
                 }
               />
