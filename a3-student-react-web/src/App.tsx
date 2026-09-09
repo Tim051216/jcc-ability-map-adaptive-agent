@@ -505,6 +505,7 @@ function MainLayout({
   const currentPath = location.pathname;
   const isNavItemActive = (itemPath: string) => {
     const normalizedPath = itemPath.split("?")[0] || itemPath;
+    if (normalizedPath === "/job-learning") return currentPath === normalizedPath;
     return currentPath === normalizedPath || (normalizedPath !== "/" && currentPath.startsWith(`${normalizedPath}/`));
   };
   const desktopTutorWidthClass = tutorDrawer.open ? "lg:pr-[420px] xl:pr-[460px]" : "";
