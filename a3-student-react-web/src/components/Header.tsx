@@ -162,6 +162,8 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
   const currentPath = location.pathname;
   const isNavItemActive = (itemPath: string) => {
     const normalizedPath = itemPath.split("?")[0] || itemPath;
+    // Keep the parent岗位学习 tab inactive on child pages such as知识目录.
+    if (normalizedPath === "/job-learning") return currentPath === normalizedPath;
     return currentPath === normalizedPath || (normalizedPath !== "/" && currentPath.startsWith(`${normalizedPath}/`));
   };
 

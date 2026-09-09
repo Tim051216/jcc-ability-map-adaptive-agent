@@ -214,8 +214,8 @@ body,
   inset: 0;
   z-index: 3;
   background:
-    linear-gradient(90deg, rgba(247, 247, 248, 0.48) 0%, rgba(247, 247, 248, 0.2) 42%, rgba(247, 247, 248, 0.36) 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.42) 100%);
+    linear-gradient(90deg, rgba(247, 247, 248, 0.78) 0%, rgba(247, 247, 248, 0.66) 42%, rgba(247, 247, 248, 0.78) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.48) 48%, rgba(255, 255, 255, 0.76) 100%);
 }
 
 .global-frame-image {
@@ -241,14 +241,14 @@ body,
 @keyframes global-frame-portrait {
   0%,
   44% {
-    opacity: 0.68;
+    opacity: 0.3;
   }
   52%,
   92% {
     opacity: 0;
   }
   100% {
-    opacity: 0.68;
+    opacity: 0.3;
   }
 }
 
@@ -259,7 +259,7 @@ body,
   }
   52%,
   92% {
-    opacity: 0.72;
+    opacity: 0.32;
   }
   100% {
     opacity: 0;
