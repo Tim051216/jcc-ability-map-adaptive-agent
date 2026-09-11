@@ -11,10 +11,10 @@ const rules = [
 function answer(input: string): Message {
   const q = input.toLowerCase();
   if (!input.trim()) return { role: "assistant", text: "请描述图片中的目标和困难，例如“人被车挡住了”或“两个目标挨在一起”。我会按标注规则给出判定。" };
-  if (input.includes("这张") || input.includes("这个") || input.includes("怎么弄") || input.trim().length < 8) return { role: "assistant", text: "你遇到的是哪类情况？请选择：①遮挡 ②截断（目标出画面）③同类目标粘连。也请补充标注任务类型（目标检测/实例分割），我再给具体框选步骤。", source: "对话管理规则：标注问题澄清" };
   if (q.includes("挡") || input.includes("遮挡")) return { role: "assistant", text: "这是“遮挡目标”判定。先按可见区域处理，不要凭想象补全被挡部分：", steps: ["确认目标类别仍可辨认，且不是背景纹理。", "沿可见目标轮廓画紧致矩形框，不把遮挡物一起框入。", "在属性中标记 occluded；若完全不可辨认，提交为疑似目标并备注给质检员。", "保存后抽样复核：同一批图片的遮挡目标采用同一规则。"], warning: "常见错误：把遮挡物和目标合并，或为了‘完整’把框扩到不可见区域。", source: `依据：${rules[0].source}` };
   if (input.includes("截断") || input.includes("出画面") || input.includes("边缘")) return { role: "assistant", text: "这是“截断目标”判定：", steps: ["确认目标类别可辨认，即使目标只露出一部分也保留实例。", "框的边界贴合图像边缘，不超出图片尺寸。", "在属性中标记 truncated，并保持与同批任务一致。", "提交前检查 bbox 的 x、y、width、height 均为非负且未越界。"], source: `依据：${rules[1].source}` };
   if (input.includes("同类") || input.includes("挨") || input.includes("几个框")) return { role: "assistant", text: "同类目标也要按“实例”分别标注：", steps: ["数清可以独立辨认的目标实例。", "每个实例单独绘制一个框，遮挡关系不改变实例数量。", "框与框可以重叠，但不能把两个实例合成一个大框。", "提交前检查类别、数量和框的对应关系。"], source: `依据：${rules[2].source}` };
+  if (input.includes("这张") || input.includes("这个") || input.includes("怎么弄") || input.trim().length < 8) return { role: "assistant", text: "你遇到的是哪类情况？请选择：①遮挡 ②截断（目标出画面）③同类目标粘连。也请补充标注任务类型（目标检测/实例分割），我再给具体框选步骤。", source: "对话管理规则：标注问题澄清" };
   return { role: "assistant", text: "为了准确判定，请补充：目标是否被遮挡/截断？当前使用目标检测还是实例分割？", source: "知识库匹配：AI 数据标注实训规则库" };
 }
 
