@@ -52,7 +52,7 @@ class CourseService:
             "score": 49,
             "introduce": "聚焦岗课赛智能体演示场景，适合从岗位任务映射课程知识，一路演示到实训产出评价。",
             "use_people": "适合需要演示多智能体学习系统、课程资源编排和学习验收闭环的团队成员。",
-            "detail": "课程包含学习画像、资源推荐、学习日历、错题复盘、智能助教和学习报告等重点模块。",
+            "detail": "课程包含岗位学情诊断、资源推荐、学习日历、错题复盘、智能助教和学习报告等重点模块。",
             "teachers": [
                 {
                     "id": 1,
@@ -67,10 +67,10 @@ class CourseService:
                 {
                     "id": 1011,
                     "index": "第一章",
-                    "name": "学习画像与目标设定",
+                    "name": "岗位学情诊断与目标设定",
                     "sections": [
                         {"id": 10111, "index": 1, "name": "项目导览与业务目标", "type": 2, "media_duration": 540, "trailer": True},
-                        {"id": 10112, "index": 2, "name": "学习画像生成流程", "type": 2, "media_duration": 720, "subject_num": 3},
+                        {"id": 10112, "index": 2, "name": "岗位学情诊断流程", "type": 2, "media_duration": 720, "subject_num": 3},
                     ],
                 },
                 {
@@ -779,7 +779,7 @@ COURSE_TEACHER_ENHANCEMENTS = {
             "id": 11,
             "name": "顾行知",
             "role": "学习系统主讲",
-            "intro": "负责学习画像、路径规划和多智能体主链路讲解。",
+            "intro": "负责岗位学情诊断、路径规划和多智能体主链路讲解。",
             "icon": "/img-tx/default-user-icon.jpg",
             "is_show": True,
         },

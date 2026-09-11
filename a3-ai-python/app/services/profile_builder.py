@@ -131,7 +131,7 @@ def build_profile_payload(
     return {
         "user_id": user_id,
         "profile_version": 2,
-        "summary": "已基于六维学习画像完成对用户当前学习状态的结构化分析，可直接驱动资源生成、路径规划与效果评估闭环。",
+        "summary": "已基于岗位能力诊断完成对当前学习状态的结构化分析，可直接驱动资源生成、路径规划与效果评估闭环。",
         "dimension_order": PROFILE_DIMENSIONS,
         "dimensions": dimensions,
         "profile_tags": [tag for tag in [major, college, grade, *weak_focus, *interest_tags] if tag][:10],

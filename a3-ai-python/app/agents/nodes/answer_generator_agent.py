@@ -1772,8 +1772,6 @@ class AnswerGeneratorAgent:
         user_profile: dict[str, Any] | None = None,
         persona: str | None = None,
     ) -> str:
-        _ = retrieved_knowledge
-        _ = user_profile
         persona_meta = self._persona_meta(persona)
         if self._is_greeting(question_text):
             return persona_meta["greeting"]
@@ -1805,25 +1803,32 @@ class AnswerGeneratorAgent:
 
         retrieved_chunks = retrieved_knowledge.get("retrieved_chunks", [])
         if retrieved_chunks:
-            lead = str(retrieved_chunks[0].get("content", "")).strip()
-            lead = re.sub(r"\s+", " ", lead)
-            summary = lead[:180].rstrip("，、；： ")
             question_type = str(question_analysis.get("question_type") or "")
             knowledge_points = [str(x) for x in question_analysis.get("knowledge_points", []) if x]
-            focus = f"{_zh('\\u8fd9\\u9898\\u5148\\u6293')} { _zh(' / ').join(knowledge_points[:3]) }{_zh('\\u5c31\\u884c\\u3002')}" if knowledge_points else ""
-            if question_type == _zh("\\u6982\\u5ff5\\u7406\\u89e3"):
-                return (
-                    f"{summary}。"
-                    f"{focus}"
-                    if focus
-                    else f"{summary}。"
-                )
-            return (
-                f"{summary}。"
-                f"{focus}"
-                if focus
-                else f"{summary}。"
-            )
+            difficulty = question_analysis.get("difficulty_level") or 2
+            lines: list[str] = [
+                _zh("## \\u76f4\\u63a5\\u7ed3\\u8bba"),
+                f"{_zh('\\u5f53\\u524d\\u95ee\\u9898\\u66f4\\u504f\\u5411')}**{question_type or _zh('\\u6982\\u5ff5\\u7406\\u89e3')}**，{_zh('\\u96be\\u5ea6\\u5927\\u81f4\\u4e3a')} **{difficulty} / 3**。",
+            ]
+            if knowledge_points:
+                lines.append(f"{_zh('\\u5b83\\u4e3b\\u8981\\u5173\\u8054\\u7684\\u77e5\\u8bc6\\u70b9\\u6709')}：**{'、'.join(knowledge_points[:5])}**。")
+            lines.extend([
+                "", _zh("## \\u89e3\\u9898\\u601d\\u8def"),
+                _zh("1. \\u5148\\u786e\\u8ba4\\u9898\\u76ee\\u5728\\u95ee\\u6982\\u5ff5\\u662f\\u4ec0\\u4e48\\u3001\\u4e3a\\u4ec0\\u4e48\\u4f1a\\u51fa\\u73b0\\u3001\\u5e94\\u8be5\\u600e\\u4e48\\u5904\\u7406\\u3002"),
+                _zh("2. \\u518d\\u628a\\u9898\\u5e72\\u548c\\u5df2\\u6709\\u77e5\\u8bc6\\u70b9\\u5bf9\\u5e94\\u8d77\\u6765\\u3002"),
+                _zh("3. \\u6309\\u201c\\u5b9a\\u4e49 -> \\u539f\\u56e0 -> \\u5f71\\u54cd -> \\u65b9\\u6cd5\\u201d\\u7ec4\\u7ec7\\u7b54\\u6848\\u3002"),
+                "", _zh("## \\u53ef\\u53c2\\u8003\\u7684\\u8bfe\\u7a0b\\u77e5\\u8bc6"),
+            ])
+            for idx, chunk in enumerate(retrieved_chunks[:3], 1):
+                source = chunk.get("source") or f"{_zh('\\u53c2\\u8003\\u8d44\\u6599')} {idx}"
+                excerpt = re.sub(r"\s+", " ", str(chunk.get("content") or "").strip())
+                if len(excerpt) > 180:
+                    excerpt = excerpt[:180] + "..."
+                lines.append(f"- **{source}**：{excerpt}")
+            if user_profile and user_profile.get("profile_tags"):
+                tags = '、'.join(str(tag) for tag in user_profile["profile_tags"][:4])
+                lines.extend(["", _zh("## \\u4e2a\\u6027\\u5316\\u63d0\\u9192"), f"- {_zh('\\u7ed3\\u5408\\u5f53\\u524d\\u753b\\u50cf\\u6807\\u7b7e')}：{tags}。"])
+            return "\n".join(lines)
 
         similar_qa_pairs = retrieved_knowledge.get("similar_qa_pairs", [])
         if similar_qa_pairs:

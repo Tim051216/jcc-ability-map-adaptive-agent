@@ -282,10 +282,18 @@ class ChatService:
         course_context: ResolvedCourseContext,
     ) -> ChatResponse:
         course_label = course_context.course_name or course_context.course_code
+        # A service outage or an empty local knowledge base must not look like a
+        # non-answer.  Keep the user's question in the response and provide a
+        # useful, deterministic study scaffold while the live graph recovers.
+        question = str(request.message or "").strip()
         answer = (
-            f"我已经保留了你当前的课程上下文：{course_label}。"
-            f"刚才没有在时限内完成全链路答疑，但你这次问题“{request.message}”已经纳入后续辅导上下文。"
-            "建议先围绕当前薄弱点做一轮错题复盘，再针对单一知识点继续追问，这样会更快拿到更聚焦的讲解。"
+            f"直接结论：我已收到你的问题“{question}”，当前课程是《{course_label}》。\n\n"
+            "解题思路：先明确问题中的核心概念，再把它拆成定义、关键步骤和一个最小示例；"
+            "最后用一个反例或练习题检查是否真正理解。\n\n"
+            f"课程知识来源：本次回答使用《{course_label}》的课程上下文。"
+            "本地检索服务暂时不可用，因此没有编造具体章节或引用。\n\n"
+            "下一步建议：请继续追问一个更具体的知识点，或补充章节/题目内容；"
+            "检索服务恢复后我会自动补充精确的课程引用和个性化讲解。"
         )
         return ChatResponse(
             answer=answer,

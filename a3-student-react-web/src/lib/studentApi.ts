@@ -17,13 +17,26 @@ export interface IndustryAnalysisResponse {
   collection_mode: string;
   source_urls: string[];
   sample_count: number;
+  fetched_count: number;
   skills: Array<{ name: string; current: number; previous: number; match: number; growth: number }>;
   trend_months: string[];
   trend_series: Record<string, number[]>;
   trend_source: string;
+  history_count: number;
+  history_span_days: number;
   alerts: Array<{ title: string; detail: string }>;
   recommendations: string[];
+  optimization_plan: Array<{ priority: string; target: string; action: string; evidence: string }>;
   ai_generated: boolean;
+  safety_notice: string;
+}
+export interface ProfessionalGroupsMonitorResponse {
+  collected_at: string;
+  items: Array<{ professional_group: string; core_job: string; sample_count: number; average_match: number; leading_skill: string; leading_growth: number; alert_count: number; collection_mode: string }>;
+  safety_notice: string;
+}
+export interface JobSnapshotHistoryResponse {
+  items: Array<{ collected_at: string; professional_group: string; core_job: string; source_urls: string[]; skill_summary: Array<{ name: string; current: number; previous: number; match: number; growth: number }> }>;
   safety_notice: string;
 }
 
@@ -36,14 +49,15 @@ export interface LearningTaskResponse {
   safety_points: string[];
   knowledge_points: string[];
   skill_points: string[];
-  resources: string[];
+  resources: Array<{ name: string; href: string; resource_type: string }>;
   citations: string[];
   ai_generated: boolean;
+  generation_mode: string;
 }
 export interface JobAbilityResponse {
   job_name: string; industry_chain: string; job_group: string; typical_tasks: string[];
   abilities: Array<{ name: string; score: number; ability_units: string[]; skill_points: string[]; knowledge_points: string[] }>;
-  citations: string[]; ai_generated: boolean;
+  citations: string[]; ai_generated: boolean; generation_mode: string;
 }
 export interface AdaptiveLearningResponse {
   goal: string; goal_scene: string; job_name: string; diagnostic_summary: string;
@@ -1553,8 +1567,15 @@ async function requestAsUser<T>(path: string, userId: string | number, timeoutMs
     }
   };
 
+  const localBrowser = typeof window !== "undefined" && ["127.0.0.1", "localhost"].includes(window.location.hostname);
+  // User-scoped portal calls return a relatively large structured payload.
+  // In local development, bypass Vite's /ai proxy first so a slow proxy
+  // handshake does not consume the whole timeout before the direct service
+  // request is attempted.
+  const preferredBaseUrl = localBrowser && AI_BASE_URL.startsWith("/ai/") ? LOCAL_AI_BASE_URL : AI_BASE_URL;
+  const fallbackBaseUrl = preferredBaseUrl === AI_BASE_URL ? LOCAL_AI_BASE_URL : AI_BASE_URL;
   try {
-    return await fetchJson(AI_BASE_URL);
+    return await fetchJson(preferredBaseUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const shouldFallback =
@@ -1562,10 +1583,10 @@ async function requestAsUser<T>(path: string, userId: string | number, timeoutMs
     if (!shouldFallback) {
       throw error;
     }
-    if (typeof window === "undefined" || !["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+    if (!localBrowser) {
       throw error;
     }
-    return fetchJson(LOCAL_AI_BASE_URL);
+    return fetchJson(fallbackBaseUrl);
   }
 }
 
@@ -1610,8 +1631,11 @@ async function requestJsonAsUser<T>(
     }
   };
 
+  const localBrowser = typeof window !== "undefined" && ["127.0.0.1", "localhost"].includes(window.location.hostname);
+  const preferredBaseUrl = localBrowser && AI_BASE_URL.startsWith("/ai/") ? LOCAL_AI_BASE_URL : AI_BASE_URL;
+  const fallbackBaseUrl = preferredBaseUrl === AI_BASE_URL ? LOCAL_AI_BASE_URL : AI_BASE_URL;
   try {
-    return await fetchJson(AI_BASE_URL);
+    return await fetchJson(preferredBaseUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const shouldFallback =
@@ -1619,10 +1643,10 @@ async function requestJsonAsUser<T>(
     if (!shouldFallback) {
       throw error;
     }
-    if (typeof window === "undefined" || !["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+    if (!localBrowser) {
       throw error;
     }
-    return fetchJson(LOCAL_AI_BASE_URL);
+    return fetchJson(fallbackBaseUrl);
   }
 }
 
@@ -1693,18 +1717,30 @@ const askVideoInsightRequest = (payload: {
   );
 
 export const studentApi = {
-  getIndustryAnalysis(refresh = false, timeoutMs = 8000, professionalGroup = "软件技术专业群", coreJob?: string) {
+  getIndustryAnalysis(refresh = false, timeoutMs = 8000, professionalGroup = "软件技术专业群", coreJob?: string, sourceUrls?: string) {
     const query = new URLSearchParams({ refresh: String(refresh), professional_group: professionalGroup });
     if (coreJob) query.set("core_job", coreJob);
+    if (sourceUrls?.trim()) query.set("source_urls", sourceUrls.trim());
     return request<IndustryAnalysisResponse>(`/xa-competition/industry/jobs-analysis?${query.toString()}`, timeoutMs);
+  },
+  getProfessionalGroupsMonitor(refresh = false, timeoutMs = 12000, sourceUrls?: string) {
+    const query = new URLSearchParams({ refresh: String(refresh) });
+    if (sourceUrls?.trim()) query.set("source_urls", sourceUrls.trim());
+    return request<ProfessionalGroupsMonitorResponse>(`/xa-competition/industry/professional-groups?${query.toString()}`, timeoutMs);
+  },
+  getJobSnapshotHistory(professionalGroup?: string, coreJob?: string, limit = 30, timeoutMs = 8000) {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (professionalGroup) query.set("professional_group", professionalGroup);
+    if (coreJob) query.set("core_job", coreJob);
+    return request<JobSnapshotHistoryResponse>(`/xa-competition/industry/snapshots?${query.toString()}`, timeoutMs);
   },
   generateLearningTask(payload: { work_task: string; job_name?: string; professional_group?: string; industry_context?: string; ability_focus?: string[] }, timeoutMs = 10000) {
     return requestJson<LearningTaskResponse>("/xa-competition/learning-task/generate", { method: "POST", body: JSON.stringify(payload) }, timeoutMs);
   },
-  generateJobAbility(payload: { job_name: string; professional_group?: string }, timeoutMs = 10000) {
+  generateJobAbility(payload: { job_name: string; professional_group?: string; observed_skills?: string[]; typical_tasks?: string[] }, timeoutMs = 10000) {
     return requestJson<JobAbilityResponse>("/xa-competition/job-ability/generate", { method: "POST", body: JSON.stringify(payload) }, timeoutMs);
   },
-  recommendAdaptiveLearning(payload: { goal: string; goal_scene?: string; job_name?: string; assessment_scores?: Record<string, number>; completed_skills?: string[] }, timeoutMs = 10000) {
+  recommendAdaptiveLearning(payload: { goal: string; goal_scene?: string; job_name?: string; assessment_scores?: Record<string, number>; ability_labels?: Record<string, string>; completed_skills?: string[] }, timeoutMs = 10000) {
     return requestJson<AdaptiveLearningResponse>("/xa-competition/adaptive-learning/recommend", { method: "POST", body: JSON.stringify(payload) }, timeoutMs);
   },
   getJobLearningOverview(userId: number, courseId = 401, timeoutMs = 8000) {

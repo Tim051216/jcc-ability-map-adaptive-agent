@@ -34,6 +34,8 @@ const routeImporters = {
   industryDashboard: () => import("./pages/IndustryDashboard"),
   learningTaskFactory: () => import("./pages/LearningTaskFactory"),
   jobAbilityGraph: () => import("./pages/JobAbilityGraph"),
+  robotOps: () => import("./pages/RobotOpsAgent"),
+  aiAnnotation: () => import("./pages/AIAnnotationAgent"),
 };
 
 const Header = lazy(routeImporters.header);
@@ -57,6 +59,8 @@ const JobKnowledgeCatalog = lazy(routeImporters.jobKnowledgeCatalog);
 const IndustryDashboard = lazy(routeImporters.industryDashboard);
 const LearningTaskFactory = lazy(routeImporters.learningTaskFactory);
 const JobAbilityGraph = lazy(routeImporters.jobAbilityGraph);
+const RobotOpsAgent = lazy(routeImporters.robotOps);
+const AIAnnotationAgent = lazy(routeImporters.aiAnnotation);
 
 // Warm route chunks after the first screen settles so the first navigation is not a cold import.
 if (typeof window !== "undefined") {
@@ -412,7 +416,7 @@ function GlobalAIAssistantBar() {
     "/path": {
       title: "岗课赛训练路径",
       agent: "路径规划智能体",
-      status: "这条路径会结合你的学习画像、当前课程进度和薄弱点，拆出接下来每一阶段具体该学什么、练什么、产出什么。",
+      status: "这条路径会结合岗位能力诊断、当前课程进度和薄弱点，拆出接下来每一阶段具体该学什么、练什么、产出什么。",
       nextAction: "先完成当前阶段的首个关键任务，再由系统继续生成下一步学习动作。",
     },
     "/profile": {
@@ -595,19 +599,14 @@ function MainLayout({
 
   const navItems = [
     { label: "岗课赛工作台", id: "overview", path: "/overview", icon: Layers },
-    { label: "训练路径", id: "path", path: "/path", icon: Compass },
-    { label: "课程实训", id: "learn", path: "/learn", icon: Tv },
-    { label: "课程与竞赛资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
-    { label: "我的任务资料", id: "collection", path: "/collection", icon: Heart },
-    { label: "岗位能力诊断", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
-    { label: "能力与实训报告", id: "report", path: "/report", icon: BarChart2 },
-    { label: "岗位能力图谱", id: "job-ability-graph", path: "/job-ability-graph", icon: User },
-    { label: "岗课赛学习", id: "job-learning", path: "/job-learning", icon: Compass },
     { label: "产业岗位分析", id: "industry-dashboard", path: "/industry-dashboard", icon: BarChart2 },
+    { label: "岗位能力图谱", id: "job-ability-graph", path: "/job-ability-graph", icon: User },
     { label: "岗位任务转学习卡", id: "learning-task-factory", path: "/learning-task-factory", icon: ClipboardCheck },
-    { label: "岗课赛知识目录", id: "job-knowledge-catalog", path: "/job-learning/knowledge-catalog", icon: BookOpen },
-    { label: "岗课赛试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardCheck },
-    { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
+    { label: "AI 数据标注实训", id: "ai-annotation-agent", path: "/annotation-agent", icon: Bot },
+    { label: "岗课赛自适应学习", id: "job-learning", path: "/job-learning", icon: Compass },
+    { label: "岗位能力诊断", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
+    { label: "课程与竞赛资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
+    { label: "能力与实训报告", id: "report", path: "/report", icon: BarChart2 },
   ];
 
   useEffect(() => {
@@ -1124,7 +1123,7 @@ function WelcomeScreenGate({
   onDismiss: () => void;
 }) {
   const location = useLocation();
-  const hiddenRoutes = ["/login", "/resources/preview", "/resources/judge-result"];
+  const hiddenRoutes = ["/login", "/resources/preview", "/resources/judge-result", "/robot-ops-agent", "/ai-annotation-agent", "/annotation-agent"];
   const shouldHideWelcome =
     tutorOpen || hiddenRoutes.includes(location.pathname) || location.pathname.startsWith("/resources/preview") || location.pathname.startsWith("/resources/judge-result");
 
@@ -1520,7 +1519,7 @@ export default function App() {
 
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const location = useLocation();
-    if (location.pathname === "/resources/preview" || location.pathname === "/resources/judge-result") {
+    if (location.pathname === "/resources/preview" || location.pathname === "/resources/judge-result" || location.pathname === "/robot-ops-agent" || location.pathname === "/ai-annotation-agent" || location.pathname === "/annotation-agent") {
       return <>{children}</>;
     }
     if (!user.loggedIn) {
@@ -1718,6 +1717,9 @@ export default function App() {
               <Route path="/industry-dashboard" element={<ProtectedRoute><IndustryDashboard /></ProtectedRoute>} />
               <Route path="/learning-task-factory" element={<ProtectedRoute><LearningTaskFactory /></ProtectedRoute>} />
               <Route path="/job-ability-graph" element={<ProtectedRoute><JobAbilityGraph /></ProtectedRoute>} />
+              <Route path="/robot-ops-agent" element={<ProtectedRoute><RobotOpsAgent /></ProtectedRoute>} />
+              <Route path="/ai-annotation-agent" element={<ProtectedRoute><AIAnnotationAgent /></ProtectedRoute>} />
+              <Route path="/annotation-agent" element={<ProtectedRoute><AIAnnotationAgent /></ProtectedRoute>} />
               <Route
                 path="/trial-feedback"
                 element={

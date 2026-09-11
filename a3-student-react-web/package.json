@@ -17,6 +17,7 @@
     "smoke:ai-tutor-multiformat": "tsx ./scripts/smoke-ai-tutor-multiformat.ts",
     "smoke:login": "tsx ./scripts/smoke-login.ts",
     "smoke:personalized-learning": "tsx ./scripts/smoke-personalized-learning.ts",
+    "smoke:xa-competition": "tsx ./scripts/smoke-xa-competition.ts",
     "smoke:resource-center": "tsx ./scripts/smoke-resource-center.ts",
     "smoke:im-realtime": "tsx ./scripts/smoke-im-realtime.ts",
     "smoke:resource-learn": "tsx ./scripts/smoke-resource-learn.ts",

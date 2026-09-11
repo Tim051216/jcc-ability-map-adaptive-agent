@@ -46,6 +46,17 @@ npm run dev
 
 - [http://localhost:3002](http://localhost:3002)
 
+## AI 数据标注实训智能体（竞赛 MVP）
+
+人工智能专业版微任务页面：服务 AI 数据标注工程师岗位，训练遮挡、截断和同类目标实例判定。
+
+- 直接访问：[http://localhost:3002/annotation-agent](http://localhost:3002/annotation-agent)
+- 兼容地址：[http://localhost:3002/ai-annotation-agent](http://localhost:3002/ai-annotation-agent)
+- 试用口令：`这张图里的人被车挡住了，框怎么画？`、`同类目标挨在一起，应该标几个框？`
+- 反馈入口：页面右侧“提交试用反馈”，支持实用性/易用性/准确性评分与 CSV 导出。
+
+`/robot-ops-agent` 为早期工业机器人版本，保留用于兼容演示，不作为当前人工智能专业竞赛主版本。
+
 ## Build
 
 ```bash

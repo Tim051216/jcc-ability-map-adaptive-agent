@@ -824,7 +824,7 @@ class AdminService:
         if not message:
             return message
         if agent_name == "profile_agent":
-            return "学习画像智能体运行正常，画像上下文已同步。"
+            return "岗位学情诊断智能体运行正常，诊断上下文已同步。"
         if agent_name == "knowledge_tutoring_agent":
             return "知识检索与答疑智能体已完成路由、检索与基础问答。"
         if agent_name == "learning_planning_agent":

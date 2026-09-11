@@ -188,7 +188,7 @@ class LearningService:
                 {"level": "intermediate", "label": "进阶版", "fit_score": 93, "description": "你当前更适合做系统设计、需求拆解、实现衔接和测试计划这些主线强化。", "recommended_topics": ["需求规格说明", "模块划分", "详细设计与实现衔接", "测试计划设计"]},
                 {"level": "expert", "label": "专家版", "fit_score": 78, "description": "可以继续往项目治理、质量保障、团队协作和阶段交付表达推进。", "recommended_topics": ["项目治理", "质量保证体系", "进度控制与协作"]},
             ],
-            "growth_title": "成长型学习画像",
+            "growth_title": "岗位能力成长轨迹",
             "growth_summary": "画像不再只记录你看过什么，而是展示你是否已经形成了需求理解、结构拆解、方案表达和项目推进这些可迁移能力。",
             "next_milestone": "再完成一次从需求到设计再到测试的完整小闭环，你就会进入更稳定的综合应用阶段。",
             "dimensions": [

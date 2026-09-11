@@ -1,0 +1,21 @@
+﻿{
+    "checked_at":  "2026-09-09T14:39:25.2784045Z",
+    "checks":  [
+                   {
+                       "name":  "knowledge",
+                       "url":  "https://agent.xfyun.cn/agentbuilder/resource/knowledge/detail/144411/hit?tag=AIUI-RAG2",
+                       "http_status":  200,
+                       "page_reachable":  true,
+                       "checked_at":  "2026-09-09T14:39:25.1883070Z",
+                       "note":  "Page reachable; release/index status must be confirmed from the authenticated page labels."
+                   },
+                   {
+                       "name":  "workflow",
+                       "url":  "https://agent.xfyun.cn/agentbuilder/work_flow/661895/arrange",
+                       "http_status":  200,
+                       "page_reachable":  true,
+                       "checked_at":  "2026-09-09T14:39:25.2784045Z",
+                       "note":  "Page reachable; release/index status must be confirmed from the authenticated page labels."
+                   }
+               ]
+}

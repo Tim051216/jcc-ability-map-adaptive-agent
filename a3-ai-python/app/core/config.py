@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     java_gateway_base_url: str = Field(alias="JAVA_GATEWAY_BASE_URL")
     java_internal_token: str = Field(alias="JAVA_INTERNAL_TOKEN")
 
+    # 赛题岗位动态分析：逗号分隔的公开 JSON/CSV/HTML 来源；不得填写凭证或个人数据
+    xa_public_job_sources: str = Field(default="", alias="XA_PUBLIC_JOB_SOURCES")
+
     llm_provider: str = Field(alias="LLM_PROVIDER")
     llm_model: str = Field(alias="LLM_MODEL")
     llm_fast_model: str = Field(default="qwen-turbo", alias="LLM_FAST_MODEL")

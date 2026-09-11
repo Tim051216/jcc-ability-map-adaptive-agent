@@ -721,7 +721,7 @@ function buildMasteryMetrics(
     metrics.push({
       label: getDimensionLabel(profileDetail, key),
       score,
-      detail: "来自画像能力评分",
+      detail: "来自岗位能力诊断评分",
     });
   });
 
@@ -751,10 +751,10 @@ function buildMasteryMetrics(
     });
   };
 
-  addMetric("知识基础", inferredBasics, activeLevelItem ? `结合${activeLevelItem.label}、路径进度和薄弱信号估算` : "结合路径进度和画像标签估算");
-  addMetric("认知风格匹配", inferredStyle, profileSummary?.recommended_learning_style ? "来自推荐学习风格与任务类型匹配" : "画像偏好不足，按默认学习节奏估算");
+  addMetric("知识基础", inferredBasics, activeLevelItem ? `结合${activeLevelItem.label}、路径进度和薄弱信号估算` : "结合路径进度和岗位学情标签估算");
+  addMetric("认知风格匹配", inferredStyle, profileSummary?.recommended_learning_style ? "来自推荐学习风格与任务类型匹配" : "岗位学情偏好不足，按默认学习节奏估算");
   addMetric("学习进度", inferredProgress, totalStepCount > 0 ? `已完成 ${completedStepCount}/${totalStepCount} 个路径任务` : "来自当前学习路径完成率");
-  addMetric("易错风险", inferredWeakness, weakPenalty > 0 ? "检测到薄弱/易错相关画像信号" : "根据掌握度和进度反向估算", "risk");
+  addMetric("易错风险", inferredWeakness, weakPenalty > 0 ? "检测到薄弱/易错相关岗位学情信号" : "根据掌握度和进度反向估算", "risk");
 
   return metrics.slice(0, 4);
 }
@@ -825,7 +825,7 @@ function buildPathDecisionInsight(params: {
     nextStep?.type === "code"
       ? "完成配套代码实操，并提交一份可运行结果"
       : nextStep?.type === "quiz"
-        ? "完成阶段测评，用错题结果更新画像"
+        ? "完成阶段测评，用错题结果更新岗位学情"
         : "完成配套练习或复盘记录，让系统获得新的学习证据";
 
   if (goalProfile) {
@@ -857,17 +857,17 @@ function buildPathDecisionInsight(params: {
     profileEvidence:
       evidence.length > 0
         ? evidence
-        : [profileLoading ? "正在读取画像结果" : "未读取到正式画像，请先在画像页完成一次对话或测评"],
+        : [profileLoading ? "正在读取岗位学情结果" : "未读取到正式岗位学情，请先完成一次岗位能力诊断或测评"],
     weakSignals:
       weakSignals.length > 0 ? weakSignals : ["暂无明确薄弱信号，先按课程阶段和目标推进"],
     masteryMetrics,
     preferenceItems:
       preferenceItems.length > 0
         ? preferenceItems
-        : [profileLoading ? "正在读取学习偏好" : "暂无明确学习偏好，请先在画像页补充学习方式、节奏和目标"],
+        : [profileLoading ? "正在读取学习偏好" : "暂无明确学习偏好，请先在岗位能力诊断页补充学习方式、节奏和目标"],
     decisionRules: [
       `先看当前阶段：${currentPhase?.title || "学习起步"}。`,
-      `再看画像与进度：画像完整度 ${completenessText}。`,
+      `再看岗位学情与进度：诊断完整度 ${completenessText}。`,
       activeLevelItem
         ? `当前难度按 ${activeLevelItem.label} 收敛，匹配度 ${activeLevelItem.fit_score || "--"}。`
         : "学习层级未返回，先按课程主线推进。",
@@ -878,10 +878,10 @@ function buildPathDecisionInsight(params: {
       ? `已按你的目标和 ${learningGoal.dailyMinutes} 分钟/天的节奏排过优先级。`
       : "当前还没有明确目标，所以先按课程主线给你排了最稳的一步。",
     sourceLabel: profileError
-      ? `画像读取异常：${profileError}`
+      ? `岗位学情读取异常：${profileError}`
       : usingFallback
         ? "当前显示的是临时方案"
-        : "已结合画像、进度和当前阶段",
+        : "已结合岗位学情、进度和当前阶段",
     confidenceLabel: profileLoading ? "同步中" : evidence.length > 0 ? "已结合当前数据" : "等待更多记录",
   };
 }
@@ -996,14 +996,14 @@ function buildPlanFromPersonalizedData(params: {
     course_id: courseId,
     course_name: courseName,
     summary: goalPath.goal_subtitle,
-    progress_hint: activeLevel?.description || "系统会结合你的画像、课程进度和薄弱点继续微调路径。",
+    progress_hint: activeLevel?.description || "系统会结合你的岗位学情、课程进度和薄弱点继续微调路径。",
     next_action: steps[0]?.title || "先完成当前阶段的首个关键任务。",
     risk_alerts: [],
     path_mode: "laddered",
     current_stage: stages[0]?.focus,
     completion_rate: 0,
     dynamic_adjustments: [
-      "这份方案已经结合当前画像与课程阶段生成，后续会随你的完成情况继续调整。",
+      "这份方案已经结合当前岗位学情与课程阶段生成，后续会随你的完成情况继续调整。",
     ],
     recommended_checkpoints: [
       "先完成今天最优先的一项任务。",
@@ -1470,7 +1470,7 @@ function buildPlanAgentCards(params: {
   return [
     {
       key: "profile_agent",
-      title: "学习画像",
+      title: "岗位能力诊断",
       detail: usingFallback
         ? "当前先用本地记录补齐页面内容"
         : `已同步当前学习状态${plan?.current_stage ? `，目前处于${plan.current_stage}` : ""}`,
@@ -1831,7 +1831,7 @@ export default function LearningPath() {
     setProfileError(null);
     Promise.all([
       studentApi.getProfileSummary(activeUserId).catch((error) => {
-        if (!cancelled) setProfileError(error instanceof Error ? error.message : "画像摘要读取失败");
+        if (!cancelled) setProfileError(error instanceof Error ? error.message : "岗位学情摘要读取失败");
         return null;
       }),
       studentApi.getProfileDetailOrNull(activeUserId),
@@ -2071,7 +2071,7 @@ export default function LearningPath() {
         setPhases(mapPlanToPhases(personalizedPlan, null));
         setUsingFallback(false);
         setError(null);
-        setToastMessage("实时生成暂时未完成，已先按你的画像与课程目标生成可执行路径。");
+        setToastMessage("实时生成暂时未完成，已先按你的岗位学情与课程目标生成可执行路径。");
       } else {
         setUsingFallback(true);
         setError(generateError instanceof Error ? generateError.message : "学习路径生成失败");
@@ -2193,7 +2193,7 @@ export default function LearningPath() {
             {xaTaskTitle ? <div className="mt-4 rounded-xl border border-[#dcebdc] bg-[#f4fbf4] px-3 py-2 text-xs font-bold text-[#16803c]">已接入岗位学习任务卡：{xaTaskTitle}</div> : null}
             <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-[#52606d]">
               <span className="rounded-full border border-[#f3d5de] bg-[#fff7fa] px-3 py-1">岗：岗位目标已绑定</span>
-              <span className="rounded-full border border-[#d9edf3] bg-[#f4fbff] px-3 py-1">课：{plan?.course_name || course.name}</span>
+              <span className="rounded-full border border-[#d9edf3] bg-[#f4fbff] px-3 py-1">课：{plan?.course_name || course.title}</span>
               <span className="rounded-full border border-[#dcebdc] bg-[#f4fbf4] px-3 py-1">赛：目标诊断后动态调整</span>
               <span className="rounded-full border border-[#eadcf4] bg-[#fbf7ff] px-3 py-1">🏅 已完成 {completedStepCount} 个能力任务</span>
             </div>

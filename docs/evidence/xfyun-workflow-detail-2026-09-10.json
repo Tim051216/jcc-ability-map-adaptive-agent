@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-09-10T10:06:00+08:00",
+  "source": "Chrome authenticated user tab",
+  "url": "https://agent.xfyun.cn/agentbuilder/management/release/detail/5789665",
+  "agent_id": "5789665",
+  "agent_name": "软件开发岗位能力自适应教练",
+  "visible_sections": ["工作流", "发布版本", "Trace日志"],
+  "visible_release_version_table": "暂无数据",
+  "status": "release_record_requires_follow_up",
+  "boundary": "The detail page confirms the agent identity and exposes release/trace sections, but it does not expose a published version row in the current view. This evidence does not prove that the XA-202603 OpenAPI contract is deployed or published in the cloud workflow."
+}

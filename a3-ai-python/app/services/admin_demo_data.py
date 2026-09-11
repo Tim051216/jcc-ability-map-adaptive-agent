@@ -156,7 +156,7 @@ class AdminDemoStore:
             "agent_name": "profile_agent",
             "level": "info",
             "status": "ok",
-            "message": "学习画像智能体已完成最新一批学习者画像同步。",
+            "message": "岗位学情诊断智能体已完成最新一批学习者诊断同步。",
             "payload": {"batch": "profile-nightly"},
             "created_at": "2026-05-16T07:16:00+00:00",
             "updated_at": "2026-05-16T07:16:00+00:00",
@@ -305,7 +305,7 @@ class AdminDemoStore:
     ]
 
     _AGENT_MESSAGE_MAP = {
-        "Profile sync completed for latest learner segment.": "学习画像智能体已完成最新一批学习者画像同步。",
+        "Profile sync completed for latest learner segment.": "岗位学情诊断智能体已完成最新一批学习者诊断同步。",
         "Resource generation switched to cached templates because PostgreSQL is unavailable.": "资源生成智能体因数据库暂不可用，已切换到缓存模板降级输出。",
         "Planner could not persist progress snapshot and entered retry mode.": "学习规划智能体写入进度快照失败，已进入自动重试模式。",
         "Evaluation report generation completed.": "测评反馈智能体已完成本轮测评报告生成。",

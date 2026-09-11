@@ -1665,7 +1665,7 @@ export default function Evaluation() {
   const focusPointLabel = trend?.focus_knowledge_points?.[0] || latestResult?.weak_points?.[0] || "完成短测后自动识别";
   const evaluationStageLabel = activePaper
     ? latestResult
-      ? "结果已生成，可回写报告与画像"
+      ? "结果已生成，可回写报告与岗位学情诊断"
       : "正在作答本轮短测"
     : activeCourse
       ? "可开始本轮阶段诊断"
@@ -1682,8 +1682,8 @@ export default function Evaluation() {
       : wrongQuestions.map((item) => item.knowledge_point).filter(Boolean);
   const diagnosisSteps: EvaluationFlowStep[] = [
     {
-      title: "读取画像",
-      description: profileSummary ? `${profileSummary.current_stage || "当前阶段"}，画像完整度 ${Math.round(profileSummary.completeness || 0)}%` : "加载学生画像和学习偏好",
+      title: "读取岗位学情",
+      description: profileSummary ? `${profileSummary.current_stage || "当前阶段"}，诊断完整度 ${Math.round(profileSummary.completeness || 0)}%` : "加载岗位能力诊断和学习偏好",
       status: profileSummary ? "done" : activeCourse ? "active" : "pending",
     },
     {
@@ -1698,11 +1698,11 @@ export default function Evaluation() {
     },
     {
       title: "回写闭环",
-      description: feedbackApplied || refreshedPlan || generatedResources.length ? "画像、路径、资源和导师建议已联动" : "把结果同步给后续学习动作",
+      description: feedbackApplied || refreshedPlan || generatedResources.length ? "岗位学情、路径、资源和导师建议已联动" : "把结果同步给后续学习动作",
       status: feedbackApplied || refreshedPlan || generatedResources.length || tutorFollowup ? "done" : latestResult ? "active" : "pending",
     },
   ];
-  const profileSyncDetail = feedbackApplied?.summary || profileSummary?.recommended_learning_style || profileSummary?.current_stage || "测评结果会作为画像更新证据";
+  const profileSyncDetail = feedbackApplied?.summary || profileSummary?.recommended_learning_style || profileSummary?.current_stage || "测评结果会作为岗位学情更新证据";
   const planSyncDetail = refreshedPlan?.next_action || latestPlan?.next_action || "提交后会按薄弱点刷新下一阶段学习路径";
   const resourceSyncDetail = generatedResources.length
     ? `已补充 ${generatedResources.length} 份讲义、练习或导图`
@@ -1870,7 +1870,7 @@ export default function Evaluation() {
                 测评闭环
               </div>
               <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[#171c22]">测评结果会回写到后续学习动作</h2>
-              <p className="mt-1 text-sm leading-6 text-[#5b6770]">提交本轮短测后，页面会同步生成画像更新、路径调整、补充资源和 AI 导师建议。</p>
+              <p className="mt-1 text-sm leading-6 text-[#5b6770]">提交本轮短测后，页面会同步生成岗位学情更新、路径调整、补充资源和 AI 导师建议。</p>
             </div>
             {latestResult ? (
               <span className="rounded-full bg-[#ecfdf3] px-3 py-1.5 text-xs font-bold text-emerald-700">
@@ -1879,7 +1879,7 @@ export default function Evaluation() {
             ) : null}
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <EvaluationSyncItem icon={CheckCircle} title="画像更新" detail={profileSyncDetail} ready={Boolean(feedbackApplied || profileSummary)} />
+            <EvaluationSyncItem icon={CheckCircle} title="岗位学情更新" detail={profileSyncDetail} ready={Boolean(feedbackApplied || profileSummary)} />
             <EvaluationSyncItem icon={Network} title="路径调整" detail={planSyncDetail} ready={Boolean(refreshedPlan || latestPlan)} />
             <EvaluationSyncItem icon={FileText} title="资源补给" detail={resourceSyncDetail} ready={generatedResources.length > 0} />
             <EvaluationSyncItem icon={Bot} title="导师接续" detail={tutorSyncDetail} ready={Boolean(tutorFollowup)} />

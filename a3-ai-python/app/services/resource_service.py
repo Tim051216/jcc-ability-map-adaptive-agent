@@ -2081,7 +2081,7 @@ class ResourceService:
                 "upstream": ["用户角色", "业务流程", "痛点场景"],
                 "structure": ["需求获取", "需求整理", "用例与流程建模", "需求规格与验收条件"],
                 "pitfalls": ["把口头诉求直接当系统需求", "忽略非功能需求", "缺少可验收、可追踪的文档表达"],
-                "scene": "梳理学习画像、资源生成、测评反馈、监控页面等模块的角色边界与验收条件",
+                "scene": "梳理岗位学情诊断、资源生成、测评反馈、监控页面等模块的角色边界与验收条件",
             }
         if "第四章" in focus_title or "项目管理" in focus_title or "软件设计" in focus_title or "测试" in focus_title:
             return {
@@ -2117,7 +2117,7 @@ class ResourceService:
                 "upstream": ["需求规格", "设计说明", "风险点"],
                 "structure": ["测试分层", "用例设计", "缺陷跟踪", "回归验证"],
                 "pitfalls": ["只测正常路径", "缺少边界条件", "修复后不做回归"],
-                "scene": "针对课程生成、测评反馈、学习画像回写等流程做端到端测试",
+                "scene": "针对课程生成、测评反馈、岗位学情回写等流程做端到端测试",
             }
         if any(token in joined for token in ("项目", "进度", "管理", "计划")):
             return {

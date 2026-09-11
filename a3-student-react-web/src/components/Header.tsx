@@ -8,20 +8,16 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart2,
   Bell,
-  BookOpen,
   BriefcaseBusiness,
   Bot,
   Code2,
   ClipboardCheck,
   ClipboardList,
-  Compass,
   FolderOpen,
   Heart,
   Layers,
   LogOut,
-  MessageCircleMore,
   Search,
-  Tv,
   User,
 } from "lucide-react";
 
@@ -134,19 +130,13 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
   const navItems = useMemo(
     () => [
       { label: "岗课赛工作台", id: "overview", path: "/", icon: Layers },
-      { label: "训练路径", id: "path", path: "/path", icon: Compass },
-      { label: "课程实训", id: "learn", path: "/learn", icon: Tv },
-      { label: "课程与竞赛资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
-      { label: "我的任务资料", id: "collection", path: "/collection", icon: Heart },
-      { label: "岗位能力诊断", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
-      { label: "岗课赛学习", id: "job-learning", path: "/job-learning", icon: BriefcaseBusiness },
       { label: "产业岗位分析", id: "industry-dashboard", path: "/industry-dashboard", icon: BarChart2 },
-      { label: "岗位任务转学习卡", id: "learning-task-factory", path: "/learning-task-factory", icon: ClipboardList },
-      { label: "岗课赛知识目录", id: "job-knowledge-catalog", path: "/job-learning/knowledge-catalog", icon: BookOpen },
-      { label: "岗课赛试用反馈", id: "trial-feedback", path: "/trial-feedback", icon: ClipboardList },
-      { label: "能力与实训报告", id: "report", path: "/report", icon: BarChart2 },
-      { label: "消息", id: "im", path: "/im", icon: MessageCircleMore },
       { label: "岗位能力图谱", id: "job-ability-graph", path: "/job-ability-graph", icon: User },
+      { label: "岗位任务转学习卡", id: "learning-task-factory", path: "/learning-task-factory", icon: ClipboardList },
+      { label: "岗课赛自适应学习", id: "job-learning", path: "/job-learning", icon: BriefcaseBusiness },
+      { label: "岗位能力诊断", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
+      { label: "课程与竞赛资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
+      { label: "能力与实训报告", id: "report", path: "/report", icon: BarChart2 },
     ],
     [],
   );
@@ -185,7 +175,7 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
           </Link>
 
           <span className="hidden rounded-full bg-[#006689]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#006689] sm:inline-block">
-            岗—课—赛能力画像已接入
+            岗—课—赛岗位能力已接入
           </span>
         </div>
 

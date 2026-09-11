@@ -1,0 +1,11 @@
+{
+  "source_url": "https://remotive.com/api/remote-jobs",
+  "source_name": "Remotive Remote Jobs API",
+  "collected_at": "2026-09-09T18:33:18+08:00",
+  "sample_count": 18,
+  "local_snapshot": "a3-ai-python/local_data/remotive_public_jobs.json",
+  "collection_method": "公开 HTTPS JSON 读取；无需登录，未绕过验证码或访问控制",
+  "fields_used": ["title", "description", "category", "tags", "job_type", "publication_date"],
+  "privacy": "仅岗位技能聚合，不提取或保存个人姓名、电话、邮箱、简历。",
+  "authorization_boundary": "公开采集样本不构成招聘平台授权、讯飞星辰部署记录或师生试用反馈。"
+}

@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-09-09T23:20:00+08:00",
+  "tunnel_type": "cloudflare-quick-tunnel",
+  "base_url": "https://customers-unsigned-navigation-venue.trycloudflare.com",
+  "health": "ok",
+  "industry_analysis": {
+    "sample_count": 17,
+    "collection_mode": "public-job-http-adapter"
+  },
+  "scope": "temporary external smoke test for the XA-202603 plugin gateway",
+  "status": "stopped_after_smoke_test",
+  "boundary": "Quick Tunnel has no uptime guarantee and is not a stable production deployment; the URL must not be treated as a permanent Star Agent endpoint. Re-import and publish the OpenAPI contract only after the deployment owner provides a stable HTTPS address."
+}

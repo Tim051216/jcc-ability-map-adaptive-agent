@@ -95,7 +95,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     code: "SPTA",
     title: "稳态实战型",
     subtitle: "任务拆解能力较强，适合结构化推进与实践验证",
-    description: "当前画像显示，你在任务拆解、步骤组织和实践执行上表现稳定。更适合以明确主线驱动学习，通过案例验证和阶段推进完成知识内化。",
+    description: "当前岗位学情诊断显示，你在任务拆解、步骤组织和实践执行上表现稳定。更适合以明确主线驱动学习，通过案例验证和阶段推进完成知识内化。",
     image: "/sbti/spta.svg?v=2",
     accent: "from-[#fff4f8] via-white to-[#f4f9ff]",
     tags: ["结构化推进", "实践验证", "稳步进阶"],
@@ -104,7 +104,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     code: "STCA",
     title: "体系建构型",
     subtitle: "概念整合能力突出，适合先建框架再进入应用",
-    description: "当前画像显示，你更擅长先厘清原理、结构与概念关系，再进入应用训练。更适合高密度讲义、分层讲解和知识图谱式学习材料。",
+    description: "当前岗位学情诊断显示，你更擅长先厘清原理、结构与概念关系，再进入应用训练。更适合高密度讲义、分层讲解和知识图谱式学习材料。",
     image: "/sbti/stca.svg?v=2",
     accent: "from-[#f5f7ff] via-white to-[#fff8fb]",
     tags: ["原理优先", "框架搭建", "体系理解"],
@@ -113,7 +113,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     code: "ETFI",
     title: "探索反馈型",
     subtitle: "试错与反馈驱动明显，适合快速迭代式学习",
-    description: "当前画像显示，你对即时反馈和动态修正更敏感。更适合先尝试、再提问、再根据测评与答疑快速调整策略，以保持理解效率和学习投入。",
+    description: "当前岗位学情诊断显示，你对即时反馈和动态修正更敏感。更适合先尝试、再提问、再根据测评与答疑快速调整策略，以保持理解效率和学习投入。",
     image: "/sbti/etfi.svg?v=2",
     accent: "from-[#fff8f2] via-white to-[#f4fbff]",
     tags: ["快速试错", "反馈驱动", "动态修正"],
@@ -122,7 +122,7 @@ const SBTI_PORTRAITS: Record<string, SbtiPortrait> = {
     code: "SPCI",
     title: "节奏推进型",
     subtitle: "节奏控制较稳定，适合主线清晰的渐进式提升",
-    description: "当前画像显示，你在持续投入和阶段跟进上较为稳定。更适合围绕清晰主线逐步提升难度，通过连续完成小目标积累整体掌握度。",
+    description: "当前岗位学情诊断显示，你在持续投入和阶段跟进上较为稳定。更适合围绕清晰主线逐步提升难度，通过连续完成小目标积累整体掌握度。",
     image: "/sbti/spci.svg?v=2",
     accent: "from-[#fff6fa] via-white to-[#f7fbff]",
     tags: ["主线清晰", "持续投入", "渐进提升"],
@@ -196,10 +196,10 @@ function getSbtiPortrait(profileSummary: ProfileSummaryResponse | null, growthMa
 
 const HOME_AGENT_OVERVIEW = [
   {
-    title: "学习画像智能体",
-    detail: "读取当前能力画像、学习风格和阶段状态",
+    title: "岗位学情诊断智能体",
+    detail: "读取岗位能力诊断、学习进度和阶段状态",
     icon: UserCircle,
-    route: "/profile",
+    route: "/job-ability-graph",
   },
   {
     title: "学习规划智能体",
@@ -232,8 +232,8 @@ const HOME_AGENT_SEQUENCE = [
     title: "\u5b66\u4e60\u753b\u50cf\u667a\u80fd\u4f53",
     detail: "\u7ed3\u5408\u5b66\u4e60\u76ee\u6807\u4e0e\u5f53\u524d\u8868\u73b0\uff0c\u5b8c\u6210\u5b66\u60c5\u8bca\u65ad\u4e0e\u753b\u50cf\u521d\u59cb\u5316",
     icon: UserCircle,
-    route: "/profile",
-    tag: "\u753b\u50cf\u8ffd\u8e2a",
+    route: "/job-ability-graph",
+    tag: "岗位能力追踪",
   },
   {
     title: "\u77e5\u8bc6\u68c0\u7d22\u4e0e\u7b54\u7591\u667a\u80fd\u4f53",
@@ -281,7 +281,7 @@ const HOME_AGENT_ACTIONS = [
   },
   {
     label: "生成今日计划",
-    detail: "结合当前进度、能力画像与最近测评结果编排任务",
+    detail: "结合当前进度、岗位能力诊断与最近测评结果编排任务",
     action: "查看路径",
     route: "/path",
   },
@@ -598,12 +598,12 @@ export default function Overview({ user }: OverviewProps = {}) {
       },
       {
         label: "学情诊断",
-        title: "完成画像初始化与状态识别",
+        title: "完成岗位学情诊断与状态识别",
         status: "completed" as const,
         detail: "系统已结合你的当前进度、常见卡点和最近表现，形成这一轮学习上下文。",
-        output: "已同步当前阶段、推荐风格与能力侧重点",
-        action: "查看画像",
-        route: "/profile",
+        output: "已同步当前阶段、岗位能力缺口与学习侧重点",
+        action: "查看岗位能力图谱",
+        route: "/job-ability-graph",
         accent: "from-sky-500 to-cyan-500",
       },
       {
@@ -638,9 +638,9 @@ export default function Overview({ user }: OverviewProps = {}) {
       },
       {
         label: "测评反馈",
-        title: "汇总结果并更新画像",
+        title: "汇总结果并更新岗位能力诊断",
         status: "queued" as const,
-        detail: "完成一轮学习后，系统会结合测评结果给出反馈，并推动画像迭代更新。",
+        detail: "完成一轮学习后，系统会结合测评结果给出反馈，并更新岗位能力诊断。",
         output: "本轮结束后生成反馈分析与更新建议",
         action: "查看报告",
         route: "/report",
@@ -652,10 +652,10 @@ export default function Overview({ user }: OverviewProps = {}) {
   const flowAgents = useMemo(
     () => [
       {
-        name: "学习画像智能体",
-        role: "负责学情诊断与画像初始化",
+        name: "岗位学情诊断智能体",
+        role: "负责岗位能力诊断与学习状态识别",
         tag: "诊断中枢",
-        route: "/profile",
+        route: "/job-ability-graph",
         icon: UserCircle,
         steps: ["目标确认", "学情诊断"],
         tone: "from-[#fff4f8] to-[#fffafb]",
@@ -689,7 +689,7 @@ export default function Overview({ user }: OverviewProps = {}) {
       },
       {
         name: "测评反馈智能体",
-        role: "汇总结果、生成反馈并驱动画像更新",
+        role: "汇总结果、生成反馈并更新岗位能力诊断",
         tag: "结果闭环",
         route: "/report",
         icon: Award,
@@ -791,9 +791,9 @@ export default function Overview({ user }: OverviewProps = {}) {
       {
         eyebrow: "成长型主页",
         title: profileSummary?.current_stage || "能力地图持续更新中",
-        detail: "从观看历史升级为能力画像，持续展示阶段、强项、短板和成长轨迹。",
-        action: "查看能力地图",
-        route: "/profile",
+        detail: "结合岗位能力要求持续展示阶段、强项、短板和成长轨迹。",
+        action: "查看岗位能力图谱",
+        route: "/job-ability-graph",
         icon: Radar,
         tone: "from-[#f5f3ff] via-white to-[#fcfbff]",
         accent: "text-[#7c3aed]",
@@ -931,10 +931,10 @@ export default function Overview({ user }: OverviewProps = {}) {
       title: options?.title || `${primaryCourse?.title ?? COURSES[0].title} · 学习总控`,
       subtitle:
         options?.subtitle ||
-        "AI 导师会结合首页里的学习目标、画像阶段、推荐课程和资源状态，直接给出下一步建议。",
+        "AI 导师会结合首页里的学习目标、岗位学情阶段、推荐课程和资源状态，直接给出下一步建议。",
       query:
         options?.query ||
-        `请结合我当前首页里的学习目标、画像阶段、推荐课程和资料状态，围绕“${homeConfig.tutorFocus}”告诉我现在最该先做什么，并给一个最短执行顺序。`,
+        `请结合我当前首页里的学习目标、岗位学情阶段、推荐课程和资料状态，围绕“${homeConfig.tutorFocus}”告诉我现在最该先做什么，并给一个最短执行顺序。`,
       quickPrompts: options?.quickPrompts || ["我现在先做什么", "按目标重排今天任务", "先学视频还是先看资料"],
     });
   };
@@ -1493,7 +1493,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                         <div>
                           <p className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/72 px-3 py-1 text-[10px] font-black tracking-[0.2em] text-[#0b5f85] shadow-sm backdrop-blur">
                             <span className="h-1.5 w-1.5 rounded-full bg-[#5eead4] shadow-[0_0_10px_rgba(94,234,212,0.9)]" />
-                            PORTRAIT ENGINE
+                            岗位能力诊断引擎
                           </p>
                           <h2 className="mt-3 text-[26px] font-black tracking-[-0.06em] ui-ui-text-ink md:text-[30px]">
                             {sbtiPortrait.title}
@@ -1506,7 +1506,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                       </div>
 
                       <div className="rounded-[24px] border border-white/78 bg-white/72 p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)] backdrop-blur">
-                        <p className="text-[10px] font-black tracking-[0.22em] ui-ui-text-brand">AI 自动画像解读</p>
+                        <p className="text-[10px] font-black tracking-[0.22em] ui-ui-text-brand">岗位能力诊断解读</p>
                         <h3 className="mt-2 text-[20px] font-black leading-7 ui-ui-text-ink">{sbtiPortraitNarrative.headline}</h3>
                         <p className="mt-2 max-w-[620px] text-[13px] leading-6 ui-text-body">{sbtiPortraitNarrative.description}</p>
                       </div>
@@ -1539,7 +1539,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                       <div className="absolute inset-x-5 top-4 h-px bg-[linear-gradient(90deg,transparent,rgba(251,114,153,0.72),rgba(125,211,252,0.72),transparent)]" />
                       <div className="flex items-center justify-between px-1">
                         <div>
-                          <p className="text-[9px] font-black tracking-[0.2em] text-[#8a94a3]">PROFILE RADAR</p>
+                          <p className="text-[9px] font-black tracking-[0.2em] text-[#8a94a3]">JOB ABILITY RADAR</p>
                           <p className="mt-1 text-[13px] font-black text-[#101828]">{sbtiPortrait.code}</p>
                         </div>
                         <span className="rounded-full bg-[#fff1f5] px-2.5 py-1 text-[9px] font-black text-[#fb7299]">
@@ -1597,7 +1597,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                         <div className="grid grid-cols-2 gap-2">
                           <div className="rounded-[16px] border border-white/80 bg-white/76 px-3 py-2 shadow-sm">
                             <div className="text-[9px] font-black tracking-[0.18em] text-[#8a94a3]">重点策略</div>
-                            <div className="mt-1 text-[11px] font-black text-[#101828]">{sbtiPortraitTags[0] || "画像更新中"}</div>
+                            <div className="mt-1 text-[11px] font-black text-[#101828]">{sbtiPortraitTags[0] || "诊断更新中"}</div>
                           </div>
                           <div className="rounded-[16px] border border-white/80 bg-white/76 px-3 py-2 shadow-sm">
                             <div className="text-[9px] font-black tracking-[0.18em] text-[#8a94a3]">驱动方式</div>
@@ -1610,14 +1610,14 @@ export default function Overview({ user }: OverviewProps = {}) {
 
                   <div className="relative mt-4 flex flex-col gap-3 rounded-[22px] border border-white/72 bg-white/66 px-4 py-3 shadow-[0_10px_20px_rgba(15,23,42,0.045)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-[12px] font-bold text-[#5f6b7a]">
-                      已联动学习路径、资源推荐和 AI 导师问答，后续学习行为会继续刷新画像判断。
+                      已联动学习路径、资源推荐和 AI 导师问答，后续学习行为会继续刷新岗位能力诊断。
                     </p>
                     <button
                       type="button"
-                      onClick={() => navigate("/profile")}
+                      onClick={() => navigate("/job-ability-graph")}
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d9e8fb] bg-white px-4 py-2.5 text-xs font-black text-[#0b5f85] shadow-sm transition-transform hover:-translate-y-0.5"
                     >
-                      查看完整画像
+                      查看岗位能力图谱
                       <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -1940,7 +1940,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                 "bg-[linear-gradient(135deg,#f9f6ff_0%,#ffffff_100%)]",
                 "bg-[linear-gradient(135deg,#f4fbf7_0%,#ffffff_100%)]",
               ];
-              const tags = ["画像追踪", "今日路线", "即时答疑", "阶段反馈"];
+              const tags = ["岗位能力追踪", "今日路线", "即时答疑", "阶段反馈"];
 
               return (
                 <button
@@ -2308,7 +2308,7 @@ export default function Overview({ user }: OverviewProps = {}) {
                 return (
                   <button
                     key={activity.id}
-                    onClick={() => navigate("/profile")}
+                    onClick={() => navigate("/job-ability-graph")}
                     className="group flex min-w-0 items-start gap-3 rounded-2xl border border-[#edf1f5] bg-[#fbfcff] p-3 text-left transition-all hover:border-[#fb7299]/30 hover:bg-white hover:shadow-sm"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full ui-ui-bg-brand/10 ui-ui-text-brand transition-colors group-hover:ui-ui-bg-brand group-hover:text-white">
@@ -2513,7 +2513,7 @@ export default function Overview({ user }: OverviewProps = {}) {
         {/* Right sidebar column section */}
         <aside className="flex w-full flex-col gap-4 xl:sticky xl:top-24">
 
-          {/* B1. Capability Radar (能力画像 Widget) */}
+          {/* B1. Capability Radar (岗位能力 Widget) */}
           <div
             ref={registerRevealSection("capability-radar")}
             data-reveal-section="capability-radar"
@@ -2523,7 +2523,7 @@ export default function Overview({ user }: OverviewProps = {}) {
             <div className="flex items-center justify-between">
               <h3 className="ui-text-ink flex items-center gap-1.5 font-sans text-sm font-extrabold">
                 <Radar className="ui-text-brand h-4 w-4" />
-                我的学习五维雷达画像
+                我的岗位能力五维雷达
               </h3>
               <span className="ui-text-brand rounded-full ui-ui-bg-brand/15 px-2 py-0.5 font-mono text-[9px] font-bold">
                 学学金阶 LV.4
@@ -2651,8 +2651,8 @@ export default function Overview({ user }: OverviewProps = {}) {
 
             <div className="flex items-center justify-between pt-2 border-t border-gray-50 text-xs">
               <span className="ui-ui-text-muted-rose">学习状态: <strong className="ui-ui-text-brand font-bold">稳步进阶中</strong></span>
-              <Link to="/profile" className="ui-text-navy font-semibold hover:underline flex items-center gap-0.5">
-                查看画像详情
+              <Link to="/job-ability-graph" className="ui-text-navy font-semibold hover:underline flex items-center gap-0.5">
+                查看岗位能力图谱
                 <ArrowRight className="w-3 h-3" />
               </Link>
             </div>

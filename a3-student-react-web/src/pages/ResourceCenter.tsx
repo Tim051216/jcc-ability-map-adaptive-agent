@@ -98,8 +98,8 @@ const RESOURCE_GENERATION_HINTS: Record<ResourceSupplementType, string[]> = {
 
 const RESOURCE_AGENT_STEPS = [
   {
-    name: "学习画像智能体",
-    description: "读取专业、课程、知识短板和学习目标，确定资源粒度与难度。",
+    name: "岗位学情诊断智能体",
+    description: "读取专业、课程、岗位能力短板和学习目标，确定资源粒度与难度。",
   },
   {
     name: "学习规划智能体",

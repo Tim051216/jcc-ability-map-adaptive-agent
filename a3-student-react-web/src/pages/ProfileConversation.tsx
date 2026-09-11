@@ -31,7 +31,7 @@ function toHistoryTypeLabel(changeType?: number) {
   if (changeType === 1) return "首次生成";
   if (changeType === 2) return "重新生成";
   if (changeType === 3) return "行为回写";
-  return "画像更新";
+  return "岗位学情更新";
 }
 
 export default function ProfileConversation() {
@@ -82,7 +82,7 @@ export default function ProfileConversation() {
       setConversationFlow(null);
       setConversationDraft("");
     } catch (startError) {
-      setConversationError(startError instanceof Error ? startError.message : "画像对话启动失败");
+      setConversationError(startError instanceof Error ? startError.message : "岗位学情诊断启动失败");
     } finally {
       setConversationBusy(false);
     }
@@ -118,7 +118,7 @@ export default function ProfileConversation() {
       setConversationDraft("");
     } catch (sendError) {
       setConversationError(
-        sendError instanceof Error ? `画像对话发送失败：${sendError.message}` : "画像对话发送失败",
+        sendError instanceof Error ? `岗位学情诊断发送失败：${sendError.message}` : "岗位学情诊断发送失败",
       );
     } finally {
       setConversationBusy(false);
@@ -141,7 +141,7 @@ export default function ProfileConversation() {
         .catch(() => null);
       setConversationSession(refreshedSession);
     } catch (completeError) {
-      setConversationError(completeError instanceof Error ? completeError.message : "画像生成失败");
+      setConversationError(completeError instanceof Error ? completeError.message : "岗位学情诊断生成失败");
     } finally {
       setProfileBuildBusy(false);
     }
@@ -155,9 +155,9 @@ export default function ProfileConversation() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#fb7299]">Profile Conversation</p>
-            <h1 className="mt-2 text-2xl font-extrabold text-[#171c22]">对话式画像页</h1>
+            <h1 className="mt-2 text-2xl font-extrabold text-[#171c22]">对话式岗位学情诊断</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[#564145]">
-              当前页面直连后端 `/profile/conversation/*`。开始会话、继续问答、完成画像和查看历史都走真实业务接口。
+              当前页面直连后端诊断接口。开始会话、继续问答、完成诊断和查看历史都走真实业务接口。
             </p>
           </div>
           <div className="flex gap-2">
@@ -165,7 +165,7 @@ export default function ProfileConversation() {
               to={buildProfileRoute(courseId)}
               className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#171c22] shadow-sm"
             >
-              返回画像页
+              返回岗位能力页
             </Link>
             <button
               type="button"
@@ -183,7 +183,7 @@ export default function ProfileConversation() {
               className="inline-flex items-center gap-2 rounded-2xl bg-[#111827] px-4 py-2 text-xs font-bold text-white shadow-[0_12px_24px_rgba(17,24,39,0.14)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {profileBuildBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              完成并生成画像
+              完成并生成诊断
             </button>
           </div>
         </div>

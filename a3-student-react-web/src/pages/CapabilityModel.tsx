@@ -59,7 +59,7 @@ function getProfileLoadErrorMessage(results: PromiseSettledResult<unknown>[]) {
     .filter((result) => result.status === "rejected")
     .map((result) => {
       if (result.status !== "rejected") return "";
-      return result.reason instanceof Error ? result.reason.message : "学习画像部分数据加载失败";
+      return result.reason instanceof Error ? result.reason.message : "岗位能力诊断部分数据加载失败";
     })
     .filter(Boolean);
 
@@ -138,7 +138,7 @@ function writeProfileReportCache(userId: number, record: ProfileReportCacheRecor
 
 const CORE_AGENT_OVERVIEW = [
   {
-    title: "学习画像智能体",
+    title: "岗位能力图谱智能体",
     detail: "读取用户画像、阶段状态和学习风格，作为全局个性化输入。",
     routeLabel: "进入画像页",
     route: "/capability",
@@ -602,7 +602,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
       setProfileHistory(null);
       setGrowthMap(null);
       setUsingFallback(true);
-      setError(loadError instanceof Error ? loadError.message : "学习画像加载失败");
+      setError(loadError instanceof Error ? loadError.message : "岗位能力诊断加载失败");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -893,7 +893,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         icon: Target,
         description:
           profileSummary?.key_features ||
-          "画像智能体把这些信号汇总成当前阶段、强弱项和学习偏好，再同步给路径、资源、测评与 AI 导师。",
+          "岗位学情诊断智能体把这些信号汇总成当前阶段、能力强弱项和学习偏好，再同步给路径、资源、测评与 AI 导师。",
         result: `画像完整度：${profileSummary?.completeness ?? overallScore}%`,
         tone: "from-[#f5f7ff] to-[#ffffff]",
       },
@@ -1021,7 +1021,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         </head>
         <body>
           <h1>${escapeReportHtml(reportTitle)}</h1>
-          <div class="meta">BiliLearn 学习画像导出 · 用户：${escapeReportHtml(user?.name || "BiliLearn 用户")} · 保存于：${escapeReportHtml(savedAt)}</div>
+          <div class="meta">岗位能力诊断导出 · 用户：${escapeReportHtml(user?.name || "BiliLearn 用户")} · 保存于：${escapeReportHtml(savedAt)}</div>
 
           <div class="summary">
             <strong>${escapeReportHtml(portraitInterpretation.subtitle)}</strong>
@@ -1104,19 +1104,19 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-black uppercase tracking-[0.24em] text-[#fb7299]">自动画像</span>
+                    <span className="text-[11px] font-black uppercase tracking-[0.24em] text-[#fb7299]">岗位能力图谱</span>
                     <span className="rounded-full bg-[#171c22] px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-white">
                       {sbtiSnapshot.code}
                     </span>
                   </div>
                   <h1 className="mt-1.5 text-[22px] font-black leading-tight tracking-[-0.05em] text-[#171c22]">
-                    {user?.name || "BiliLearn 用户"}的学习画像
+                    {user?.name || "学习者"}的岗位能力图谱
                   </h1>
                   <p className="mt-1.5 text-sm font-extrabold text-[#2b1f24]">
                     {sbtiSnapshot.title} · {sbtiSnapshot.subtitle}
                   </p>
                   <div className="mt-2 max-w-3xl rounded-[18px] border border-[#f3dce4] bg-[linear-gradient(135deg,#fff7fa_0%,#f8fbff_100%)] px-3.5 py-3 shadow-[0_10px_24px_rgba(251,114,153,0.08)]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#fb7299]">自动画像结论</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#fb7299]">岗位能力结论</p>
                     <p className="mt-1.5 text-[15px] font-extrabold leading-6 text-[#2b1f24]">
                       {profileSummary?.key_features ||
                         "这份画像不是手填表单，而是系统根据课程学习、资源浏览、测评反馈和自然语言提问自动生成，并持续影响后续的路径、资料、答疑与练习。"}
@@ -1197,7 +1197,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#ffd6e3] bg-[#fff7fa] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">
               <Sparkles className="h-3.5 w-3.5" />
-              画像智能体
+              岗位学情诊断智能体
             </div>
             <h2 className="mt-2 text-[20px] font-black tracking-[-0.04em] text-[#171c22]">
               从测评、行为和作业表现生成学生画像
@@ -1284,7 +1284,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
                   <div>
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">自然语言画像对话</div>
                     <p className="mt-1 text-sm font-bold text-[#171c22]">
-                      {conversationSessionId ? "系统正在持续补全你的六维学习画像" : "先发起一轮自然语言对话，系统再自动补全画像"}
+                      {conversationSessionId ? "系统正在持续补全你的岗位学情诊断" : "先发起一轮自然语言对话，系统再自动补全岗位诊断"}
                     </p>
                   </div>
                   <div className="rounded-full bg-[#eef7ff] px-3 py-1 text-[11px] font-black text-[#0f6c7b]">
@@ -2010,7 +2010,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
 
       {loading ? (
         <section className="rounded-2xl border border-[#d9e8fb] bg-[linear-gradient(90deg,#f8fbff_0%,#fdfdff_100%)] px-4 py-3 text-xs text-[#006689]">
-          正在同步最新学习画像...
+          正在同步最新岗位能力诊断...
         </section>
       ) : null}
 

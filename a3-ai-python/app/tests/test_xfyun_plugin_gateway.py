@@ -54,3 +54,35 @@ def test_job_learning_gateway_caches_successful_upstream_response(monkeypatch) -
     assert second.status_code == 200
     assert second.headers["x-plugin-cache"] == "hit"
     assert FakeAsyncClient.calls == 1
+
+
+def test_xa_gateway_exposes_competition_capabilities(monkeypatch) -> None:
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict:
+            return {"ok": True, "sample_count": 2}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, *, params=None, json=None):
+            assert url.endswith("/api/v1/xa-competition/industry/jobs-analysis")
+            assert method == "GET"
+            assert params["professional_group"] == "软件技术专业群"
+            return FakeResponse()
+
+    monkeypatch.setattr(plugin_gateway.httpx, "AsyncClient", FakeAsyncClient)
+    with TestClient(plugin_gateway.app) as client:
+        response = client.get("/api/v1/xa-competition/industry/jobs-analysis", params={"professional_group": "软件技术专业群"})
+    assert response.status_code == 200
+    assert response.json()["sample_count"] == 2
+    assert response.headers["x-plugin-cache"] == "bypass"

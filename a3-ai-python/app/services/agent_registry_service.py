@@ -5,7 +5,7 @@ class AgentRegistryService:
     AGENT_FILE_SUFFIXES = ("_agent.py", "_coordinator.py")
     CORE_AGENT_DEFINITIONS = {
         "profile_agent": {
-            "display_name": "学习画像智能体",
+            "display_name": "岗位学情诊断智能体",
             "category": "core",
             "source_path": "agents/nodes/profile_agent.py",
         },

@@ -37,19 +37,19 @@ type LoginTutorMessage = {
 
 const DEMO_ACCOUNTS = DEMO_USER_PROFILES;
 const LOGIN_HIGHLIGHTS = [
-  { label: "学习画像", value: "动态更新", detail: "登录后恢复专业、目标、薄弱点和学习历史画像。" },
+  { label: "岗位能力诊断", value: "动态更新", detail: "登录后恢复专业、目标、岗位能力薄弱点和学习历史。" },
   { label: "学习闭环", value: "自动衔接", detail: "继续课程测评、规划、资源生成、答疑和复习提醒。" },
   { label: "AI 导师", value: "随时追问", detail: "围绕当前课程资料和生成资源继续对话学习。" },
 ];
-const LOGIN_POSTER_TAGS = ["画像", "测评", "规划", "资源", "答疑"];
+const LOGIN_POSTER_TAGS = ["岗位能力", "测评", "规划", "资源", "答疑"];
 const LOGIN_LOOP_STEPS = [
-  { label: "画像智能体", detail: "抽取专业、目标与薄弱点", status: "在线" },
+  { label: "岗位学情智能体", detail: "抽取岗位、目标与能力薄弱点", status: "在线" },
   { label: "测评智能体", detail: "定位知识盲区与掌握断层", status: "联动中" },
   { label: "规划智能体", detail: "生成下一步学习路径", status: "在线" },
   { label: "资源智能体", detail: "补齐讲义、导图、练习", status: "在线" },
 ];
 const LOGIN_POSTER_METRICS = [
-  { label: "画像维度", value: "6+", note: "动态更新" },
+  { label: "岗位能力维度", value: "6+", note: "动态更新" },
   { label: "资源类型", value: "5+", note: "按任务补齐" },
   { label: "闭环状态", value: "实时", note: "节点持续联动" },
 ];
@@ -156,9 +156,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const loginTutorMessagesRef = useRef<HTMLDivElement | null>(null);
   const heroTitleLeft = useTypewriterText("AI学习空间", introReady, 42, 220);
   const heroTitleRight = useTypewriterText("一键进入", introReady, 42, 980);
-  const heroCopy = useTypewriterText("以动态学习画像为起点，联动规划、资源生成、答疑和测评反馈，形成完整学习闭环。", introReady, 16, 1500);
+  const heroCopy = useTypewriterText("以岗位能力诊断为起点，联动产业分析、任务转化、资源推荐和岗课赛学习，形成完整教学闭环。", introReady, 16, 1500);
   const loginTitle = useTypewriterText("进入你的 BiliLearn", introReady, 34, 480);
-  const loginCopy = useTypewriterText("选择账号进入个性化学习闭环，系统会接续画像、课程进度、生成资源和答疑上下文。", introReady, 16, 1150);
+  const loginCopy = useTypewriterText("选择账号进入岗课赛学习闭环，系统会接续岗位能力诊断、课程进度、生成资源和答疑上下文。", introReady, 16, 1150);
   const recognizedProfile = recognizedAccount ? getDemoUserProfile(recognizedAccount) : null;
   const selectedProfile = studentId ? getDemoUserProfile(studentId) : recognizedProfile;
   const accountOptions = [
@@ -328,13 +328,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return "这里可以选择演示账号，也可以手动输入账号密码。当前演示账号常用口令会自动填入，确认后就能回到学习空间。";
     }
     if (normalizedQuestion.includes("如何使用") || normalizedQuestion.includes("怎么使用") || normalizedQuestion.includes("系统怎么用") || normalizedQuestion.includes("功能")) {
-      return "系统围绕学习闭环工作：先从画像和测评了解当前状态，再进入课堂学习，随后生成讲义、PPT、导图和练习，最后用报告和复习提醒跟踪进展。登录后从首页导航进入对应模块即可。";
+      return "系统围绕岗课赛闭环工作：先从岗位能力诊断和测评了解当前状态，再进入课堂学习，随后生成任务卡、讲义、导图和练习，最后用报告和复习提醒跟踪进展。登录后从首页导航进入对应模块即可。";
     }
     if (normalizedQuestion.includes("课堂") || normalizedQuestion.includes("视频") || normalizedQuestion.includes("资源")) {
       return "进入后可以从课堂页继续看视频，在资源页生成讲义、PPT、练习和代码任务，AI 导师会带着当前课程上下文回答。";
     }
-    if (normalizedQuestion.includes("画像") || normalizedQuestion.includes("测评") || normalizedQuestion.includes("路径") || normalizedQuestion.includes("学习情况")) {
-      return "系统会用学习画像、测评结果和历史进度生成个性化路径，再把课堂、资源、练习和报告串成闭环。";
+    if (normalizedQuestion.includes("画像") || normalizedQuestion.includes("岗位能力") || normalizedQuestion.includes("测评") || normalizedQuestion.includes("路径") || normalizedQuestion.includes("学习情况")) {
+      return "系统会用岗位能力诊断、测评结果和历史进度生成个性化路径，再把课堂、任务、资源和报告串成闭环。";
     }
     if (normalizedQuestion.includes("ai导师") || normalizedQuestion.includes("答疑") || normalizedQuestion.includes("问问题")) {
       return "AI 导师会根据当前页面和已保存的学习上下文回答问题。课堂页会结合当前视频内容，资源页会结合当前资源，其他页面则依据本地知识库和你的学习记录回答。";
@@ -356,7 +356,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return "先检查账号和口令是否都有内容，再看是否选中了正确账号。若你只是想快速演示，建议切到“原始 Demo”或 1001 演示账号后直接进入。";
     }
     if (hasAny(["进入后", "进去后", "能看到", "首页", "概览", "开始"])) {
-      return "进入后会先恢复你的学习画像和最近进度，再从概览、学习路径、课堂、资源中心、测评和报告几个页面继续学习闭环。";
+      return "进入后会先恢复你的岗位能力诊断和最近进度，再从岗位分析、任务转学习卡、岗位能力图谱和岗课赛学习页面继续。";
     }
     if (hasAny(["课堂", "视频", "播放", "暂停", "当前时间", "提问"])) {
       return "课堂页会记录视频上下文。你在课堂里点击“直接对当前视频提问”时，会带上当前视频和播放时间，方便 AI 导师围绕这段内容回答。";
@@ -364,8 +364,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     if (hasAny(["资源", "资料", "ppt", "讲义", "练习", "代码", "生成"])) {
       return "资源中心可以区分原始资料和 AI 生成资料，支持生成讲义、PPT、练习、代码任务等内容，并能继续进入预览或下载。";
     }
-    if (hasAny(["画像", "测评", "路径", "个性化", "推荐", "计划"])) {
-      return "系统会结合学习画像、测评结果、课程进度和薄弱点生成个性化路径，推荐下一步课程、资源和练习。";
+    if (hasAny(["画像", "岗位能力", "测评", "路径", "个性化", "推荐", "计划"])) {
+      return "系统会结合岗位能力诊断、测评结果、课程进度和薄弱点生成个性化路径，推荐下一步课程、资源和实训任务。";
     }
     if (hasAny(["导师", "ai", "问答", "助手", "聊天"])) {
       return "AI 导师会尽量带着当前页面上下文回答。登录页这里只提供轻量说明，进入学习空间后可以在课堂、资源、路径等页面继续问更具体的问题。";
@@ -822,7 +822,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       <div>
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#94a3b8]">Loop Orchestrator</div>
                         <div className="mt-1 text-[18px] font-black tracking-[-0.05em] text-[#111827]">学习闭环编排中枢</div>
-                        <div className="mt-1 text-[11px] leading-5 text-[#667085]">登录后会自动接管画像、测评、规划与资源生成，把你的下一步动作直接串起来。</div>
+                  <div className="mt-1 text-[11px] leading-5 text-[#667085]">登录后会自动接管岗位能力诊断、测评、规划与资源生成，把你的下一步动作直接串起来。</div>
                       </div>
                       <div className="rounded-full border border-white/80 bg-[#111827] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]">
                         LIVE
@@ -912,7 +912,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   </span>
                 </h1>
                 <p className="mt-3 max-w-[360px] text-[13px] leading-6 text-[#5b6472]">
-                  动态画像识别学习状态，多智能体协同完成测评、规划、资源生成、答疑与复习提醒。
+                          动态岗位学情识别学习状态，多智能体协同完成测评、规划、资源生成、答疑与复习提醒。
                 </p>
               </div>
               <div className="ui-ui-radius-20 border border-white/80 bg-white/72 px-3 py-2 text-right shadow-[0_10px_24px_rgba(15,23,42,0.06)] backdrop-blur-sm">
@@ -960,7 +960,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 </button>
 
                 <div className="mt-4 text-[20px] font-black leading-tight tracking-[-0.05em] ui-ui-text-ink">
-                    从画像到资源生成，一次进入完整学习闭环
+                    从岗位能力诊断到资源生成，一次进入完整学习闭环
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="relative overflow-hidden ui-ui-radius-24 border border-white/80 bg-white/62 shadow-sm">
@@ -1262,7 +1262,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               <div className="relative mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-2xl border border-white/80 bg-white/70 px-3 py-2 shadow-sm">
                   <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Today</div>
-                  <div className="mt-1 text-sm font-black text-[#111827]">课程画像已同步</div>
+                        <div className="mt-1 text-sm font-black text-[#111827]">岗位学情已同步</div>
                 </div>
                 <div className="rounded-2xl border border-white/80 bg-white/70 px-3 py-2 shadow-sm">
                   <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#94a3b8]">Next</div>

@@ -1178,7 +1178,7 @@ function buildSessionSummaryTitle(item: TutoringHistoryItem) {
 
   if (/导图|知识点关系|复习顺序/.test(source)) return "导图拆解与复习顺序";
   if (/练习|题型|错题|讲题/.test(source)) return "练习讲解与薄弱点定位";
-  if (/画像|学习风格|阶段|能力/.test(source)) return "学习画像解读";
+  if (/画像|学习风格|阶段|能力/.test(source)) return "岗位学情诊断解读";
   if (/路径|下一步|先做什么|学习计划/.test(source)) return "下一步学习规划";
   if (/讲义|资料|主线|重点|精读/.test(source)) return "课程资料精读";
   if (/视频|课堂|这一段|术语|总结/.test(source)) return "课堂内容答疑";

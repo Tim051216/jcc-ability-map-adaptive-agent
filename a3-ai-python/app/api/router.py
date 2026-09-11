@@ -18,6 +18,7 @@ api_router = APIRouter()
 
 for module_name, prefix, tags in [
     ("student_portal", "/v1/student-portal", ["student-portal"]),
+    ("xa_competition", "/v1/xa-competition", ["xa-competition"]),
     ("chat", "/v1/chat", ["chat"]),
     ("web_tools", "/v1/web-tools", ["web-tools"]),
     ("mcp_tools", "/v1/mcp", ["mcp-tools"]),

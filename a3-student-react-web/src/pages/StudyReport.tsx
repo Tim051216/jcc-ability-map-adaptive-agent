@@ -110,7 +110,7 @@ const FALLBACK_REPORT = {
     currentStage: "稳步提升阶段",
     style: "图文结合 + 任务驱动",
     tags: ["阶段节奏稳定", "偏好讲义强化", "适合短测回流"],
-    summary: "学习画像暂未刷新到实时结果，当前先展示稳定摘要。",
+    summary: "岗位能力诊断暂未刷新到实时结果，当前先展示稳定摘要。",
   },
   plan: {
     completionRate: 68,
@@ -128,7 +128,7 @@ const FALLBACK_REPORT = {
     score: 88,
     average: 84,
     mastery: "持续提升",
-    summary: "最近一次测评结果可用于支撑后续画像与路径调优。",
+    summary: "最近一次测评结果可用于支撑岗位能力诊断与路径调优。",
     weakPoints: ["综合迁移输出", "错因归档复盘"],
   },
   tutor: {
@@ -609,10 +609,10 @@ export default function StudyReport() {
   const reportDataLabel = fallbackCount === 0 ? "实时数据" : liveCount > 0 ? "部分实时" : "稳定摘要";
   const summaryCards = [
     {
-      title: "画像完整度",
+      title: "岗位诊断完整度",
       value: profileCompleteness,
       note: profileStage,
-      hint: "当前画像是否已经具备足够证据支撑后续推荐。",
+      hint: "当前岗位诊断是否已经具备足够证据支撑后续推荐。",
       icon: UserCircle2,
       accent: "from-[#ff8a65] to-[#fb7299]",
       route: "/profile",
@@ -622,7 +622,7 @@ export default function StudyReport() {
       title: "最近测评",
       value: latestScore,
       note: latestMastery,
-      hint: "最近一次测评是画像里最强的一条能力证据。",
+      hint: "最近一次测评是岗位诊断里最强的一条能力证据。",
       icon: Award,
       accent: "from-[#70d6df] to-[#1697a6]",
       route: `/evaluation?courseId=${routeCourseId}`,
@@ -706,9 +706,9 @@ export default function StudyReport() {
 
   const nextActions = [
     {
-      title: "查看完整画像",
-      detail: "查看标签、阶段和画像证据。",
-      to: "/profile",
+      title: "查看岗位能力图谱",
+      detail: "查看岗位能力、阶段和诊断证据。",
+      to: "/job-ability-graph",
     },
     {
       title: "重排学习路径",
@@ -791,16 +791,16 @@ export default function StudyReport() {
                 {courseLabel} 岗课赛阶段报告
               </h1>
               <p className="path-summary max-w-3xl text-sm leading-7 text-[#4b5563]">
-                汇总岗位能力画像、课程训练路径、实训资源、测评和答疑证据，给出当前判断与下一步行动。
+                汇总岗位能力、课程训练路径、实训资源、测评和答疑证据，给出当前判断与下一步行动。
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Link
-                to="/profile"
+                to="/job-ability-graph"
                 className="path-dark-action inline-flex items-center gap-2 rounded-2xl bg-[#171c22] px-4 py-2.5 text-sm font-bold text-white transition"
               >
-                查看完整画像
+                查看岗位能力图谱
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link

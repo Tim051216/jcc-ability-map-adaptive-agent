@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-09-09T21:47:42+08:00",
+  "base_url": "http://127.0.0.1:18080/api/v1/xa-competition",
+  "public_source": "https://remotive.com/api/remote-jobs",
+  "industry_analysis": {
+    "collection_mode": "public-job-http-adapter",
+    "sample_count": 17,
+    "source_count": 1,
+    "trend_source": "single-public-snapshot",
+    "history_count": 30,
+    "history_span_days": 0,
+    "note": "同日重复刷新未被当作跨日历史趋势；增长率保持 0，待下一采集日期后再比较。无真实岗位源时趋势序列为空，不绘制规范化历史曲线。"
+  },
+  "professional_groups": {
+    "group_count": 6,
+    "total_sample_count": 102,
+    "collection_mode": "public-job-http-adapter",
+    "note": "六个专业群并行采集，避免串行请求造成看板超时。"
+  },
+  "snapshot_history_endpoint": {
+    "path": "/industry/snapshots",
+    "records_returned": 30,
+    "fields": ["collected_at", "professional_group", "core_job", "source_urls", "skill_summary"]
+  },
+  "job_ability": {
+    "industry_chain": "新能源汽车产业链",
+    "ability_node_count": 2,
+    "industry_skill_ingestion": true,
+    "typical_task_ingestion": true
+  },
+  "learning_task": {
+    "step_count": 4,
+    "safety_point_count": 2,
+    "resource_count": 2
+  },
+  "adaptive_learning": {
+    "weak_area_count": 1,
+    "path_kinds": ["课", "岗", "赛"],
+    "diagnosis_scores": {"K01": 42, "K02": 88},
+    "ability_label_ingestion": true
+  },
+  "xfyun_plugin_gateway": {
+    "routes_declared": [
+      "/api/v1/xa-competition/industry/jobs-analysis",
+      "/api/v1/xa-competition/industry/professional-groups",
+      "/api/v1/xa-competition/job-ability/generate",
+      "/api/v1/xa-competition/learning-task/generate",
+      "/api/v1/xa-competition/adaptive-learning/recommend"
+    ],
+    "local_proxy_smoke": "passed",
+    "note": "网关仅转发结构化结果；部署到星辰前需使用稳定 HTTPS 地址重新发布并调试。"
+  },
+  "evidence_boundary": "以上为本地服务运行验收结果，不代表招聘平台授权，也不替代教师或学生实际试用记录。"
+}

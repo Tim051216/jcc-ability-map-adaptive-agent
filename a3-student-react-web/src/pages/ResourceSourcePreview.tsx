@@ -580,7 +580,7 @@ function buildStructuredDocumentPreview(title: string, resourceType?: string | n
       "",
       "## 3. 主线流程",
       "1. 用户提出问题或学习目标，系统先识别意图：是要解释概念、生成资料、做测评，还是推荐学习路径。",
-      "2. 画像智能体读取测评数据、学习行为和作业表现，判断当前薄弱点、学习偏好和可投入时间。",
+      "2. 岗位学情诊断智能体读取测评数据、学习行为和作业表现，判断当前能力薄弱点、学习偏好和可投入时间。",
       "3. 资源智能体根据课程、章节和知识点检索资料，优先召回讲义、视频片段、题目和历史答疑。",
       "4. RAG 模块把召回内容整理成可引用上下文，去掉重复片段，保留标题、来源和关键句。",
       "5. 答疑或生成智能体基于证据生成回答、讲义、练习或代码任务，并标出学习建议。",
@@ -597,7 +597,7 @@ function buildStructuredDocumentPreview(title: string, resourceType?: string | n
       "## 6. 自测清单",
       "- 我能否说明 RAG 和普通聊天机器人的区别？",
       "- 我能否画出“问题识别 -> 检索 -> 证据整理 -> 生成 -> 反馈更新”的流程？",
-      "- 我能否解释画像智能体、资源智能体、评估智能体分别负责什么？",
+      "- 我能否解释岗位学情诊断智能体、资源智能体、评估智能体分别负责什么？",
       "- 我能否指出一个没有证据链时容易出错的回答场景？",
       "",
       "## 7. 完成标准",
@@ -3652,7 +3652,7 @@ export default function ResourceSourcePreview() {
     setSelectedFileId(optimisticFile.file_id);
     setGenerationNotice(
       profileSummary
-        ? `${option.actionLabel}已开始，已结合你的画像 ${String(profileSummary.sbti_code || profileSummary.current_stage || profileSummary.recommended_learning_style || "信息")} 生成。`
+        ? `${option.actionLabel}已开始，已结合你的岗位学情 ${String(profileSummary.sbti_code || profileSummary.current_stage || profileSummary.recommended_learning_style || "信息")} 生成。`
         : `${option.actionLabel}已开始，预览稿会先加入左侧目录，正式内容回来后自动更新。`,
     );
     const optimisticParams = buildGeneratedPreviewSearch(optimisticFile.file_id, generationType, "running", option.label);
@@ -4111,8 +4111,8 @@ export default function ResourceSourcePreview() {
                   <div className="mt-1 text-[18px] font-black text-[#111827]">先选择要补充的资料类型</div>
                   <div className="mt-1 text-[12px] leading-5 text-[#667085]">
                     {profileSummary
-                      ? `已读取你的画像：${String(profileSummary.sbti_code || profileSummary.current_stage || profileSummary.recommended_learning_style || "正在生成个性化策略")}`
-                      : "正在读取画像，用来决定生成资料的重点和风格。"}
+                      ? `已读取你的岗位学情：${String(profileSummary.sbti_code || profileSummary.current_stage || profileSummary.recommended_learning_style || "正在生成个性化策略")}`
+                      : "正在读取岗位学情，用来决定生成资料的重点和风格。"}
                   </div>
                 </div>
                 <button

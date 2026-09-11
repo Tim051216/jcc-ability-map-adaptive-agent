@@ -838,7 +838,7 @@ class StudentPortalService:
                 label="画像完成度",
                 value=f"{profile_summary.completeness}%" if profile_summary else "暂无",
                 note=profile_summary.current_stage if profile_summary else None,
-                hint="来自画像行为回流与对话式画像服务。",
+                hint="来自岗位学情行为回流与诊断服务。",
             ),
             PortalMetricItem(
                 key="plan",

@@ -1,12 +1,60 @@
 openapi: 3.0.3
 info:
-  title: 岗课赛一体化软件开发岗位能力插件
-  version: 1.0.0
-  description: 获取软件技术专业群学生的软件开发岗位诊断、课程映射、实训/竞赛任务、推荐路径、资源、安全提示和下一步动作。
+  title: XA-202603 岗课赛岗位能力插件
+  version: 1.1.0
+  description: 面向赛题的岗位动态分析、岗位能力图谱、典型任务转学习卡、个性化岗课赛路径，以及软件技术专业群学习概览。
 servers:
   - url: https://REPLACE_WITH_PUBLIC_API_DOMAIN
     description: 部署后替换为星辰云端可访问的 HTTPS 地址
 paths:
+  /api/v1/xa-competition/industry/jobs-analysis:
+    get:
+      operationId: getIndustryJobsAnalysis
+      summary: 采集并分析公开岗位需求
+      description: 并发读取部署方配置的公开 JSON、CSV 或 HTML 岗位源，返回 fetched_count（成功读取记录数）、按专业群相关性筛选的 sample_count、技能热度、专业匹配、预警和培养方案优化建议；不读取个人简历信息。服务端对同一来源设置 5 分钟缓存，避免高频重复请求。
+      parameters:
+        - {name: refresh, in: query, schema: {type: boolean, default: false}}
+        - {name: professional_group, in: query, schema: {type: string, default: 软件技术专业群}}
+        - {name: core_job, in: query, schema: {type: string}}
+        - {name: source_urls, in: query, schema: {type: string}}
+      responses:
+        "200": {description: 岗位动态分析结果}
+  /api/v1/xa-competition/industry/professional-groups:
+    get:
+      operationId: getProfessionalGroupsMonitor
+      summary: 横向监测专业群发展
+      parameters:
+        - {name: refresh, in: query, schema: {type: boolean, default: false}}
+        - {name: source_urls, in: query, schema: {type: string}}
+      responses:
+        "200": {description: 六个专业群的样本、匹配度和预警}
+  /api/v1/xa-competition/job-ability/generate:
+    post:
+      operationId: generateJobAbilityGraph
+      summary: 生成岗位能力图谱
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [job_name], properties: {job_name: {type: string}, professional_group: {type: string}, observed_skills: {type: array, items: {type: string}}, typical_tasks: {type: array, items: {type: string}}}}}}
+      responses:
+        "200": {description: 产业链、岗位群、能力项、能力单元、技能点和知识点}
+  /api/v1/xa-competition/learning-task/generate:
+    post:
+      operationId: generateLearningTaskCard
+      summary: 将岗位典型任务转为学习任务卡
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [work_task], properties: {work_task: {type: string}, job_name: {type: string}, professional_group: {type: string}, industry_context: {type: string}, ability_focus: {type: array, items: {type: string}}}}}}
+      responses:
+        "200": {description: 情境、步骤、安全要点、知识技能点和实训资源}
+  /api/v1/xa-competition/adaptive-learning/recommend:
+    post:
+      operationId: recommendAdaptiveLearning
+      summary: 生成个性化岗课赛学习路径
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [goal], properties: {goal: {type: string}, goal_scene: {type: string}, job_name: {type: string}, assessment_scores: {type: object}, ability_labels: {type: object}, completed_skills: {type: array, items: {type: string}}}}}}
+      responses:
+        "200": {description: 薄弱项、课岗赛顺序、进度和徽章}
   /api/v1/student-portal/job-learning:
     get:
       operationId: getJobLearningOverview
