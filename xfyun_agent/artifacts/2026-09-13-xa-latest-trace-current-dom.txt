@@ -1,0 +1,414 @@
+- generic "软件开发岗位能力自适应教练"
+- generic: 工作流
+- generic: 编辑中
+- generic: 已自动保存
+- generic "2026-09-13 10:47:23"
+- generic: 运行完成
+- generic: 20.082s
+- generic: 1273Tokens
+- generic: 编排
+- generic: 分析
+- generic: 详情
+- link:
+  - /url: https://agent.xfyun.cn/xingchen-api/workflow/export/661895
+- generic: 调试
+- button "更新发布":
+  - generic: 更新发布
+- generic: 选择节点
+- paragraph: 基础节点
+- generic: 大模型
+- generic: 代码
+- generic: 问答节点
+- paragraph: 工具
+- generic: 工作流
+- generic: 插件
+- generic: MCP
+- generic: RPA
+- paragraph: 知识&数据
+- generic: 知识库
+- generic: 知识库 Pro
+- generic: 长期记忆写入
+- generic: 长期记忆检索
+- generic: 数据库
+- paragraph: 逻辑
+- generic: 决策
+- generic: 分支器
+- generic: 迭代
+- generic: Agent智能决策
+- paragraph: 转换
+- generic: 变量存储器
+- generic: 变量提取器
+- generic: 文本处理节点
+- paragraph: 其他
+- generic: 消息
+- button "成功 耗时：15.24s 结束 输出 str. output":
+  - generic: 成功
+  - generic: 耗时：15.24s
+  - heading "结束" [level=2]
+  - generic: 输出
+  - generic: str.
+  - generic: output
+- button "成功 耗时：4.796s 软件开发岗位能力插件_1 测试该节点 重命名 输入 refresh str. professional_group str. core_job str. source_urls 输出 str. professional_group str. core_job str. collected_at str. collection_mode int. sample_count int. fetched_count skills alerts recommendations optimization_plan ai_generated str. safety_notice":
+  - generic: 成功
+  - generic: 耗时：4.796s
+  - heading "软件开发岗位能力插件_1" [level=2]
+  - img "测试该节点"
+  - img "重命名"
+  - generic: 输入
+  - generic: refresh
+  - generic: str.
+  - generic: professional_group
+  - generic: str.
+  - generic: core_job
+  - generic: str.
+  - generic: source_urls
+  - generic: 输出
+  - generic: str.
+  - generic: professional_group
+  - generic: str.
+  - generic: core_job
+  - generic: str.
+  - generic: collected_at
+  - generic: str.
+  - generic: collection_mode
+  - generic: int.
+  - generic: sample_count
+  - generic: int.
+  - generic: fetched_count
+  - generic: skills
+  - generic: alerts
+  - generic: recommendations
+  - generic: optimization_plan
+  - generic: ai_generated
+  - generic: str.
+  - generic: safety_notice
+- generic: 50%
+- link:
+  - /url: https://www.xfyun.cn/doc/spark/Agent01-%E5%B9%B3%E5%8F%B0%E4%BB%8B%E7%BB%8D.html
+- dialog:
+  - generic: 调试与预览
+  - generic: 当前只保留10条调试记录
+  - generic: 用户对话页预览
+  - paragraph: 你好，我是软件开发岗位能力自适应教练。请告诉我你的学习目标，我会结合真实岗位能力诊断和知识库证据，为你生成可执行的提升路径。
+  - generic: 结合我的真实岗位能力诊断，指出两个最薄弱维度并给出三步提升路径
+  - generic: 我准备参加软件开发技能竞赛，请为我生成三天训练计划
+  - generic: 根据我的学习画像推荐下一步任务，并保留来源和安全提示
+  - paragraph: 我准备参加软件开发技能竞赛，请结合我当前真实岗位能力诊断，指出两个最薄弱维度，给出三步提升路径，并保留知识库可核验来源与安全提示。
+  - paragraph: "Third-party tool request failed(Third-party API request failed: Request error code: 530, error message"
+  - banner:
+    - heading "Error 1016" [level=1]
+    - generic: "Ray ID: a2641dadfe5f2f63 •"
+    - generic: 2026-08-05 07:33:50 UTC
+    - heading "Origin DNS error" [level=2]
+  - heading "What happened?" [level=2]
+  - paragraph:
+    - text: You've requested a page on a website (berkeley-wear-amounts-kinda.trycloudflare.com) that is on the
+    - link "Cloudflare":
+      - /url: https://www.cloudflare.com/5xx-error-landing/
+    - text: network. Cloudflare is currently unable to resolve your requested domain (berkeley-wear-amounts-kinda.trycloudflare.com).
+  - paragraph:
+    - text: Please see
+    - link "https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1016/":
+      - /url: https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1016/
+    - text: for more details.
+  - heading "What can I do?" [level=2]
+  - paragraph:
+    - strong: "If you are a visitor of this website:"
+    - text: Please try again in a few minutes.
+  - paragraph:
+    - strong: "If you are the owner of this website:"
+    - text: Check your DNS settings. If you are using a CNAME origin record, make sure it is valid and resolvable.
+    - link "Additional troubleshooting information here.":
+      - /url: https://support.cloudflare.com/hc/en-us/articles/234979888-Error-1016-Origin-DNS-error
+  - text: Was this page helpful?
+  - button "Yes"
+  - button "No"
+  - generic: Thank you for your feedback!
+  - paragraph:
+    - text: "Cloudflare Ray ID:"
+    - strong: a2641dadfe5f2f63
+    - text: •
+    - text: Performance & security by
+    - link "Cloudflare":
+      - /url: https://www.cloudflare.com/5xx-error-landing
+  - paragraph: )
+  - generic: 开启新对话
+  - paragraph: 我准备参加软件开发技能竞赛，请结合我当前真实岗位能力诊断，指出两个最薄弱维度，给出三步提升路径，并保留知识库可核验来源与安全提示。
+  - paragraph: "Third-party tool request failed(Third-party API request failed: Cannot connect to host berkeley-wear-amounts-kinda.trycloudflare.com:443 ssl:default [Name or service not known])"
+  - generic: 开启新对话
+  - paragraph: 我准备参加软件开发技能竞赛，请结合我当前真实岗位能力诊断，指出两个最薄弱维度，给出三步提升路径，并保留知识库可核验来源与安全提示。
+  - generic: 已深度思考
+  - paragraph: 正在分析软件开发岗位能力与学习目标。
+  - heading "目标理解" [level=3]
+  - paragraph: 你准备参加软件开发技能竞赛，希望结合真实岗位能力诊断，明确最薄弱维度并获取针对性提升路径，以强化竞赛所需核心能力。
+  - heading "能力判断" [level=3]
+  - paragraph: 基于派生诊断数据（依据最近岗位诊断总分84按规则推导），你当前两个最薄弱维度为：
+  - list:
+    - strong: 系统设计（68分，低于70基准）
+    - text: ：薄弱点为模块划分、接口设计和数据建模能力不足；
+    - strong: 软件测试（68分，低于70基准）
+    - text: ：薄弱点为测试体系构建，包括测试点提取、用例设计等能力欠缺。
+  - heading "提升路径" [level=3]
+  - list:
+    - strong: 强化系统设计（对应系统设计维度）
+  - list:
+    - strong: 步骤
+    - text: ：完成模块划分、接口设计和数据建模专项练习，重点针对竞赛常见场景（如高并发系统、分布式架构）进行方案输出；
+    - strong: 理由
+    - text: ：系统设计是竞赛中方案落地的核心，薄弱点直接影响架构合理性，专项练习可快速补齐短板；
+    - strong: 动作
+    - text: ：按后端推荐路径推进“强化系统设计”任务，投入60分钟完成练习。
+  - list:
+    - strong: 夯实软件测试（对应软件测试维度）
+  - list:
+    - strong: 步骤
+    - text: ：开展测试点提取、测试用例设计实操，结合竞赛真题进行缺陷复盘，梳理测试流程与风险点；
+    - strong: 理由
+    - text: ：竞赛对软件质量保障要求高，测试体系薄弱会导致方案完整性不足，实操可提升测试思维与落地能力；
+    - strong: 动作
+    - text: ：补充测试专项练习，后续结合AI导师复盘环节优化测试方案。
+  - list:
+    - strong: AI导师复盘（对应系统设计维度）
+  - list:
+    - strong: 步骤
+    - text: ：完成系统设计练习后，借助AI导师复盘方案，修正架构设计漏洞，优化模块划分与接口逻辑；
+    - strong: 理由
+    - text: ：通过复盘可精准定位问题，提升设计效率与方案质量，适配竞赛对方案严谨性的要求；
+    - strong: 动作
+    - text: ：按后端推荐路径推进“让AI导师带你复盘”任务，投入25分钟完成复盘。
+  - heading "来源与安全提示" [level=3]
+  - list:
+    - strong: 来源说明
+    - text: ：能力诊断数据、薄弱点及提升路径依据后端派生诊断结果，暂无可核验外部知识库来源；
+    - strong: 安全提示
+    - text: ：
+  - list:
+    - listitem: 代码、脚本和数据库操作需先在隔离的开发或测试环境验证，严禁直接作用于生产环境；
+    - listitem: 测试数据和学习记录涉及个人信息时必须脱敏，不得上传真实账号、密钥或隐私数据；
+    - listitem: 引用第三方代码、资料前，需核对许可证、授权范围及来源合法性。
+  - heading "下一步行动" [level=3]
+  - paragraph: 继续执行现有岗位能力提升路径，前往指定路径（/path?courseId=401）完成当前“强化系统设计”阶段任务，推进后续AI复盘环节，逐步补齐薄弱能力，适配竞赛准备需求。
+  - generic: 开启新对话
+  - paragraph: 请基于真实岗位数据分析我的软件开发岗位能力，指出薄弱项，给出三步提升路径，并保留来源与安全提示。
+  - generic: 已深度思考
+  - paragraph: 正在分析软件开发岗位能力与学习目标。
+  - heading "目标理解" [level=3]
+  - paragraph: 你希望基于真实岗位数据分析自身软件开发岗位能力，定位薄弱项并获取三步提升路径，同时要求保留来源与安全提示。
+  - heading "能力判断" [level=3]
+  - paragraph:
+    - text: 根据插件返回的派生诊断数据，当前五项能力维度（需求理解与分析、系统设计、编码实现、软件测试、项目协作与交付）均无真实测评得分，其匹配度统一为 70；该数据为派生诊断结果，并非真实测评分数。
+    - strong: 尚未测评
+    - text: ，当前无真实测评分数，需先完成诊断后再生成个性化差距分析。
+  - heading "提升路径" [level=3]
+  - paragraph: 本路径基于后端推荐学习路径制定，具体如下：
+  - list:
+    - listitem: 先完成岗位能力诊断，取得真实测评数据；
+    - listitem: 基于真实数据生成个性化差距分析，定位薄弱项；
+    - listitem: 针对薄弱项生成三步提升路径并执行，在隔离测试环境完成小练习。
+  - heading "来源与安全提示" [level=3]
+  - list:
+    - listitem: 来源：暂无可核验来源。
+    - listitem: 安全提示：代码、脚本和数据库操作需先在隔离的开发或测试环境验证，禁止直接作用于生产环境；测试数据和学习记录涉及个人信息时必须脱敏，不得上传真实账号、密钥或隐私数据；引用第三方代码、数据和资料前应核对许可证、授权范围和来源。
+  - heading "下一步行动" [level=3]
+  - paragraph: 根据当前薄弱情况，在隔离测试环境完成一个可验证的小练习，并对练习结果进行复盘。
+  - generic: 开启新对话
+  - paragraph: 请基于真实岗位数据分析我的软件开发岗位能力，指出薄弱项，给出三步提升路径，并保留来源与安全提示。
+  - generic: 已深度思考
+  - paragraph: 正在分析软件开发岗位能力与学习目标。
+  - paragraph:
+    - strong: 目标理解
+    - text: ：你希望通过真实岗位数据分析，定位软件开发岗位能力薄弱项，并获得可执行的三步提升路径，以目标岗位“软件开发工程师”为基准进行自适应提升。
+  - paragraph:
+    - strong: 能力判断
+    - text: ：当前尚未完成岗位能力诊断（插件派生诊断数据：五维能力匹配度均为70%，尚无历史对比与增长值）。系统明确无法给出分数层面的薄弱判断，必须先完成诊断，获得真实测评数据后才能生成个性化差距分析。
+  - paragraph:
+    - strong: 提升路径
+    - text: ：
+  - list:
+    - strong: 启动能力诊断
+    - text: （对应维度：全维度摸底）：先完成岗位能力测评，依据真实分数定位薄弱项，避免盲目学习。
+    - strong: 针对性短板攻坚
+    - text: （对应维度：待诊断后确认）：根据测评结果，选取得分最低的维度（如需求理解或编码实现）进行专项练习。
+    - strong: 输出可验证成果
+    - text: （对应维度：项目协作与交付）：在隔离环境中完成一个小项目，并复盘测试与交付流程，巩固能力闭环。
+  - paragraph:
+    - strong: 来源与安全提示
+    - text: ：
+  - list:
+    - strong: 来源
+    - text: ：暂无可核验来源（知识库检索结果为空，能力数据由后端插件返回，为派生诊断数据，非真实测评分数）。
+    - strong: 安全提示
+    - text: ：代码、脚本和数据库操作应先在隔离的开发或测试环境验证，禁止直接作用于生产环境；测试数据和学习记录涉及个人信息时必须脱敏，不得上传真实账号、密钥或隐私数据；引用第三方代码、数据和资料前应核对许可证、授权范围和来源。
+  - paragraph:
+    - strong: 下一步行动
+    - text: ：请根据当前薄弱能力完成一个可验证的小练习（如编写一个单元测试覆盖核心逻辑），并在隔离测试环境复盘结果，随后反馈练习结果以便调整后续路径。
+  - generic: 开启新对话
+  - paragraph: 请结合真实岗位能力诊断，指出两个最薄弱维度，并给出三步提升路径；同时生成一个三天任务卡和自适应推荐，保留可核验来源与安全提示。
+  - paragraph: "Third-party tool request failed(Third-party API request failed: Request error code: 530, error message"
+  - banner:
+    - heading "Error 1016" [level=1]
+    - generic: "Ray ID: a39eec36db59a158 •"
+    - generic: 2026-09-12 12:30:18 UTC
+    - heading "Origin DNS error" [level=2]
+  - heading "What happened?" [level=2]
+  - paragraph:
+    - text: You've requested a page on a website (sites-democratic-maternity-believes.trycloudflare.com) that is on the
+    - link "Cloudflare":
+      - /url: https://www.cloudflare.com/5xx-error-landing/
+    - text: network. Cloudflare is currently unable to resolve your requested domain (sites-democratic-maternity-believes.trycloudflare.com).
+  - paragraph:
+    - text: Please see
+    - link "https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1016/":
+      - /url: https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1016/
+    - text: for more details.
+  - heading "What can I do?" [level=2]
+  - paragraph:
+    - strong: "If you are a visitor of this website:"
+    - text: Please try again in a few minutes.
+  - paragraph:
+    - strong: "If you are the owner of this website:"
+    - text: Check your DNS settings. If you are using a CNAME origin record, make sure it is valid and resolvable.
+    - link "Additional troubleshooting information here.":
+      - /url: https://support.cloudflare.com/hc/en-us/articles/234979888-Error-1016-Origin-DNS-error
+  - text: Was this page helpful?
+  - button "Yes"
+  - button "No"
+  - generic: Thank you for your feedback!
+  - paragraph:
+    - text: "Cloudflare Ray ID:"
+    - strong: a39eec36db59a158
+    - text: •
+    - text: Performance & security by
+    - link "Cloudflare":
+      - /url: https://www.cloudflare.com/5xx-error-landing
+  - paragraph: )
+  - generic: 开启新对话
+  - paragraph: 请结合真实岗位能力诊断，指出两个最薄弱维度，并给出三步提升路径；同时生成一个三天任务卡和自适应推荐，保留可核验来源与安全提示。
+  - paragraph: "Third-party tool request failed(Third-party API request failed: Cannot connect to host dxebr-112-2-249-27.run.pinggy-free.link:443 ssl:default [Name or service not known])"
+  - generic: 开启新对话
+  - paragraph: 请基于真实岗位数据分析我的软件开发岗位能力，指出薄弱项，给出三步提升路径，并保留来源与安全提示。
+  - paragraph: "Third-party tool request failed(Third-party API request failed: Request error code: 502, error message"
+  - banner:
+    - heading "Bad gateway Error code 502" [level=1]:
+      - generic: Bad gateway
+      - text: Error code 502
+    - text: Visit
+    - link "cloudflare.com":
+      - /url: https://www.cloudflare.com/5xx-error-landing?utm_source=errorcode_502&utm_campaign=midnight-cream-passenger-licenses.trycloudflare.com
+    - text: for more information.
+    - generic: 2026-09-13 02:42:48 UTC
+  - paragraph
+  - text: You
+  - heading "Browser" [level=3]:
+    - paragraph: Browser
+  - paragraph: Working
+  - link:
+    - /url: https://www.cloudflare.com/5xx-error-landing?utm_source=errorcode_502&utm_campaign=midnight-cream-passenger-licenses.trycloudflare.com
+  - text: Los Angeles
+  - heading "Cloudflare" [level=3]:
+    - link "Cloudflare":
+      - /url: https://www.cloudflare.com/5xx-error-landing?utm_source=errorcode_502&utm_campaign=midnight-cream-passenger-licenses.trycloudflare.com
+  - paragraph: Working
+  - paragraph
+  - text: midnight-cream-passenger-licenses.trycloudflare.com
+  - heading "Host" [level=3]:
+    - paragraph: Host
+  - paragraph: Error
+  - heading "What happened?" [level=2]
+  - paragraph: The web server reported a bad gateway error.
+  - heading "What can I do?" [level=2]
+  - paragraph: Please try again in a few minutes.
+  - paragraph:
+    - text: "Cloudflare Ray ID:"
+    - strong: a3a3ccfa799aa425
+    - text: •
+    - text: Performance & security by
+    - link "Cloudflare":
+      - /url: https://www.cloudflare.com/5xx-error-landing?utm_source=errorcode_502&utm_campaign=midnight-cream-passenger-licenses.trycloudflare.com
+  - paragraph: )
+  - paragraph: 请基于真实岗位数据分析我的软件开发岗位能力，指出薄弱项，给出三步提升路径，并保留来源与安全提示。
+  - generic: 已深度思考
+  - paragraph: 正在分析软件开发岗位能力与学习目标。
+  - heading "目标理解" [level=3]
+  - paragraph: 你希望基于真实岗位数据分析软件开发岗位能力，定位薄弱项，并获取“三步提升路径”及保留可核验的来源与安全提示，服务目标是胜任软件开发工程师岗位。
+  - heading "能力判断" [level=3]
+  - paragraph: 依据插件返回的真实岗位数据（派生诊断，字段含义依据前端展示）：
+  - list:
+    - strong: 编码实现（Java/Python）
+    - text: ：Java、Python 当前能力均为 100，岗位匹配度 96%，能力稳定且高度胜任，无短板。
+    - strong: 前端开发
+    - text: ：当前 100，岗位匹配度 96%，无短板。
+    - strong: 接口开发
+    - text: ：当前 100，岗位匹配度 96%，无短板。
+    - strong: 软件测试
+    - text: ：当前 88（前期 36），岗位匹配度 96%，较前期增长 144%，能力提升显著，但为当前相对薄弱项。
+    - strong: 持续集成
+    - text: ：当前 100（前期 65），岗位匹配度 96%，增长 54%，能力强且持续提升。
+    - strong: 需求理解与分析
+    - text: ：当前 0（前期 5），岗位匹配度仅 60%，较前期下降 100%，为最突出薄弱项。
+  - heading "提升路径" [level=3]
+  - paragraph:
+    - strong: 第一步：筑牢需求理解与分析基础
+  - list:
+    - listitem: 对应能力维度：需求理解与分析
+    - listitem: 学习理由：岗位匹配度仅 60%，是前端列明确薄弱项，需通过专业训练补齐短板。
+    - listitem: 下一步动作：将“需求分析”纳入岗位能力基础单元，开展需求文档撰写、用户场景拆解的仿真实训。
+  - paragraph:
+    - strong: 第二步：强化软件测试能力达标
+  - list:
+    - listitem: 对应能力维度：软件测试
+    - listitem: 学习理由：虽增长 144%，但当前能力 88 低于其他代码类能力的 100，需进一步夯实以支撑开发质量。
+    - listitem: 下一步动作：增设或强化“软件测试”实训模块，专项练习单元测试、集成测试及测试用例设计。
+  - paragraph:
+    - strong: 第三步：整合能力形成岗位闭环
+  - list:
+    - listitem: 对应能力维度：项目协作与交付
+    - listitem: 学习理由：需求分析与软件测试是软件开发全流程的关键节点，需联动提升以实现高质量交付。
+    - listitem: 下一步动作：参与小型项目实践，完成“需求分析→设计→编码→测试→交付”全流程，弥补薄弱环节。
+  - heading "来源与安全提示" [level=3]
+  - list:
+    - strong: 来源
+    - text: ：岗位数据由插件返回，知识库检索结果为空，暂无可核验来源。
+    - strong: 安全提示
+    - text: ：岗位数据仅用于专业建设分析；正式调整培养方案前需由专业负责人复核来源、样本和统计口径；所有代码、脚本、数据库操作需先在隔离开发或测试环境验证，严禁泄露账号、密钥或隐私数据。
+  - heading "下一步行动" [level=3]
+  - list:
+    - listitem: 依据后端推荐，启动“需求分析”和“软件测试”两大薄弱点的课程覆盖与实训模块建设；
+    - listitem: 开展至少 1 个小型项目的全流程实践，验证需求分析与软件测试能力的提升效果；
+    - listitem: 由专业负责人批复执行，并记录每一次能力测评结果，持续跟踪薄弱项改善情况。
+  - generic: 开启新对话
+  - paragraph: 请基于最新真实岗位数据分析我的软件开发岗位能力，指出薄弱项，给出三步提升路径，并保留来源与安全提示。
+  - generic: 已深度思考
+  - paragraph: 正在分析软件开发岗位能力与学习目标。
+  - paragraph:
+    - strong: 目标理解
+    - text: 你想基于最新真实岗位数据，诊断软件开发工程师方向的能力薄弱项，并给出可执行的三步提升路径。
+  - paragraph:
+    - strong: 能力判断
+    - text: 基于系统派生诊断（以插件返回的五维岗位能力为准，含需求理解与分析、编码实现、软件测试等维度），你的优势项集中在编码实现与工程化能力：Java（现状100）、Python（现状100）、前端开发（现状100）、接口开发（现状100）、持续集成（现状100）。薄弱项集中在：需求理解与分析（岗位匹配度仅60%，呈负向增长）、软件测试（现状88，呈上升趋势但未满分）。
+  - paragraph:
+    - strong: 提升路径
+  - list:
+    - strong: 重构需求分析底座
+    - text: ：对应能力维度：需求理解与分析。学习理由：岗位匹配度仅60%，极易在业务拆解阶段出现偏差。下一步动作：纳入基础能力单元，完成3次真实业务需求文档的拆解与重写。
+    - strong: 攻坚软件测试专项
+    - text: ：对应能力维度：软件测试。学习理由：需求上升167%，且自身当前分值为88，需补齐短板。下一步动作：在隔离的开发测试环境中，针对过往项目编写并执行自动化或单元测试用例。
+    - strong: 强化项目协作与交付闭环
+    - text: ：对应能力维度：项目协作与交付。学习理由：需求分析与测试最终需在团队中落地。下一步动作：将前两步产出的分析文档与测试用例，在模拟项目中完成一次完整的迭代交付。
+  - paragraph:
+    - strong: 来源与安全提示
+    - text: 上述诊断结果与薄弱项分析均来自插件真实返回的岗位数据（解析为派生诊断），知识库无直接引用来源（暂无可核验来源）。岗位数据仅用于专业建设与个人能力分析；所有测试代码与操作必须在隔离环境验证，请勿暴露账号或密钥。正式调整培养方案前需由专业负责人复核数据来源、样本和统计口径。
+  - paragraph:
+    - strong: 下一步行动
+  - list:
+    - listitem: 请检视你过去参与的1-2个练习或项目，罗列需求理解上的具体困难点。
+    - listitem: 按照提升路径，优先着手编写基础的需求分析模板，并在隔离环境中跑通第一个自动化测试脚本。
+  - generic: 结束本轮对话
+  - generic: 重新生成
+  - heading "调试样例集" [level=1]
+  - checkbox
+  - generic: 将本次运行输入保存为调试样例集或手动创建
+  - combobox
+  - generic: 请选择样例集
+  - textbox "用户本轮对话输入内容"
+  - paragraph: 内容由AI生成，仅供参考

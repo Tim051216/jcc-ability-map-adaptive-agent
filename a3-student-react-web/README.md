@@ -53,7 +53,9 @@ npm run dev
 - 直接访问：[http://localhost:3002/annotation-agent](http://localhost:3002/annotation-agent)
 - 兼容地址：[http://localhost:3002/ai-annotation-agent](http://localhost:3002/ai-annotation-agent)
 - 试用口令：`这张图里的人被车挡住了，框怎么画？`、`同类目标挨在一起，应该标几个框？`
-- 反馈入口：页面右侧“提交试用反馈”，支持实用性/易用性/准确性评分与 CSV 导出。
+- 反馈入口：页面右侧“提交试用反馈”，先选择“真实用户试用”或“AI 模拟（内部演示）”，再填写实用性/易用性/准确性评分并按类型导出 CSV。
+
+项目根目录也提供一键启动脚本：`powershell -ExecutionPolicy Bypass -File .\scripts\start-ai-annotation.ps1`。脚本默认自动打开主页面；加 `-NoOpen` 可只启动服务，端口冲突时可用 `-Port 3012`。
 
 `/robot-ops-agent` 为早期工业机器人版本，保留用于兼容演示，不作为当前人工智能专业竞赛主版本。
 
@@ -100,6 +102,12 @@ npm run lint
   消息中心与实时交互
 - `npm run smoke:defense-core`
   演示核心链路组合验证
+- `npm run smoke:ai-annotation-agent`
+  AI 数据标注实训智能体入口、规则、追问、反馈和 CSV 回归
+- `npm run audit:ai-annotation-deliverables`
+  检查人工智能专业版提交材料、来源边界、模拟标记和旧口径
+- `npm run audit:ai-annotation-submission`
+  报告提交前外部证据缺口；加 `-- --strict` 可作为真人材料齐备后的严格门禁
 
 ## Product Notes
 

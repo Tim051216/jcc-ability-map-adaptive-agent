@@ -1,42 +1,42 @@
-﻿{
-    "checked_at":  "2026-09-11T02:26:57.1267139Z",
-    "base_url":  "http://127.0.0.1:18080",
-    "health":  "ok",
-    "industry_analysis":  {
-                              "fetched_count":  418,
-                              "sample_count":  284,
-                              "collection_mode":  "public-job-http-adapter",
-                              "trend_source":  "single-public-snapshot",
-                              "history_count":  6,
-                              "source_count":  4
-                          },
-    "professional_groups":  {
-                                "group_count":  6,
-                                "covered_group_count":  6,
-                                "total_sample_count":  365,
-                                "sample_counts":  {
-                                                      "è½¯ä»¶ææ¯ä¸ä¸ç¾¤":  284,
-                                                      "æºè½å¶é ä¸ä¸ç¾¤":  4,
-                                                      "æºçµä¸ä½åææ¯ä¸ä¸ç¾¤":  12,
-                                                      "æ°è½æºæ±½è½¦ææ¯ä¸ä¸ç¾¤":  3,
-                                                      "ç°ä»£ç©æµç®¡çä¸ä¸ç¾¤":  35,
-                                                      "å»ºç­ä¿¡æ¯æ¨¡åææ¯ä¸ä¸ç¾¤":  27
-                                                  }
-                            },
-    "job_ability":  {
-                        "ability_node_count":  2,
-                        "observed_skill_ingested":  true,
-                        "typical_task_ingested":  true
-                    },
-    "learning_task":  {
-                          "step_count":  4,
-                          "safety_point_count":  2,
-                          "resource_count":  2
-                      },
-    "adaptive_learning":  {
-                              "weak_area_count":  1,
-                              "path_step_count":  3,
-                              "ability_label":  "safety diagnostics"
-                          },
-    "evidence_boundary":  "This script verifies local structured APIs only; it does not prove platform authorization, cloud release, or teacher/student trials."
+{
+  "checked_at": "2026-09-13T05:47:21.8480561Z",
+  "base_url": "https://scenic-but-acquisition-criterion.trycloudflare.com",
+  "health": "ok",
+  "industry_analysis": {
+    "fetched_count": 416,
+    "sample_count": 299,
+    "collection_mode": "public-job-http-adapter",
+    "trend_source": "single-public-snapshot",
+    "history_count": 6,
+    "source_count": 4
+  },
+  "professional_groups": {
+    "group_count": 6,
+    "covered_group_count": 6,
+    "total_sample_count": 398.0,
+    "sample_counts": {
+      "软件技术专业群": 299,
+      "智能制造专业群": 8,
+      "机电一体化技术专业群": 9,
+      "新能源汽车技术专业群": 1,
+      "现代物流管理专业群": 41,
+      "建筑信息模型技术专业群": 40
+    }
+  },
+  "job_ability": {
+    "ability_node_count": 2,
+    "observed_skill_ingested": true,
+    "typical_task_ingested": true
+  },
+  "learning_task": {
+    "step_count": 4,
+    "safety_point_count": 2,
+    "resource_count": 2
+  },
+  "adaptive_learning": {
+    "weak_area_count": 1,
+    "path_step_count": 3,
+    "ability_label": "safety diagnostics"
+  },
+  "evidence_boundary": "This script verifies local structured APIs only; it does not prove platform authorization, cloud release, or teacher/student trials."
 }

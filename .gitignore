@@ -47,6 +47,9 @@ a3-admin-web/node_modules/
 a3-admin-web/dist/
 a3-admin-web/.env.local
 a3-admin-web/*.log
+node_modules/
+.ai-annotation-ppt-build/
+/tmp/
 deploy/ecs/env/*.env
 *.out.log
 *.err.log

@@ -4,8 +4,8 @@ info:
   version: 1.1.0
   description: 面向赛题的岗位动态分析、岗位能力图谱、典型任务转学习卡、个性化岗课赛路径，以及软件技术专业群学习概览。
 servers:
-  - url: https://REPLACE_WITH_PUBLIC_API_DOMAIN
-    description: 部署后替换为星辰云端可访问的 HTTPS 地址
+  - url: https://scenic-but-acquisition-criterion.trycloudflare.com
+    description: 2026-09-13 当前调试使用的临时 HTTPS 隧道；正式部署前应替换为稳定域名
 paths:
   /api/v1/xa-competition/industry/jobs-analysis:
     get:

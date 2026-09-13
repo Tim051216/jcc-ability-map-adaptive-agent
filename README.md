@@ -1,20 +1,35 @@
-# 岗课赛一体化软件开发岗位能力自适应学习智能体
+# 人工智能数据标注实训智能体（岗课赛平台改造版）
 
-面向 XA-202603“面向职业教育高水平专业群建设的教学实训与岗位技能智能体开发”赛题，服务软件技术专业群学生的软件开发工程师岗位成长。项目以“岗—课—赛”贯通为主线：岗位要求 → 课程知识 → 实训/竞赛任务 → 能力诊断 → 自适应训练 → 产出评价。
+本仓库当前正式参赛口径为：人工智能技术应用专业群（计算机视觉方向）/AI 数据标注工程师。可运行 MVP 的主入口是学生端 `/annotation-agent`（兼容 `/ai-annotation-agent`），聚焦目标检测标注中的遮挡、截断和同类实例边界判定。原有岗课赛学习平台仍保留用于开发兼容和历史追溯，不应与本次 AI 作品的专业群、岗位或微任务混用。
+
+作品说明、来源边界、试用证据和提交门禁以 [AI_ANNOTATION_COMPETITION_ADAPTATION.md](./AI_ANNOTATION_COMPETITION_ADAPTATION.md) 及 `deliverables/` 下的 AI 数据标注文件为准。
 
 > 团队成员第一次克隆仓库时，请按 [TEAM_SETUP.md](./TEAM_SETUP.md) 操作。让 AI 帮助启动时，请让它先读取 [AI_START_HERE.md](./AI_START_HERE.md)。
 
-## 项目定位（岗—课—赛）
+## 正式 AI 作品入口
 
-- **岗**：软件开发工程师典型工作任务、能力维度与交付标准。
-- **课**：需求分析、系统设计、编码实现、软件测试、项目协作与交付等专业群课程。
-- **赛**：技能竞赛、综合实训和岗位实习准备中的任务卡、作品产出与过程评价。
+- **专业群**：人工智能技术应用专业群（计算机视觉方向）
+- **典型岗位**：AI 数据标注工程师
+- **微任务**：根据文字现象描述匹配候选标注规则，输出框选步骤、属性提醒、常见错误、质检项和来源依据。
+- **本地试用**：`http://127.0.0.1:3002/annotation-agent`
+- **启动脚本**：`scripts/start-ai-annotation.ps1`
+- **预提交包**：在 `a3-student-react-web` 执行 `npm run package:ai-annotation`
+
+场景来源、标准核验和真人试用尚未补齐前，材料必须保留“候选场景 / 待教师核验”状态；AI 模拟反馈只用于内部演示，不能作为正式第 8 项证据。
+
+## 基础平台背景（历史兼容，不是本次 AI 作品口径）
+
+以下岗课赛学习平台能力仍在仓库中运行，用于兼容既有工程、回归测试和历史材料。正式 AI 提交包不把其软件开发工程师课程或页面当作 AI 数据标注作品功能。
+
+- **岗**：原平台的软件开发工程师典型工作任务、能力维度与交付标准（历史兼容）。
+- **课**：原平台的需求分析、系统设计、编码实现、软件测试、项目协作与交付等课程（历史兼容）。
+- **赛**：原平台的技能竞赛、综合实训和岗位实习任务卡（历史兼容）。
 
 ## Project Overview
 
 本仓库不是单一的聊天应用，而是一套由 `Java 学习业务服务 + Python AI 中台 + React 学生端/管理端` 组成的多智能体学习平台。
 
-当前版本已经完成以下核心方向：
+仓库还包含以下基础平台能力：
 
 - 岗位自适应学习主入口：`/job-learning`
 - 岗位能力知识目录：`/job-learning/knowledge-catalog`，覆盖 K001-K080 五类能力维度
@@ -62,7 +77,12 @@ AI 运行时依赖：
 
 ## Current Demo Scope
 
-当前版本适合直接演示的页面与能力包括：
+正式 AI 作品优先演示：
+
+- `/annotation-agent`：AI 数据标注实训微任务闭环（文本输入 → 规则匹配 → 步骤/质检反馈 → 试用记录导出）
+- `/ai-annotation-agent`：兼容入口
+
+以下页面属于基础平台兼容演示，可按需要展示，但不应替代 AI 数据标注作品主链路：
 
 - 首页总览与学习闭环入口
 - 学习画像页 `/profile`
@@ -75,7 +95,7 @@ AI 运行时依赖：
 - 测评页 `/evaluation`
 - 管理端用户治理与运营页
 
-推荐演示口径：
+基础平台的历史演示口径：
 
 - `稳定业务链路`
   学习路径、测评、错题、报告、消息等基础能力
@@ -115,6 +135,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1 -
 - [TEAM_SETUP.md](./TEAM_SETUP.md)：团队成员首次安装说明
 - [LOCAL_SETUP.md](./LOCAL_SETUP.md)
 
+只试用正式 AI 数据标注 MVP 时，无需启动完整基础设施：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-ai-annotation.ps1
+```
+
+然后打开 `http://127.0.0.1:3002/annotation-agent`。
+
 ## Local Ports
 
 - MySQL: `127.0.0.1:13306`
@@ -131,10 +159,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1 -
 
 ## Core Documents
 
+- [AI_ANNOTATION_COMPETITION_ADAPTATION.md](./AI_ANNOTATION_COMPETITION_ADAPTATION.md)
+  AI 数据标注专业群/岗位改造基线、来源边界和外部证据门禁
 - [XA_202603_COMPETITION_ADAPTATION.md](./XA_202603_COMPETITION_ADAPTATION.md)
-  科大讯飞 XA-202603 赛题定位、评分对齐、页面改造与后续执行基线
+  原平台赛题定位与历史改造记录（AI 提交以 AI 文件为准）
 - [A3_DEMO_RUNBOOK.md](./A3_DEMO_RUNBOOK.md)
-  演示顺序、现场检查与兜底方案
+  兼容平台演示顺序；正式 AI 快速演示见其中“AI 数据标注”章节
 - [A3_ARCHITECTURE.md](./A3_ARCHITECTURE.md)
   当前 Java + Python + Frontend 架构映射
 - [A3_DEMO_API.md](./A3_DEMO_API.md)

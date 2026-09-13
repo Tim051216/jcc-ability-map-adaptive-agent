@@ -1,0 +1,347 @@
+{
+  "captured_at": "2026-09-13T05:49:59.741Z",
+  "timezone": "Asia/Shanghai",
+  "base_url": "https://scenic-but-acquisition-criterion.trycloudflare.com",
+  "calls": {
+    "industry": {
+      "method": "GET",
+      "url": "https://scenic-but-acquisition-criterion.trycloudflare.com/api/v1/xa-competition/industry/jobs-analysis?refresh=true&professional_group=%E8%BD%AF%E4%BB%B6%E6%8A%80%E6%9C%AF%E4%B8%93%E4%B8%9A%E7%BE%A4&core_job=%E8%BD%AF%E4%BB%B6%E5%BC%80%E5%8F%91%E5%B7%A5%E7%A8%8B%E5%B8%88",
+      "status": 200,
+      "elapsed_ms": 2684,
+      "request": null,
+      "response": {
+        "professional_group": "软件技术专业群",
+        "core_job": "软件开发工程师",
+        "collected_at": "2026-09-13T05:50:02.110650Z",
+        "collection_mode": "public-job-http-adapter",
+        "source_urls": [
+          "https://remotive.com/api/remote-jobs",
+          "https://jobicy.com/api/v2/remote-jobs?count=50",
+          "https://remoteok.com/api",
+          "https://www.arbeitnow.com/api/job-board-api"
+        ],
+        "sample_count": 299,
+        "fetched_count": 416,
+        "skills": [
+          {
+            "name": "需求分析",
+            "current": 3,
+            "previous": 3,
+            "match": 84,
+            "growth": 0
+          },
+          {
+            "name": "Java",
+            "current": 69,
+            "previous": 69,
+            "match": 96,
+            "growth": 0
+          },
+          {
+            "name": "Python",
+            "current": 100,
+            "previous": 100,
+            "match": 96,
+            "growth": 0
+          },
+          {
+            "name": "前端开发",
+            "current": 79,
+            "previous": 79,
+            "match": 96,
+            "growth": 0
+          },
+          {
+            "name": "接口开发",
+            "current": 100,
+            "previous": 100,
+            "match": 96,
+            "growth": 0
+          },
+          {
+            "name": "软件测试",
+            "current": 32,
+            "previous": 32,
+            "match": 96,
+            "growth": 0
+          },
+          {
+            "name": "持续集成",
+            "current": 57,
+            "previous": 57,
+            "match": 96,
+            "growth": 0
+          }
+        ],
+        "trend_months": [
+          "2026-09-13"
+        ],
+        "trend_series": {
+          "需求分析": [
+            3
+          ],
+          "Java": [
+            69
+          ],
+          "Python": [
+            100
+          ],
+          "前端开发": [
+            79
+          ],
+          "接口开发": [
+            100
+          ]
+        },
+        "trend_source": "single-public-snapshot",
+        "history_count": 6,
+        "history_span_days": 0,
+        "alerts": [
+          {
+            "title": "暂未发现显著预警",
+            "detail": "当前样本中的技能趋势和专业匹配度处于常规范围，建议继续积累岗位样本。"
+          }
+        ],
+        "recommendations": [
+          "继续采集公开岗位数据，滚动复核软件技术专业群培养方案"
+        ],
+        "optimization_plan": [
+          {
+            "priority": "低",
+            "target": "数据采集",
+            "action": "继续采集公开岗位数据，滚动复核软件技术专业群培养方案",
+            "evidence": "当前没有足够的可比较历史快照"
+          }
+        ],
+        "ai_generated": false,
+        "safety_notice": "岗位数据仅用于专业建设分析；正式调整培养方案前需由专业负责人复核来源、样本和统计口径。"
+      },
+      "error": null
+    },
+    "ability": {
+      "method": "POST",
+      "url": "https://scenic-but-acquisition-criterion.trycloudflare.com/api/v1/xa-competition/job-ability/generate",
+      "status": 200,
+      "elapsed_ms": 500,
+      "request": {
+        "job_name": "软件开发工程师",
+        "professional_group": "软件技术专业群",
+        "observed_skills": [
+          "Java",
+          "Python",
+          "接口开发",
+          "软件测试",
+          "持续集成"
+        ],
+        "typical_tasks": [
+          "分析业务需求并编写任务卡",
+          "完成接口开发与联调",
+          "执行测试并持续交付"
+        ]
+      },
+      "response": {
+        "job_name": "软件开发工程师",
+        "industry_chain": "软件产业链",
+        "job_group": "软件开发与交付岗位群",
+        "typical_tasks": [
+          "分析业务需求并编写任务卡",
+          "完成接口开发与联调",
+          "执行测试并持续交付"
+        ],
+        "abilities": [
+          {
+            "name": "需求与设计",
+            "score": 83,
+            "ability_units": [
+              "需求分析",
+              "方案设计"
+            ],
+            "skill_points": [
+              "用户故事拆解",
+              "接口建模",
+              "Java",
+              "接口开发",
+              "持续集成"
+            ],
+            "knowledge_points": [
+              "软件工程规范",
+              "数据库与接口原理"
+            ]
+          },
+          {
+            "name": "开发测试与交付",
+            "score": 80,
+            "ability_units": [
+              "编码实现",
+              "质量保障"
+            ],
+            "skill_points": [
+              "接口开发",
+              "自动化测试",
+              "持续集成",
+              "Python",
+              "软件测试"
+            ],
+            "knowledge_points": [
+              "版本控制",
+              "软件测试方法"
+            ]
+          }
+        ],
+        "citations": [
+          "岗位任务输入（用户提供）",
+          "产业岗位分析技能聚合（公开来源，需复核）",
+          "专业岗位能力知识目录（需负责人复核）"
+        ],
+        "ai_generated": false,
+        "generation_mode": "rule-template"
+      },
+      "error": null
+    },
+    "task": {
+      "method": "POST",
+      "url": "https://scenic-but-acquisition-criterion.trycloudflare.com/api/v1/xa-competition/learning-task/generate",
+      "status": 200,
+      "elapsed_ms": 501,
+      "request": {
+        "work_task": "完成接口开发与联调",
+        "job_name": "软件开发工程师",
+        "professional_group": "软件技术专业群",
+        "industry_context": "软件产业链",
+        "ability_focus": [
+          "接口开发",
+          "联调测试"
+        ]
+      },
+      "response": {
+        "task_id": "LT-20260909",
+        "task_name": "完成接口开发与联调",
+        "task_description": "面向软件技术专业群的软件开发工程师学习任务：在真实岗位工作情境中完成“完成接口开发与联调”，重点强化接口开发、联调测试，形成可验收的操作记录与任务产出。",
+        "work_context": "企业实训车间：围绕“完成接口开发与联调”完成工单交付并提交质量记录。产业背景：软件产业链。",
+        "steps": [
+          "阅读工单并确认设备型号、作业边界和防护用品",
+          "执行作业前检查并记录初始状态",
+          "按标准流程完成核心操作并记录关键参数",
+          "依据验收标准复盘异常、提交工单和实训产出"
+        ],
+        "safety_points": [
+          "作业前确认风险边界、工具状态和个人防护要求",
+          "出现异常立即停止操作并升级指导教师复核"
+        ],
+        "knowledge_points": [
+          "岗位工单与质量标准",
+          "设备结构和操作原理",
+          "异常诊断与记录规范"
+        ],
+        "skill_points": [
+          "任务拆解",
+          "规范操作",
+          "质量记录",
+          "异常复盘",
+          "接口开发",
+          "联调测试"
+        ],
+        "resources": [
+          {
+            "name": "校内实训微课",
+            "href": "/resources?search=%E6%A0%A1%E5%86%85%E5%AE%9E%E8%AE%AD%E5%BE%AE%E8%AF%BE",
+            "resource_type": "校内实训资源"
+          },
+          {
+            "name": "仿真操作练习",
+            "href": "/resources?search=%E4%BB%BF%E7%9C%9F%E6%93%8D%E4%BD%9C%E7%BB%83%E4%B9%A0",
+            "resource_type": "校内实训资源"
+          }
+        ],
+        "citations": [
+          "岗位任务输入（用户提供）",
+          "校内实训安全规范（需专业负责人补充正式版本）"
+        ],
+        "ai_generated": false,
+        "generation_mode": "rule-template"
+      },
+      "error": null
+    },
+    "adaptive": {
+      "method": "POST",
+      "url": "https://scenic-but-acquisition-criterion.trycloudflare.com/api/v1/xa-competition/adaptive-learning/recommend",
+      "status": 200,
+      "elapsed_ms": 519,
+      "request": {
+        "goal": "三天提升软件开发岗位能力",
+        "goal_scene": "岗位实训",
+        "job_name": "软件开发工程师",
+        "assessment_scores": {
+          "K01": 62,
+          "K02": 74,
+          "K03": 86,
+          "K04": 68
+        },
+        "ability_labels": {
+          "K01": "任务理解与规划",
+          "K02": "规范操作与安全",
+          "K03": "工具实践与交付",
+          "K04": "质量复盘与迁移"
+        },
+        "completed_skills": []
+      },
+      "response": {
+        "goal": "三天提升软件开发岗位能力",
+        "goal_scene": "岗位实训",
+        "job_name": "软件开发工程师",
+        "diagnostic_summary": "已依据“三天提升软件开发岗位能力”和岗位诊断结果定位 3 个优先补强项；推荐顺序为先课、再岗、后赛。",
+        "weak_areas": [
+          {
+            "code": "K01",
+            "label": "任务理解与规划",
+            "score": 62,
+            "reason": "当前诊断 62 分，距离岗位建议线 80 分还差 18 分"
+          },
+          {
+            "code": "K04",
+            "label": "质量复盘与迁移",
+            "score": 68,
+            "reason": "当前诊断 68 分，距离岗位建议线 80 分还差 12 分"
+          },
+          {
+            "code": "K02",
+            "label": "规范操作与安全",
+            "score": 74,
+            "reason": "当前诊断 74 分，距离岗位建议线 80 分还差 6 分"
+          }
+        ],
+        "next_steps": [
+          {
+            "title": "先学：任务理解与规划微课",
+            "kind": "课",
+            "description": "围绕“任务理解与规划”完成 10 分钟概念梳理与示例讲解。",
+            "resource": "任务理解与规划岗位微课",
+            "unlock_condition": "完成微课随堂测验 ≥ 60 分"
+          },
+          {
+            "title": "再练：任务理解与规划仿真任务",
+            "kind": "岗",
+            "description": "在低风险仿真环境完成一次可提交的岗位操作，并记录关键参数。",
+            "resource": "任务理解与规划虚拟实训",
+            "unlock_condition": "提交任务产出并通过安全检查"
+          },
+          {
+            "title": "最后：竞赛/岗位综合挑战",
+            "kind": "赛",
+            "description": "将“三天提升软件开发岗位能力”转化为一项限时综合任务，检验知识和技能迁移。",
+            "resource": "岗位综合挑战题",
+            "unlock_condition": "前两步完成且复测达到 80 分"
+          }
+        ],
+        "progress": 0,
+        "badges": [
+          "目标已设定",
+          "诊断已定位"
+        ],
+        "ai_generated": false,
+        "safety_notice": "推荐路径用于学习引导；涉及真实设备、车辆或生产数据的操作，必须由教师按现场安全规范复核。"
+      },
+      "error": null
+    }
+  }
+}

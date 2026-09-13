@@ -1,0 +1,19 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "agentBuilder工具集", "version": "1.0.0", "x-is-official": false},
+  "servers": [{"url": "https://midnight-cream-passenger-licenses.trycloudflare.com"}],
+  "paths": {
+    "/api/v1/xa-competition/industry/jobs-analysis": {
+      "get": {
+        "summary": "XA产业岗位分析",
+        "operationId": "xaIndustryJobsAnalysis",
+        "parameters": [
+          {"name":"refresh","in":"query","required":false,"schema":{"type":"boolean","default":false}},
+          {"name":"professional_group","in":"query","required":false,"schema":{"type":"string","default":"软件技术专业群"}},
+          {"name":"core_job","in":"query","required":false,"schema":{"type":"string","default":"软件开发工程师"}}
+        ],
+        "responses": {"200": {"description":"success","content":{"application/json":{"schema":{"type":"object","additionalProperties":true}}}}}
+      }
+    }
+  }
+}

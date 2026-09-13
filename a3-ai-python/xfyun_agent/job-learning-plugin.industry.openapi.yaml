@@ -1,0 +1,40 @@
+openapi: 3.0.3
+info:
+  title: XA-202603 岗位能力产业分析插件
+  version: 3.0.0
+  description: 读取公开岗位数据并输出技能热度、专业匹配、趋势、预警与培养方案优化建议。
+servers:
+  - url: https://substance-databases-traditional-office.trycloudflare.com
+paths:
+  /api/v1/xa-competition/industry/jobs-analysis:
+    get:
+      operationId: getIndustryJobsAnalysis
+      summary: 采集并分析公开岗位需求
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: professional_group
+          in: query
+          schema:
+            type: string
+            default: 软件技术专业群
+        - name: core_job
+          in: query
+          schema:
+            type: string
+            default: 软件开发工程师
+        - name: source_urls
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 岗位动态分析结果
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true

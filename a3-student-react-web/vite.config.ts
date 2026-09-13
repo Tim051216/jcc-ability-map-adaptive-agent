@@ -23,7 +23,9 @@ export default defineConfig(({mode}) => {
   };
 
   if (useAiProxy) {
-    proxy['/ai'] = {
+    // Keep the API proxy scoped to /ai/ so the legacy UI route
+    // /ai-annotation-agent is served by the SPA instead of being proxied.
+    proxy['/ai/'] = {
       target: aiProxyTarget,
       changeOrigin: true,
       ws: true,

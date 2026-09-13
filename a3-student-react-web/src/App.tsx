@@ -553,7 +553,8 @@ function MainLayout({
   const isLoginPage = location.pathname === "/login";
   const isPreviewPage = location.pathname === "/resources/preview";
   const isJudgeResultPage = location.pathname === "/resources/judge-result";
-  const isShellHiddenPage = isLoginPage || isPreviewPage || isJudgeResultPage;
+  const isAnnotationAgentPage = location.pathname === "/annotation-agent" || location.pathname === "/ai-annotation-agent";
+  const isShellHiddenPage = isLoginPage || isPreviewPage || isJudgeResultPage || isAnnotationAgentPage;
   const currentPath = location.pathname;
   const isNavItemActive = (itemPath: string) => {
     const normalizedPath = itemPath.split("?")[0] || itemPath;
@@ -902,7 +903,7 @@ function MainLayout({
         </nav>
       ) : null}
 
-      {!isLoginPage ? (
+      {!isLoginPage && !isAnnotationAgentPage ? (
         <>
           <div
             className={`fixed z-[149] w-[min(292px,calc(100vw-1.5rem))] transition-all duration-300 ${

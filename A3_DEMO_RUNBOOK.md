@@ -1,6 +1,17 @@
-# A3 答辩演示脚本
+# AI 数据标注实训智能体答辩演示脚本
 
-## 1. 推荐演示策略
+> 正式参赛作品是人工智能技术应用专业群（计算机视觉方向）/AI 数据标注工程师微任务。本文前半部分是 AI 作品演示；后半部分保留原 A3/岗课赛平台的历史兼容脚本。提交或答辩时不要把两套专业群、岗位和页面混讲。
+
+## 0. 正式 AI 作品三分钟路径
+
+1. 在仓库根目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-ai-annotation.ps1`。
+2. 打开 `http://127.0.0.1:3002/annotation-agent`（兼容入口 `/ai-annotation-agent`）。
+3. 点击遮挡快捷问题，指出命中 `ANN-OCC-01`、步骤、质检项和“待教师核验”来源状态。
+4. 输入“这个怎么弄？”，展示澄清问题；再输入“目标检测，目标出画面了”和同类实例问题。
+5. 打开反馈窗口：没有真人时只能选“AI 模拟（内部演示）”；真实参与者本人完成试用并勾选匿名确认后，才可记录“真实用户试用”。
+6. 在前端目录运行 `npm run smoke:ai-annotation-agent` 和 `npm run audit:ai-annotation-submission`，向评委说明外部证据尚待人工补齐。
+
+## 1. 推荐演示策略（历史兼容平台）
 
 建议把演示分成两段：
 
@@ -9,7 +20,7 @@
 
 这样更容易把“业务闭环稳定性”和“AI 特色能力”分开讲清楚。
 
-## 2. 演示前最少检查
+## 2. 演示前最少检查（历史兼容平台）
 
 稳定主链路需要确认：
 
@@ -38,7 +49,7 @@ Invoke-RestMethod -Method Get http://127.0.0.1:10010/ai/v1/admin/ping
 Invoke-RestMethod -Method Get http://127.0.0.1:8090/evaluation/test/course/1 -Headers @{ "user-info" = "1" }
 ```
 
-## 3. 推荐演示链路
+## 3. 推荐演示链路（历史兼容平台）
 
 ### 3.1 第一段：学生端稳定主链路
 
@@ -127,6 +138,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-intelligent-tutoring-l
 2. 测评/错题页
 3. RAG 检索
 4. 资源生成
+
+如需在历史兼容链路之后展示人工智能专业版微任务，可直接打开：
+
+```text
+http://127.0.0.1:3002/annotation-agent
+```
+
+演示顺序：遮挡快捷问题 → 查看命中规则 ID/来源追踪 → 多意图问题澄清 → 模糊问题追问 → 截断/`bbox` 检查 → 同类实例分别标框 → 打开反馈窗口。内部演示请选择“AI 模拟（内部演示）”并勾选模拟确认；只有真实参与者本人完成试用后才选择“真实用户试用”并由本人勾选匿名确认。页面中的候选规则和来源边界见 `deliverables/AI数据标注实训智能体-来源规则输出映射.md`。
 
 如果网络或模型不稳定，优先保住：
 

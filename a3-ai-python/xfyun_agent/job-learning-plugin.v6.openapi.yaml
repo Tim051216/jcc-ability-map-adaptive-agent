@@ -1,0 +1,196 @@
+openapi: 3.1.0
+info:
+  title: agentBuilder工具集
+  version: 1.0.0
+  description: XA-202603 岗位能力与学习服务插件（产业分析路由）
+  x-is-official: false
+servers:
+  - url: https://midnight-cream-passenger-licenses.trycloudflare.com
+    description: 当前可用的 HTTPS 服务隧道
+paths:
+  /api/v1/xa-competition/industry/jobs-analysis:
+    get:
+      operationId: xaIndustryJobsAnalysis
+      summary: XA 产业岗位需求分析
+      description: 读取公开岗位数据并输出技能热度、专业匹配、趋势、预警与培养方案优化建议。
+      parameters:
+        - name: refresh
+          in: query
+          description: 是否刷新岗位数据缓存
+          required: false
+          schema:
+            type: boolean
+            default: false
+            x-display: true
+            x-from: 2
+        - name: professional_group
+          in: query
+          description: 专业群名称
+          required: false
+          schema:
+            type: string
+            default: 软件技术专业群
+            x-display: true
+            x-from: 2
+        - name: core_job
+          in: query
+          description: 核心岗位名称
+          required: false
+          schema:
+            type: string
+            default: 软件开发工程师
+            x-display: true
+            x-from: 2
+        - name: source_urls
+          in: query
+          description: 可选的公开岗位数据源 URL
+          required: false
+          schema:
+            type: string
+            default: ''
+            x-display: true
+            x-from: 2
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  professional_group:
+                    type: string
+                    description: 返回的专业群名称
+                    x-display: true
+                  core_job:
+                    type: string
+                    description: 返回的核心岗位名称
+                    x-display: true
+                  collected_at:
+                    type: string
+                    description: 数据采集时间
+                    x-display: true
+                  collection_mode:
+                    type: string
+                    description: 数据采集模式
+                    x-display: true
+                  source_urls:
+                    type: array
+                    items:
+                      type: string
+                    description: 实际使用的数据源
+                    x-display: true
+                  sample_count:
+                    type: integer
+                    description: 岗位样本数量
+                    x-display: true
+                  fetched_count:
+                    type: integer
+                    description: 成功读取的记录数量
+                    x-display: true
+                  skills:
+                    type: array
+                    description: 技能热度与岗位匹配列表
+                    x-display: true
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: 技能名称
+                          x-display: true
+                        current:
+                          type: integer
+                          description: 当前热度
+                          x-display: true
+                        previous:
+                          type: integer
+                          description: 上一期热度
+                          x-display: true
+                        match:
+                          type: integer
+                          description: 岗位匹配度
+                          x-display: true
+                        growth:
+                          type: integer
+                          description: 热度增长
+                          x-display: true
+                  trend_months:
+                    type: array
+                    items:
+                      type: string
+                    description: 趋势月份
+                    x-display: true
+                  trend_series:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: integer
+                    description: 技能趋势序列
+                    x-display: true
+                  trend_source:
+                    type: string
+                    description: 趋势数据来源
+                    x-display: true
+                  history_count:
+                    type: integer
+                    description: 历史记录数量
+                    x-display: true
+                  history_span_days:
+                    type: integer
+                    description: 历史跨度天数
+                    x-display: true
+                  alerts:
+                    type: array
+                    description: 岗位分析预警列表
+                    x-display: true
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                          description: 预警标题
+                          x-display: true
+                        detail:
+                          type: string
+                          description: 预警详情
+                          x-display: true
+                  recommendations:
+                    type: array
+                    description: 培养方案优化建议
+                    x-display: true
+                    items:
+                      type: string
+                  optimization_plan:
+                    type: array
+                    description: 培养方案优化计划
+                    x-display: true
+                    items:
+                      type: object
+                      properties:
+                        priority:
+                          type: string
+                          description: 优先级
+                          x-display: true
+                        target:
+                          type: string
+                          description: 目标能力单元
+                          x-display: true
+                        action:
+                          type: string
+                          description: 行动建议
+                          x-display: true
+                        evidence:
+                          type: string
+                          description: 依据证据
+                          x-display: true
+                  ai_generated:
+                    type: boolean
+                    description: 是否由模型生成
+                    x-display: true
+                  safety_notice:
+                    type: string
+                    description: 安全与复核提示
+                    x-display: true
+                additionalProperties: true
