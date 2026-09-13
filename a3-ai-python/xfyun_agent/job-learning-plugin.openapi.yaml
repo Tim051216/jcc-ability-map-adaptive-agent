@@ -1,62 +1,126 @@
 openapi: 3.0.3
 info:
   title: 软件开发岗位能力学习插件
-  version: 1.0.0
-  description: 获取学生的软件开发岗位能力诊断、薄弱项、推荐路径、资源、安全提示和下一步动作。
+  version: 2.0.0
+  description: >-
+    基于同一份真实岗位学习数据，提供岗位学习概览、产业岗位分析、能力图谱、
+    任务卡和自适应推荐接口。无测评时不生成虚假能力分数。
 servers:
-  - url: https://REPLACE_WITH_PUBLIC_API_DOMAIN
-    description: 部署后替换为星辰云端可访问的 HTTPS 地址
+  - url: https://dxebr-112-2-249-27.run.pinggy-free.link
+    description: 2026-09-12 星辰联调临时 HTTPS 地址（60 分钟）
 paths:
   /api/v1/student-portal/job-learning:
     get:
       operationId: getJobLearningOverview
       summary: 获取岗位能力学习概览
-      description: 返回软件开发工程师岗位五维能力数据。没有测评时分数为 null，不会生成固定雷达图分数。
       parameters:
-        - name: user_id
-          in: query
-          required: false
-          description: 学生用户 ID，比赛演示账号使用 1001。
-          schema:
-            type: integer
-            default: 1001
-        - name: course_id
-          in: query
-          required: false
-          description: 课程 ID，软件工程演示课程使用 401。
-          schema:
-            type: integer
-            default: 401
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CourseId"
       responses:
         "200":
-          description: 岗位能力学习概览
+          description: 岗位能力学习完整概览
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobLearningOverview"
-        "422":
-          description: 参数校验失败
+                $ref: "#/components/schemas/XaJobLearningResponse"
+  /api/v1/xa/industry-analysis:
+    get:
+      operationId: getXaIndustryAnalysis
+      summary: 获取产业与目标岗位能力分析
+      description: 返回目标岗位、能力基准、当前差距、来源与安全提示。
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: 产业岗位分析结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/XaJobLearningResponse"
+  /api/v1/xa/ability-map:
+    get:
+      operationId: getXaAbilityMap
+      summary: 获取岗位能力图谱
+      description: 返回五维岗位能力、测评证据、薄弱能力和下一步动作。
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: 岗位能力图谱
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/XaJobLearningResponse"
+  /api/v1/xa/task-cards:
+    get:
+      operationId: getXaTaskCards
+      summary: 获取岗位学习任务卡
+      description: 将个性化学习路径投影为可执行任务卡，并附带资源和安全提示。
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: 岗位学习任务卡
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/XaJobLearningResponse"
+  /api/v1/xa/adaptive-recommendations:
+    get:
+      operationId: getXaAdaptiveRecommendations
+      summary: 获取自适应学习推荐
+      description: 根据真实测评薄弱项返回路径、资源、安全提示和下一步行动。
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: 自适应学习推荐
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/XaJobLearningResponse"
 components:
+  parameters:
+    UserId:
+      name: user_id
+      in: query
+      required: false
+      description: 学生用户 ID，比赛演示账号使用 1001。
+      schema:
+        type: integer
+        minimum: 1
+        default: 1001
+    CourseId:
+      name: course_id
+      in: query
+      required: false
+      description: 课程 ID，软件工程演示课程使用 401。
+      schema:
+        type: integer
+        minimum: 1
+        default: 401
   schemas:
+    FlexibleObject:
+      type: object
+      additionalProperties: true
     JobAbilityDimension:
       type: object
-      required: [code, label, benchmark, assessment_status, evidence]
       properties:
         code:
           type: string
-          enum:
-            - requirement_analysis
-            - system_design
-            - coding_implementation
-            - software_testing
-            - project_collaboration
         label:
           type: string
         score:
-          type: number
+          type: integer
           nullable: true
+          minimum: 0
+          maximum: 100
         benchmark:
-          type: number
+          type: integer
         assessment_status:
           type: string
           enum: [measured, derived, not_assessed]
@@ -64,24 +128,11 @@ components:
           type: array
           items:
             type: string
-    JobLearningOverview:
+    XaJobLearningResponse:
       type: object
-      required:
-        - user_id
-        - course_id
-        - professional_group
-        - job_name
-        - student_goal
-        - goal_scene
-        - ability_dimensions
-        - weak_abilities
-        - recommended_path
-        - recommended_resources
-        - citations
-        - safety_notices
-        - ai_generated
-        - next_action
       properties:
+        route:
+          type: string
         user_id:
           type: integer
         course_id:
@@ -92,54 +143,57 @@ components:
           type: string
         professional_group:
           type: string
-          example: 软件技术专业群
+        target_job:
+          type: string
         job_name:
           type: string
-          example: 软件开发工程师
         student_goal:
           type: string
         goal_scene:
           type: string
-          enum: [course, training, competition, internship]
         assessment_id:
           type: string
           nullable: true
         assessment_updated_at:
           type: string
           nullable: true
+        competency_benchmarks:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlexibleObject"
+        gap_summary:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlexibleObject"
         ability_dimensions:
           type: array
-          minItems: 5
-          maxItems: 5
           items:
             $ref: "#/components/schemas/JobAbilityDimension"
         weak_abilities:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/FlexibleObject"
+        task_cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlexibleObject"
         recommended_path:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/FlexibleObject"
         recommended_resources:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/FlexibleObject"
         citations:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/FlexibleObject"
         safety_notices:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/FlexibleObject"
         ai_generated:
           type: boolean
         next_action:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/FlexibleObject"
