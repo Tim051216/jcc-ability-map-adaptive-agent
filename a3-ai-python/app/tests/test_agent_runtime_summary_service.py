@@ -50,7 +50,7 @@ async def test_get_summary_aggregates_agent_runtime_logs(monkeypatch) -> None:
     assert response.total == 3
     assert response.error_count == 1
     assert response.degraded_agent_count == 1
-    assert response.by_agent["evaluator_agent"] == 2
+    assert response.by_agent["evaluation_feedback_agent"] == 2
     assert response.by_level["warn"] == 1
     assert response.latest_log_at == "2026-05-10T00:00:00+00:00"
 

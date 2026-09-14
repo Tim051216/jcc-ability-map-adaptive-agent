@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, ClassVar
 import xml.etree.ElementTree as ET
@@ -240,7 +240,17 @@ class ResourceManagementService:
         for item in db_items:
             merged[item["resource_id"]] = item
 
-        favorites = sorted(merged.values(), key=lambda item: item["favorited_at"], reverse=True)
+        def favorite_sort_key(item: dict[str, Any]) -> float:
+            value = item.get("favorited_at")
+            if isinstance(value, str):
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if not isinstance(value, datetime):
+                return 0.0
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.timestamp()
+
+        favorites = sorted(merged.values(), key=favorite_sort_key, reverse=True)
         total = len(favorites)
         start = (page - 1) * page_size
         end = start + page_size
@@ -542,11 +552,17 @@ class ResourceManagementService:
             archived = bool(cached.get("is_archived")) or int(cached.get("status", 0)) == 3
             if not include_archived and archived:
                 continue
-            items.setdefault(resource_id, self._normalize_memory_record(cached))
+            # In-memory entries are the freshest view of an active generation
+            # task and may temporarily reuse an id from a stale local database.
+            items[resource_id] = self._normalize_memory_record(cached)
 
         return list(items.values())
 
     async def _get_resource_record(self, resource_id: int) -> dict[str, Any] | None:
+        cached = self.resource_cache.get(resource_id)
+        if cached is not None:
+            return self._normalize_memory_record(cached)
+
         if self._db_available:
             try:
                 async with async_session_factory() as session:
@@ -556,9 +572,6 @@ class ResourceManagementService:
                         return self._db_resource_to_record(resource, favorite_count=counts.get(resource_id, 0))
             except Exception:
                 self._db_available = False
-        cached = self.resource_cache.get(resource_id)
-        if cached is not None:
-            return self._normalize_memory_record(cached)
         return None
 
     async def _increment_view_count(self, resource_id: int) -> None:

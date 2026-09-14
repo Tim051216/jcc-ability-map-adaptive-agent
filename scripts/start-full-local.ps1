@@ -230,6 +230,12 @@ if (-not (Test-Port 8090)) {
     Write-Host "a3-learning already listens on 8090."
 }
 
+if (-not (Test-Port 8086)) {
+    Start-BackgroundCmd -Name "a3-resource" -LogFile "resource-live.log" -Command 'set "JAVA_TOOL_OPTIONS=--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" && ".\mvnw.cmd" -f ".\a3-resource\pom.xml" spring-boot:run -Dspring-boot.run.profiles=local -DskipTests'
+} else {
+    Write-Host "a3-resource already listens on 8086."
+}
+
 if (-not (Test-Port 18080)) {
     $aiFlags = if ($RunAiMigrations) { "" } else { "-SkipMigrations" }
     Start-BackgroundPowerShell -Name "a3-ai-python" -LogFile "ai-live.log" -Command "& '.\scripts\start-ai-local.ps1' $aiFlags"
@@ -262,6 +268,7 @@ $services = @(
     @{ Name = "ai"; Port = 18080; Required = $true },
     @{ Name = "admin"; Port = 3004; Required = $false },
     @{ Name = "learning"; Port = 8090; Required = $true }
+    @{ Name = "resource"; Port = 8086; Required = $true }
 )
 
 $serviceStatus = Wait-Services -Services $services -TimeoutSeconds $StartupTimeoutSeconds
@@ -286,6 +293,7 @@ $checks = @(
     @{ Name = "student"; Url = "http://127.0.0.1:3002/" },
     @{ Name = "admin"; Url = "http://127.0.0.1:3004/" },
     @{ Name = "learning"; Url = "http://127.0.0.1:8090/evaluation/test/course/1"; Headers = @{ "user-info" = "1" } },
+    @{ Name = "resource"; Url = "http://127.0.0.1:8086/v2/api-docs" },
     @{ Name = "gateway-ai"; Url = "http://127.0.0.1:10010/ai/v1/admin/ping" },
     @{ Name = "ai-embedding"; Url = "http://127.0.0.1:18080/api/v1/admin/embedding/ping" },
     @{ Name = "rabbitmq-console"; Url = "http://127.0.0.1:15672/" },
@@ -301,7 +309,10 @@ foreach ($check in $checks) {
     if ($result.Ok) {
         Write-Host ("OK   {0,-18} {1}" -f $check.Name, $result.Status)
     } else {
-        $requiredCheck = $check.Name -in @("student", "learning", "gateway-ai", "ai-embedding")
+        # The embedding probe calls the configured external provider. Local
+        # startup remains healthy when that provider is slow/unavailable
+        # because the AI service intentionally falls back to hash vectors.
+        $requiredCheck = $check.Name -in @("student", "learning", "resource", "gateway-ai")
         $label = if ($requiredCheck) { "FAIL" } else { "WARN" }
         Write-Warning ("{0} {1,-18} {2}" -f $label, $check.Name, $result.Message)
         if ($requiredCheck) {

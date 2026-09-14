@@ -18,9 +18,10 @@ from app.services.course_context_service import CourseContextService
 class ChatTicketService:
     async def create_ticket(self, request: ChatTicketCreateRequest) -> ChatTicketResponse:
         course_context = None
-        if request.course_id is not None or request.course_code:
+        course_id = getattr(request, "course_id", None)
+        if course_id is not None or request.course_code:
             course_context = await CourseContextService().resolve(
-                course_id=request.course_id,
+                course_id=course_id,
                 course_code=request.course_code,
             )
         now = datetime.now(timezone.utc).isoformat()

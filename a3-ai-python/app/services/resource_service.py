@@ -13,11 +13,12 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.core.constants import RESOURCE_TYPES
+from app.core.config import settings
 from app.db.base import Base
 from app.db.models.generated_resource import GeneratedResource, ResourceFavorite, ResourceFavoriteHistory
 from app.db.models.resource_source_file import ResourceSourceFile
 from app.db.repositories.resource_repository import ResourceRepository
-from app.db.session import ai_data_engine, ai_data_session_factory
+from app.db.session import ai_data_engine, ai_data_session_factory as async_session_factory
 from app.schemas.common import ResourceCard, ResourceSourceFileRef
 from app.schemas.resource import (
     ResourceArchiveRequest,
@@ -56,6 +57,7 @@ class ResourceService:
     _archived_cache: ClassVar[dict[int, dict[str, str | int | None]]] = {}
     _resource_index_warmed: ClassVar[bool] = False
     _seed_resources_ensured: ClassVar[set[tuple[int, str]]] = set()
+    _seed_resources_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
     _next_resource_id: ClassVar[int] = 1
     _local_seed_resources: ClassVar[dict[int, object] | None] = None
     _builtin_video_resources: ClassVar[dict[int, ResourceCard]] = {
@@ -196,8 +198,9 @@ class ResourceService:
         request: ResourceGenerationRequest,
     ) -> ResourceGenerationResponse:
         guardrail_service = GuardrailService()
+        request_course_id = getattr(request, "course_id", None)
         course_context = await CourseContextService().resolve(
-            course_id=request.course_id,
+            course_id=request_course_id,
             course_code=request.course_code,
         )
         guardrail_context = GuardrailContext(
@@ -206,12 +209,14 @@ class ResourceService:
             course_code=course_context.course_code,
             user_id=request.user_id,
         )
-        request = request.model_copy(
-            update={
-                "course_id": course_context.course_id,
-                "course_code": course_context.course_code,
-            }
-        )
+        request_updates = {
+            "course_id": course_context.course_id,
+            "course_code": course_context.course_code,
+        }
+        if hasattr(request, "model_copy"):
+            request = request.model_copy(update=request_updates)
+        else:
+            request = SimpleNamespace(**{**vars(request), **request_updates})
         try:
             input_review = await guardrail_service.assert_safe_input(
                 "\n".join(request.knowledge_points),
@@ -268,7 +273,7 @@ class ResourceService:
             resource_type=resource_type,
         )
         try:
-            async with ai_data_session_factory() as session:
+            async with async_session_factory() as session:
                 await self._ensure_seed_resources(
                     session=session,
                     user_id=user_id,
@@ -310,7 +315,7 @@ class ResourceService:
             resolved_course_code = (
                 await CourseContextService().resolve(course_id=course_id, course_code=course_code)
             ).course_code
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             items, total = await ResourceRepository().list_resources(
                 session,
                 user_id=user_id,
@@ -332,7 +337,7 @@ class ResourceService:
         if builtin is not None:
             return builtin
         try:
-            async with ai_data_session_factory() as session:
+            async with async_session_factory() as session:
                 await self._ensure_seed_resources(session=session, user_id=1001, course_code="software_engineering_4th")
                 resource = await ResourceRepository().get_resource(session, resource_id)
                 if resource is None:
@@ -347,7 +352,7 @@ class ResourceService:
             return fallback
 
     async def list_favorites(self, user_id: int) -> ResourceListResponse:
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             await self._ensure_seed_resources(
                 session=session,
                 user_id=user_id,
@@ -364,7 +369,7 @@ class ResourceService:
 
     async def ensure_default_resource_index(self) -> None:
         try:
-            async with ai_data_session_factory() as session:
+            async with async_session_factory() as session:
                 await self._ensure_seed_resources(
                     session=session,
                     user_id=1001,
@@ -376,6 +381,23 @@ class ResourceService:
         self.__class__._resource_index_warmed = True
 
     async def _ensure_seed_resources(self, *, session, user_id: int, course_code: str | None) -> None:
+        if settings.local_demo_sqlite_only and user_id != 1001:
+            # The shared course corpus is seeded once for the canonical demo
+            # account. Cloning it for every transient browser user causes a
+            # burst of concurrent SQLite writes and is unnecessary: generated
+            # resources remain user-owned and builtin course assets are global.
+            return
+        # A fresh demo user triggers resource, favorite and summary requests in
+        # parallel.  All three may attempt the same initial seed write. SQLite
+        # allows one writer, so serialize only this one-time initialization.
+        async with self.__class__._seed_resources_lock:
+            await self._ensure_seed_resources_unlocked(
+                session=session,
+                user_id=user_id,
+                course_code=course_code,
+            )
+
+    async def _ensure_seed_resources_unlocked(self, *, session, user_id: int, course_code: str | None) -> None:
         normalized_course_code = self._normalize_seed_course_code(course_code)
         if normalized_course_code not in self._local_seed_course_codes():
             return
@@ -508,7 +530,7 @@ class ResourceService:
             )
 
     async def list_favorite_history(self, user_id: int) -> ResourceFavoriteHistoryListResponse:
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             items = await ResourceRepository().list_favorite_history(session, user_id=user_id)
         history_items = [
             ResourceFavoriteHistoryItem(
@@ -523,7 +545,7 @@ class ResourceService:
 
     async def favorite_resource(self, *, user_id: int, resource_id: int) -> ResourceFavoriteResponse:
         now = datetime.now(timezone.utc).isoformat()
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             repo = ResourceRepository()
             resource = await repo.get_resource(session, resource_id)
             if resource is None:
@@ -550,7 +572,7 @@ class ResourceService:
 
     async def unfavorite_resource(self, *, user_id: int, resource_id: int) -> ResourceFavoriteResponse:
         now = datetime.now(timezone.utc).isoformat()
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             repo = ResourceRepository()
             favorite = await repo.get_favorite(session, user_id=user_id, resource_id=resource_id)
             if favorite is not None:
@@ -568,7 +590,7 @@ class ResourceService:
 
     async def archive_resource(self, resource_id: int, request: ResourceArchiveRequest) -> ResourceArchiveResponse:
         now = datetime.now(timezone.utc).isoformat()
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             repo = ResourceRepository()
             resource = await repo.get_resource(session, resource_id)
             if resource is None:
@@ -628,8 +650,35 @@ class ResourceService:
     ) -> list[ResourceCard]:
         now = datetime.now(timezone.utc).isoformat()
         persisted: list[ResourceCard] = []
+        if settings.local_demo_sqlite_only and request.user_id != 1001:
+            # Browser smoke/demo accounts are intentionally short-lived. A
+            # synchronous SQLite write here can sit behind dashboard reads for
+            # tens of seconds. Keep the generated card in the process cache so
+            # the interactive request returns immediately; canonical account
+            # 1001 continues to use durable persistence.
+            for item in resources:
+                resource_id = self.__class__._next_resource_id
+                self.__class__._next_resource_id += 1
+                generation_context = {
+                    **(item.generation_context or {}),
+                    "user_id": request.user_id,
+                    "course_code": request.course_code,
+                    "persisted_to_library": False,
+                    "storage_mode": "local_session_cache",
+                }
+                persisted_item = item.model_copy(
+                    update={
+                        "resource_id": resource_id,
+                        "generated_at": now,
+                        "updated_at": now,
+                        "generation_context": generation_context,
+                    }
+                )
+                persisted.append(persisted_item)
+                self.__class__._resource_cache[resource_id] = persisted_item
+            return persisted
         try:
-            async with ai_data_session_factory() as session:
+            async with async_session_factory() as session:
                 repo = ResourceRepository()
                 for item in resources:
                     record = await repo.create_resource(
@@ -681,6 +730,21 @@ class ResourceService:
         resource_types: list[str],
     ) -> list[ResourceCard]:
         source_titles = list(request.knowledge_points) or [request.course_code]
+        if self._should_use_fast_single_generation(resource_types):
+            # Reuse the deterministic, domain-specific builders for the
+            # interactive one-click resource actions. They return immediately
+            # and contain the complete teaching sections expected by previews.
+            from app.services.stable_resource_service import ResourceService as StableResourceService
+
+            stable_service = StableResourceService()
+            return [
+                stable_service._build_card(
+                    course_code=request.course_code,
+                    resource_type=resource_type,
+                    source_titles=source_titles,
+                )
+                for resource_type in resource_types
+            ]
         generated_map: dict[str, ResourceCard] = {}
         if not self._should_use_fast_single_generation(resource_types):
             generated = await self._generate_with_coordinator(request, resource_types)
@@ -735,8 +799,18 @@ class ResourceService:
         if len(source_titles) < 2:
             return card
 
-        course_title = source_titles[0]
-        section_title = source_titles[1]
+        course_label = ResourceService._course_label(request.course_code or "")
+        normalized_course_titles = {
+            course_label,
+            course_label.replace("（第4版）", "").strip(),
+            course_label.replace("(第4版)", "").strip(),
+        }
+        if source_titles[0] in normalized_course_titles:
+            course_title = source_titles[0]
+            section_title = source_titles[1]
+        else:
+            course_title = course_label
+            section_title = source_titles[0]
         content_markdown = ResourceService._build_quality_recovery_content(
             resource_type=card.resource_type,
             course_code=request.course_code or "",
@@ -2030,7 +2104,7 @@ class ResourceService:
             "ml_intro": "机器学习导论",
             "software_engineering_4th": "软件工程与实践（第4版）",
         }
-        return labels.get(course_code, course_code.replace("_", " ").title() if course_code else "学习课程")
+        return labels.get(course_code, course_code.replace("_", " ") if course_code else "学习课程")
 
     @staticmethod
     def _primary_focus_title(source_titles: list[str], course_code: str) -> str:
@@ -2145,8 +2219,8 @@ class ResourceService:
             "lecture_notes": f"{course_label} \u8bfe\u5802\u8bb2\u4e49",
             "mind_map": f"{course_label} \u77e5\u8bc6\u5bfc\u56fe",
             "mindmap": f"{course_label} \u77e5\u8bc6\u5bfc\u56fe",
-            "quiz_set": f"{course_label} \u968f\u5802\u7ec3\u4e60",
-            "practice_set": f"{course_label} \u968f\u5802\u7ec3\u4e60",
+            "quiz_set": f"{course_label} 分层练习",
+            "practice_set": f"{course_label} 分层练习",
             "ppt": f"{course_label} PPT \u8349\u6848",
             "course_overview": f"{course_label} \u8bfe\u7a0b\u603b\u89c8",
             "teaching_plan": f"{course_label} \u8bfe\u4ef6\u8349\u6848",

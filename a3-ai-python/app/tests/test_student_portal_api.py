@@ -417,6 +417,7 @@ def test_create_job_trial_feedback(monkeypatch) -> None:
     )
     response = client.post(
         "/api/v1/student-portal/job-learning/trial-feedback",
+        headers={"X-User-Id": "1001"},
         json={
             "user_id": 1001,
             "course_id": 401,
@@ -447,6 +448,7 @@ def test_list_job_trial_feedback(monkeypatch) -> None:
     )
     response = client.get(
         "/api/v1/student-portal/job-learning/trial-feedback",
+        headers={"X-User-Id": "1001"},
         params={"user_id": 1001, "course_id": 401, "limit": 10},
     )
 
@@ -487,6 +489,7 @@ def test_list_job_trial_feedback_rejects_another_user() -> None:
 def test_job_trial_feedback_validates_role_and_rating() -> None:
     response = client.post(
         "/api/v1/student-portal/job-learning/trial-feedback",
+        headers={"X-User-Id": "1001"},
         json={
             "participant_role": "anonymous",
             "identity_description": "测试人员",

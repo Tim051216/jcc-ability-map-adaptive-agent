@@ -548,7 +548,7 @@ class PlanService:
                     step_id=resolved_id,
                     status=status,
                     progress_note=progress.get("progress_note") if progress else None,
-                    last_action=progress.get("last_action") if progress else "pending",
+                    last_action=progress.get("last_action") if progress else "initialize",
                     updated_at=str(progress.get("updated_at")) if progress and progress.get("updated_at") else None,
                 )
             )

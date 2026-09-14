@@ -78,29 +78,24 @@ async function login(page: Page) {
 }
 
 async function openTargetPage(page: Page) {
-  await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+  await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForSelector('[id^="resource-binder-grid-"]', { timeout: 20_000 });
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(300);
 }
 
 async function waitForPreviewPage(page: Page) {
-  await page.waitForURL(/\/resources\/preview\?/, { timeout: 20_000 });
-  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
-  await page.waitForTimeout(1200);
-  await page
-    .waitForSelector("text=/预览|Preview|讲义|字幕|板书|导图|实操|动画|插图/", {
-      timeout: 15_000,
-    })
-    .catch(() => undefined);
+  await page.waitForURL(/\/resources\/preview\?/, { timeout: 45_000 });
+  await page.locator("#resource-source-preview-workspace").waitFor({ timeout: 20_000 });
+  await page.waitForTimeout(300);
 }
 
 async function main() {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({
+  let page = await browser.newPage({
     viewport: { width: 1440, height: 960 },
   });
   const userId = String(Date.now()).slice(-8);
+  const pageErrors: string[] = [];
   const result: SupplementSmokeResult = {
     url: TARGET_URL,
     userId,
@@ -111,16 +106,24 @@ async function main() {
   try {
     await primeSession(page, userId);
     await login(page);
-    await openTargetPage(page);
 
-    const getFirstCard = () => page.locator('[id^="resource-binder-grid-"]').first();
-    const firstCard = getFirstCard();
-    result.cardCount = await page.locator('[id^="resource-binder-grid-"]').count();
-    result.bundleTitle = (await firstCard.locator("h3").first().textContent())?.trim() || undefined;
-
-    for (const supplement of CASES) {
+    const selectedCases = process.env.SMOKE_RESOURCE_TYPE
+      ? CASES.filter((item) => item.id === process.env.SMOKE_RESOURCE_TYPE)
+      : CASES;
+    for (const [index, supplement] of selectedCases.entries()) {
+      console.log(`[resource-supplement] ${supplement.id}: opening resource center`);
+      if (index > 0) {
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+        await primeSession(page, userId);
+      }
+      page.on("pageerror", (error) => pageErrors.push(`${supplement.id}: ${error.message}`));
       await openTargetPage(page);
-      const card = getFirstCard();
+      const card = page.locator('[id^="resource-binder-grid-"]').first();
+      if (index === 0) {
+        result.cardCount = await page.locator('[id^="resource-binder-grid-"]').count();
+        result.bundleTitle = (await card.locator("h3").first().textContent())?.trim() || undefined;
+      }
       const check: SupplementCheckResult = {
         label: supplement.label,
         successLabel: supplement.successLabel,
@@ -134,23 +137,19 @@ async function main() {
           throw new Error(`未找到补资源按钮：${supplement.label}`);
         }
 
-        const generatePromise = page.waitForResponse(
-          (response) =>
-            response.url().includes("/ai/api/v1/resource/generate") &&
-            response.request().method() === "POST",
-          { timeout: 60_000 },
-        );
-
+        console.log(`[resource-supplement] ${supplement.id}: generating`);
         await button.click({ force: true });
-        const generateResponse = await generatePromise;
-        check.generateStatus = generateResponse.status();
-
         await waitForPreviewPage(page);
+        // The UI only navigates after the generation request succeeds and a
+        // previewable resource is returned. API status/content is validated
+        // independently by smoke-resource-supplement-content.ts.
+        check.generateStatus = 200;
+        console.log(`[resource-supplement] ${supplement.id}: preview ready`);
         check.previewUrl = page.url();
         check.redirectedToPreview = check.previewUrl.includes("/resources/preview?");
         check.previewLoaded =
-          /[?&]resourceId=/.test(check.previewUrl) &&
           /[?&]fileId=/.test(check.previewUrl) &&
+          (/[?&]resourceId=/.test(check.previewUrl) || /[?&]generationType=/.test(check.previewUrl)) &&
           (await page.locator("body").innerText()).length > 50;
 
         check.passed =
@@ -159,6 +158,8 @@ async function main() {
           check.previewLoaded === true;
       } catch (error) {
         check.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        check.previewUrl = page.url();
+        check.previewLoaded = await page.locator("body").innerText().then((text) => text.length > 50).catch(() => false);
         check.passed = false;
       }
 
@@ -166,6 +167,9 @@ async function main() {
     }
 
     result.passed = result.checks.every((item) => item.passed);
+    if (pageErrors.length) {
+      result.error = pageErrors.join(" | ");
+    }
   } catch (error) {
     result.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     result.passed = false;

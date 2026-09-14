@@ -3,13 +3,13 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from app.db.repositories.resource_repository import ResourceRepository
-from app.db.session import ai_data_session_factory
+from app.db.session import ai_data_session_factory as async_session_factory
 from app.schemas.resource import ResourceDownloadResponse, ResourcePreviewResponse
 
 
 class ResourceDeliveryService:
     async def get_preview(self, resource_id: int) -> ResourcePreviewResponse:
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             resource = await ResourceRepository().get_resource(session, resource_id)
             if resource is None:
                 raise HTTPException(status_code=404, detail="resource not found")
@@ -26,7 +26,7 @@ class ResourceDeliveryService:
 
     async def download_resource(self, *, user_id: int, resource_id: int) -> ResourceDownloadResponse:
         now = datetime.now(timezone.utc).isoformat()
-        async with ai_data_session_factory() as session:
+        async with async_session_factory() as session:
             repo = ResourceRepository()
             resource = await repo.get_resource(session, resource_id)
             if resource is None:

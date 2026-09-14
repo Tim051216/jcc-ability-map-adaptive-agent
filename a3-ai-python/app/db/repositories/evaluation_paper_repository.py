@@ -7,6 +7,12 @@ from app.db.models.evaluation_paper import EvaluationAnswer, EvaluationPaper
 class EvaluationPaperRepository:
     @staticmethod
     async def _realign_answer_sequence(session: AsyncSession) -> None:
+        bind = session.get_bind()
+        if bind is None or bind.dialect.name != "postgresql":
+            # SQLite/MySQL do not expose PostgreSQL's sequence helpers.  The
+            # caller already assigns a collision-free id from MAX(id), so no
+            # realignment is necessary for those local/demo backends.
+            return
         await session.execute(
             text(
                 """

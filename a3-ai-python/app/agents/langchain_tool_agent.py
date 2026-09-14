@@ -5,9 +5,19 @@ import re
 import asyncio
 from typing import Any
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI
+try:
+    from langchain.agents import AgentExecutor, create_tool_calling_agent
+    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    # LangChain 1.x removed these legacy helpers. The application already has
+    # a schema-planner fallback, so an environment drift must not prevent the
+    # API router (and every unrelated endpoint) from starting.
+    AgentExecutor = None  # type: ignore[assignment,misc]
+    create_tool_calling_agent = None  # type: ignore[assignment]
+    ChatPromptTemplate = None  # type: ignore[assignment,misc]
+    MessagesPlaceholder = None  # type: ignore[assignment,misc]
+    ChatOpenAI = None  # type: ignore[assignment,misc]
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -77,7 +87,15 @@ class LangChainToolCallingAgent:
         )
 
     def _build_native_agent_executor(self) -> AgentExecutor | None:
-        if not settings.llm_base_url or not settings.llm_api_key:
+        if (
+            AgentExecutor is None
+            or create_tool_calling_agent is None
+            or ChatPromptTemplate is None
+            or MessagesPlaceholder is None
+            or ChatOpenAI is None
+            or not settings.llm_base_url
+            or not settings.llm_api_key
+        ):
             return None
         try:
             llm = ChatOpenAI(

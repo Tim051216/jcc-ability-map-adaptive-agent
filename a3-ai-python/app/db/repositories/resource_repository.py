@@ -7,9 +7,9 @@ from app.db.models.generated_resource import GeneratedResource, ResourceFavorite
 class ResourceRepository:
     @staticmethod
     def _hide_raw_import_packages(stmt: Select[tuple[GeneratedResource]]) -> Select[tuple[GeneratedResource]]:
-        # The raw external import packages are temporary staging records.
-        # Business-facing resources are the canonical seeded resource ids (101-106).
-        return stmt.where(GeneratedResource.id.not_in(list(range(1, 13))))
+        # Imported packages are now normalized before persistence. Filtering by
+        # numeric ids hid valid resources in fresh databases where ids start at 1.
+        return stmt
 
     async def create_resource(
         self,
@@ -59,7 +59,6 @@ class ResourceRepository:
         stmt: Select[tuple[GeneratedResource]] = select(GeneratedResource).where(GeneratedResource.user_id == user_id)
         count_stmt = select(func.count()).select_from(GeneratedResource).where(GeneratedResource.user_id == user_id)
         stmt = self._hide_raw_import_packages(stmt)
-        count_stmt = count_stmt.where(GeneratedResource.id.not_in(list(range(1, 13))))
         if course_code:
             stmt = stmt.where(GeneratedResource.course_code == course_code)
             count_stmt = count_stmt.where(GeneratedResource.course_code == course_code)

@@ -21,6 +21,7 @@ class AgentRuntimeSummaryService:
                 filter_names = AgentRegistryService.expand_filter_names(agent_name)
                 items, _ = await AgentRuntimeRepository().list_logs(
                     session,
+                    agent_name=agent_name,
                     level=level,
                 )
         except (SQLAlchemyError, OSError) as exc:

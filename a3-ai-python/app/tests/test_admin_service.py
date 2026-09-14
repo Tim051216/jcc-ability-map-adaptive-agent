@@ -336,10 +336,10 @@ async def test_list_agent_status_merges_registry_with_runtime_logs(monkeypatch) 
     response = await AdminService().list_agent_status()
 
     assert response.total == 2
-    assert response.items[0].agent_name == "planner_agent"
+    assert response.items[0].agent_name == "learning_planning_agent"
     assert response.items[0].status_source == "runtime"
     assert response.items[0].source_path == "agents/nodes/planner_agent.py"
-    assert response.items[1].agent_name == "profile_builder_agent"
+    assert response.items[1].agent_name == "profile_agent"
     assert response.items[1].latest_status == "unreported"
     assert response.items[1].status_source == "registry"
 

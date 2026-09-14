@@ -310,6 +310,7 @@ def test_resource_routes_are_registered_on_main_api_router() -> None:
 
 
 def test_favorite_flow_persists_across_requests() -> None:
+    test_user_id = 990001
     ResourceManagementService.register_resource(
         {
             "id": 9,
@@ -331,11 +332,11 @@ def test_favorite_flow_persists_across_requests() -> None:
 
     added = client.post(
         "/api/v1/resource/v2/favorites",
-        json={"user_id": 1, "resource_id": 9, "category": "默认分类"},
+        json={"user_id": test_user_id, "resource_id": 9, "category": "默认分类"},
     )
     assert added.status_code == 200
 
-    listed = client.get("/api/v1/resource/v2/favorites/list?user_id=1")
+    listed = client.get(f"/api/v1/resource/v2/favorites/list?user_id={test_user_id}")
     assert listed.status_code == 200
     assert listed.json()["total"] == 1
     assert listed.json()["items"][0]["id"] == 9
@@ -344,7 +345,7 @@ def test_favorite_flow_persists_across_requests() -> None:
 
     updated = client.put(
         "/api/v1/resource/v2/favorites/9",
-        json={"user_id": 1, "category": "重点复习", "notes": "保留这份"},
+        json={"user_id": test_user_id, "category": "重点复习", "notes": "保留这份"},
     )
     assert updated.status_code == 200
     assert updated.json()["category"] == "重点复习"
@@ -383,6 +384,7 @@ async def test_generation_results_become_searchable_and_stat_visible(monkeypatch
     )
 
     service = ResourceGenerationService()
+    service._db_available = False
     created = await service.create_generation_task(
         ResourceGenerationTaskCreate(
             task_name="递归资源",
@@ -394,14 +396,17 @@ async def test_generation_results_become_searchable_and_stat_visible(monkeypatch
         )
     )
 
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
-
     fetched = await service.get_task_status(created.id)
+    for _ in range(200):
+        if fetched.task_status not in (1, 2):
+            break
+        await asyncio.sleep(0.01)
+        fetched = await service.get_task_status(created.id)
     assert fetched.task_status == 3
     assert fetched.completed_resources == 1
 
     management = ResourceManagementService()
+    management._db_available = False
     search_result = await management.search_resources("子问题", student_id=1001)
     assert search_result.total == 1
     assert search_result.items[0].resource_name == "递归讲义"
@@ -433,6 +438,7 @@ async def test_generation_task_marks_partial_failure(monkeypatch) -> None:
     )
 
     service = ResourceGenerationService()
+    service._db_available = False
     created = await service.create_generation_task(
         ResourceGenerationTaskCreate(
             task_name="partial",
@@ -443,10 +449,12 @@ async def test_generation_task_marks_partial_failure(monkeypatch) -> None:
         )
     )
 
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
-
     fetched = await service.get_task_status(created.id)
+    for _ in range(200):
+        if fetched.task_status not in (1, 2):
+            break
+        await asyncio.sleep(0.01)
+        fetched = await service.get_task_status(created.id)
     assert fetched.task_status == 4
     assert fetched.completed_resources == 1
     assert fetched.failed_resources == 1

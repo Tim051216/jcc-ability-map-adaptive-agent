@@ -5,9 +5,15 @@ import re
 import asyncio
 from typing import Any
 
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+try:
+    from langchain.agents import AgentExecutor, create_react_agent
+    from langchain_core.prompts import PromptTemplate
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    AgentExecutor = None  # type: ignore[assignment,misc]
+    create_react_agent = None  # type: ignore[assignment]
+    PromptTemplate = None  # type: ignore[assignment,misc]
+    ChatOpenAI = None  # type: ignore[assignment,misc]
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -167,7 +173,14 @@ class ReActConversationAgent:
         )
 
     def _build_native_react_executor(self) -> AgentExecutor | None:
-        if not settings.llm_base_url or not settings.llm_api_key:
+        if (
+            AgentExecutor is None
+            or create_react_agent is None
+            or PromptTemplate is None
+            or ChatOpenAI is None
+            or not settings.llm_base_url
+            or not settings.llm_api_key
+        ):
             return None
         try:
             llm = ChatOpenAI(

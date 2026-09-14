@@ -56,7 +56,7 @@ def resolve_current_user_id(
     authorization: str | None = None,
     query_user_id: int | None = None,
     access_token: str | None = None,
-    allow_local_default: bool = True,
+    allow_local_default: bool = False,
 ) -> int:
     # 本地演示场景下优先使用前端显式传入的用户身份，便于切换多名 demo 用户。
     bearer_value = authorization
@@ -89,6 +89,7 @@ async def get_current_user_id(
         x_user_id=x_user_id,
         authorization=authorization,
         query_user_id=user_id,
+        allow_local_default=True,
     )
 
 

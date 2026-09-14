@@ -26,18 +26,18 @@ EXTRACTION_PROMPT = """你是学习画像信息提取助手。
 6. learning_habit
 
 输出 JSON：
-{
+{{
   "extracted_info": [
-    {
+    {{
       "dimension": "维度代码",
       "info_key": "信息字段",
       "info_value": "信息内容",
       "confidence": 0.0
-    }
+    }}
   ],
   "missing_dimensions": ["未覆盖维度"],
   "completeness": 0
-}
+}}
 
 对话：
 {conversation}

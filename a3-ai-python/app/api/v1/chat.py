@@ -182,7 +182,12 @@ async def list_chat_tickets(
     status: str | None = None,
 ) -> ChatTicketListResponse:
     service = ChatTicketService()
-    return await service.list_tickets(user_id=user_id, course_id=course_id, course_code=course_code, status=status)
+    filters = {"user_id": user_id, "status": status}
+    if course_id is not None:
+        filters["course_id"] = course_id
+    if course_code is not None:
+        filters["course_code"] = course_code
+    return await service.list_tickets(**filters)
 
 
 @router.get("/tickets/summary", response_model=ChatTicketSummaryResponse)

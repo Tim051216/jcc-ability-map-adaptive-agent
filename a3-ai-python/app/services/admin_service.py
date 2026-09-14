@@ -255,7 +255,7 @@ class AdminService:
 
         try:
             async with async_session_factory() as session:
-                logs, _ = await AgentRuntimeRepository().list_logs(session)
+                logs, _ = await AgentRuntimeRepository().list_logs(session, agent_name=None, level=None)
         except (SQLAlchemyError, OSError) as exc:
             if should_use_admin_demo_data(exc):
                 return AdminDemoStore.list_agent_status()
@@ -283,11 +283,12 @@ class AdminService:
         seen_names: set[str] = set()
 
         for agent in discovered_agents:
-            runtime_item = grouped.get(agent["agent_name"])
+            canonical_name = AgentRegistryService.canonical_name(agent["agent_name"])
+            runtime_item = grouped.get(canonical_name)
             if runtime_item is None:
                 items.append(
                     AgentStatusResponse(
-                        agent_name=agent["agent_name"],
+                        agent_name=canonical_name,
                         latest_status="unreported",
                         latest_message="尚未收到该智能体的运行时状态上报",
                         error_count=0,
@@ -303,7 +304,7 @@ class AdminService:
                 runtime_item.category = agent["category"]
                 runtime_item.source_path = agent["source_path"]
                 items.append(runtime_item)
-            seen_names.add(agent["agent_name"])
+            seen_names.add(canonical_name)
 
         for agent_name, runtime_item in grouped.items():
             if agent_name in seen_names:
@@ -328,7 +329,11 @@ class AdminService:
         try:
             async with async_session_factory() as session:
                 filter_names = AgentRegistryService.expand_filter_names(agent_name)
-                items, _ = await AgentRuntimeRepository().list_logs(session, level=level)
+                items, _ = await AgentRuntimeRepository().list_logs(
+                    session,
+                    agent_name=agent_name,
+                    level=level,
+                )
         except (SQLAlchemyError, OSError) as exc:
             if should_use_admin_demo_data(exc):
                 return AdminDemoStore.list_agent_logs(agent_name=agent_name, level=level)
@@ -823,12 +828,13 @@ class AdminService:
     def _normalize_agent_message(agent_name: str | None, message: str | None) -> str | None:
         if not message:
             return message
+        agent_name = AgentRegistryService.canonical_name(agent_name)
         if agent_name == "profile_agent":
             return "岗位学情诊断智能体运行正常，诊断上下文已同步。"
         if agent_name == "knowledge_tutoring_agent":
             return "知识检索与答疑智能体已完成路由、检索与基础问答。"
         if agent_name == "learning_planning_agent":
-            return "学习规划智能体已生成个性化学习路径。"
+            return "学习路径已生成，并同步到今日任务编排。"
         if agent_name == "resource_generation_agent":
             return "资源生成智能体已返回讲义、练习或导图等推荐结果。"
         if agent_name == "evaluation_feedback_agent":
@@ -839,6 +845,7 @@ class AdminService:
     def _normalize_agent_payload(agent_name: str | None, payload: dict | None) -> dict | None:
         if payload is None:
             return None
+        agent_name = AgentRegistryService.canonical_name(agent_name)
         normalized_payload = dict(payload)
         if agent_name == "resource_generation_agent" and "topic" in normalized_payload:
             normalized_payload["topic"] = "模型评估与过拟合"

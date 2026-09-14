@@ -648,6 +648,12 @@ class ResourceSourceFileService:
 
         if preview_mode != "unsupported":
             preview_url = self.PREVIEW_URL_TEMPLATE.format(file_id=source_file.id)
+            if self._storage.is_enabled() and source_file.is_inline_previewable:
+                try:
+                    preview_url = self._build_source_storage_url(source_file)
+                    open_url = preview_url
+                except (OSError, RuntimeError, ValueError):
+                    pass
         return ResourceSourceFileRef(
             file_id=source_file.id,
             display_name=self._normalize_text(source_file.display_name),

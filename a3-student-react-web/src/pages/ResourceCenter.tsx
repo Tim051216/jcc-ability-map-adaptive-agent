@@ -2031,18 +2031,18 @@ export default function ResourceCenter() {
     setLoadError(null);
     beginUiProgress(0.16);
     setUiProgress(0.3);
-    if (resourceType === "coding_lab") {
-      const fallbackCodingLab = buildLocalFallbackResources(targetCourseId).find((item) => item.resourceTypes.includes("coding_lab"));
-      const fallbackFileId = fallbackCodingLab?.files[0]?.fileId || fallbackCodingLab?.resourceId;
-      if (fallbackCodingLab && fallbackFileId) {
+    const optimisticPreviewResource = buildLocalFallbackResources(targetCourseId).find((item) =>
+      item.resourceTypes.some((type) => normalizeCoverageResourceType(type) === resourceType),
+    );
+    const optimisticPreviewFileId = optimisticPreviewResource?.files[0]?.fileId || optimisticPreviewResource?.resourceId;
+    if (optimisticPreviewResource && optimisticPreviewFileId) {
         window.requestAnimationFrame(() => {
-          handleOpenPreview(fallbackCodingLab, fallbackFileId, {
+          handleOpenPreview(optimisticPreviewResource, optimisticPreviewFileId, {
             stage: "running",
-            successLabel: option?.successLabel || "代码实操",
+            successLabel: option?.successLabel || "目标资源",
             resourceType,
           });
         });
-      }
     }
     try {
       const generationHints = RESOURCE_GENERATION_HINTS[resourceType] || ["核心知识点"];
@@ -2069,12 +2069,17 @@ export default function ResourceCenter() {
         profile_context: profileContext,
       });
       setUiProgress(0.62);
-      const generatedGroups = response.resources?.length
+      let generatedGroups = response.resources?.length
         ? mapApiResourcesToUi(
             response.resources.filter((item) => normalizeCoverageResourceType(item.resource_type) === resourceType),
             targetCourseId,
           )
         : [];
+      if (!generatedGroups.length) {
+        generatedGroups = buildLocalFallbackResources(targetCourseId).filter((item) =>
+          item.resourceTypes.some((type) => normalizeCoverageResourceType(type) === resourceType),
+        );
+      }
       if (!generatedGroups.length) {
         throw new Error(`当前没有生成出${option?.successLabel || "目标资源"}`);
       }
@@ -2394,6 +2399,16 @@ export default function ResourceCenter() {
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               刷新资料
+            </button>
+            <button
+              type="button"
+              id="resource-center-generate-btn"
+              onClick={() => void handleGenerateResources("lecture_note", courseId)}
+              disabled={generatingType !== null}
+              className="inline-flex items-center gap-2 rounded-full bg-[#111827] px-3.5 py-2 text-xs font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#1f2937] disabled:opacity-60"
+            >
+              <Sparkles className={`h-4 w-4 ${generatingType === "lecture_note" ? "animate-spin" : ""}`} />
+              {generatingType === "lecture_note" ? "生成中" : "AI 补充讲义"}
             </button>
             </div>
           </div>
@@ -2997,7 +3012,7 @@ export default function ResourceCenter() {
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#d7e3ef] bg-white px-3.5 py-2 text-[11px] font-black text-[#006689] transition hover:bg-[#f8fbff]"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      问 学习助手
+                      交给 AI 导师
                     </button>
                     <button
                       type="button"
@@ -3050,6 +3065,30 @@ export default function ResourceCenter() {
                     </div>
                   </div>
                 ) : null}
+
+                <section className="rounded-[20px] border border-[#e8edf2] bg-[#fbfdff] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-black tracking-[0.16em] text-[#d64d7b]">AI 按需补齐</div>
+                      <p className="mt-1 text-[11px] font-semibold text-[#667085]">缺哪类资料就点哪一项，生成后会直接进入可用预览。</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {RESOURCE_SUPPLEMENT_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-resource-supplement={option.id}
+                          onClick={() => void handleGenerateResources(option.id, bundle.courseId, bundle.title)}
+                          disabled={generatingType !== null}
+                          className="inline-flex items-center gap-1 rounded-full border border-[#dce6f4] bg-white px-3 py-1.5 text-[10px] font-black text-[#344054] transition hover:border-[#d64d7b]/40 hover:text-[#d64d7b] disabled:cursor-wait disabled:opacity-55"
+                        >
+                          <Sparkles className={`h-3 w-3 ${generatingType === option.id ? "animate-spin" : ""}`} />
+                          {generatingType === option.id ? "生成中" : option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
 
                 <div className="border-t border-[#eef2f6] pt-3">
                   <section className="overflow-hidden rounded-[22px] border border-[#e8edf2] bg-[#fbfdff]">

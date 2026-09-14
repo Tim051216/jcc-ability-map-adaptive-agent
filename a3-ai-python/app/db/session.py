@@ -25,6 +25,10 @@ def _build_engine(dsn: str) -> AsyncEngine:
             dsn,
             future=True,
             echo=False,
+            connect_args={"timeout": 30},
+            pool_size=20,
+            max_overflow=40,
+            pool_timeout=10,
         )
 
     host = (parsed.hostname or "").strip().lower()
@@ -124,6 +128,8 @@ async def ensure_sqlite_schema() -> None:
     if _sqlite_schema_ready:
         return
     async with sqlite_engine.begin() as connection:
+        await connection.execute(text("PRAGMA journal_mode=WAL"))
+        await connection.execute(text("PRAGMA busy_timeout=30000"))
         await connection.run_sync(Base.metadata.create_all)
     await _ensure_sqlite_chat_session_columns()
     await _ensure_sqlite_job_learning_columns()

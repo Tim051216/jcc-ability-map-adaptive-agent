@@ -188,6 +188,13 @@ class ResourceGenerationService:
             cached.update({k: v for k, v in updates.items() if k != "status_name"})
             cached["update_time"] = datetime.now()
 
+        terminal_status = updates.get("task_status") in {3, 4, 5}
+        if not terminal_status:
+            latest = self.task_cache.get(task_id)
+            if latest is not None:
+                await self._publish_task_event(task_id, ResourceGenerationTaskResponse(**latest))
+            return
+
         if not self._db_available:
             return
         try:
@@ -398,6 +405,10 @@ class ResourceGenerationService:
         return resource_id
 
     async def get_task_status(self, task_id: int) -> ResourceGenerationTaskResponse:
+        cached = self.task_cache.get(task_id)
+        if cached is not None:
+            return ResourceGenerationTaskResponse(**cached)
+
         if self._db_available:
             try:
                 async with async_session_factory() as session:

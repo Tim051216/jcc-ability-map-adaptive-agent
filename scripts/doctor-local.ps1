@@ -88,6 +88,7 @@ if ($RequireServices) {
         @{ Name = "admin web"; Port = 3004 },
         @{ Name = "gateway"; Port = 10010 },
         @{ Name = "learning service"; Port = 8090 },
+        @{ Name = "resource service"; Port = 8086 },
         @{ Name = "AI service"; Port = 18080 },
         @{ Name = "MySQL"; Port = 13306 },
         @{ Name = "PostgreSQL"; Port = 15432 },

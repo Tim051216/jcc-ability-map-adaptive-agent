@@ -3948,7 +3948,7 @@ export default function ResourceSourcePreview() {
 
   if (loading && !resource && !selectedFile) {
     return (
-      <div className="mx-auto max-w-[1440px] px-4 py-10 md:px-8">
+      <div id="resource-source-preview-workspace" className="mx-auto max-w-[1440px] px-4 py-10 md:px-8">
         <LoadingBlock title="正在载入资源预览..." />
       </div>
     );
@@ -4002,7 +4002,7 @@ export default function ResourceSourcePreview() {
 
   if (isSpecialGeneratedPreview) {
     return (
-      <div className="h-screen overflow-hidden bg-[#f6f8fb] text-[#111827]">
+      <div id="resource-source-preview-workspace" className="h-screen overflow-hidden bg-[#f6f8fb] text-[#111827]">
         <div className="flex h-full flex-col">
           <header className="shrink-0 border-b border-[#D4DCE6] bg-white">
             <div className="flex min-h-[46px] items-center justify-between gap-3 px-3 md:px-5">
@@ -4187,7 +4187,7 @@ export default function ResourceSourcePreview() {
 
   if (isLectureHandoutShowcasePage) {
     return (
-      <div className="min-h-screen overflow-x-hidden bg-[#f6f8fb]">
+      <div id="resource-source-preview-workspace" className="min-h-screen overflow-x-hidden bg-[#f6f8fb]">
         <div className="mx-auto max-w-[1600px] px-3 pb-6 pt-3 md:px-5">
           <section className="rounded-[16px] border border-[#dfe7ef] bg-white/94 px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] backdrop-blur">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -4339,7 +4339,7 @@ export default function ResourceSourcePreview() {
 
   if (isGeneratedShowcasePage) {
     return (
-      <div className="min-h-screen overflow-x-hidden bg-[#f6f8fb]">
+      <div id="resource-source-preview-workspace" className="min-h-screen overflow-x-hidden bg-[#f6f8fb]">
         <div className="mx-auto max-w-[1600px] px-3 pb-6 pt-3 md:px-5">
           <section className="relative overflow-hidden rounded-[16px] border border-[#dfe7ef] bg-white/94 px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
             <div className="relative">
@@ -4619,7 +4619,7 @@ export default function ResourceSourcePreview() {
 
   if (isCodingLabPage) {
     return (
-      <div className="h-screen overflow-hidden bg-[#E8EDF3]">
+      <div id="resource-source-preview-workspace" className="h-screen overflow-hidden bg-[#E8EDF3]">
         <div className="mx-auto flex h-full max-w-[1500px] flex-col gap-3 px-3 py-3 md:px-4">
           <section className="shrink-0 rounded-lg border border-[#D7E0EA] bg-white px-4 py-3">
             <div className="flex items-center justify-between gap-3">
@@ -4661,7 +4661,7 @@ export default function ResourceSourcePreview() {
 
   if (isSpecialGeneratedPreview) {
     return (
-      <div className="h-screen overflow-hidden bg-[#F3F5F8] text-[#111827]">
+      <div id="resource-source-preview-workspace" className="h-screen overflow-hidden bg-[#F3F5F8] text-[#111827]">
         <div className="flex h-full flex-col">
           <header className="shrink-0 border-b border-[#D4DCE6] bg-white">
             <div className="flex min-h-[52px] items-center justify-between gap-3 px-4 md:px-6">
@@ -4723,7 +4723,7 @@ export default function ResourceSourcePreview() {
 
   if (!isShowcaseIllustrationPage) {
     return (
-      <div className="h-screen overflow-hidden bg-[#F3F5F8] text-[#111827]">
+      <div id="resource-source-preview-workspace" className="h-screen overflow-hidden bg-[#F3F5F8] text-[#111827]">
         <div className="flex h-full flex-col">
           <header className="shrink-0 border-b border-[#D4DCE6] bg-white">
             <div className="flex min-h-[58px] items-center justify-between gap-3 px-4 md:px-6">
@@ -4980,7 +4980,7 @@ export default function ResourceSourcePreview() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fff8fb_0%,#fffdfd_18%,#f8fafc_100%)]">
+    <div id="resource-source-preview-workspace" className="min-h-screen bg-[linear-gradient(180deg,#fff8fb_0%,#fffdfd_18%,#f8fafc_100%)]">
       <div className={`mx-auto space-y-4 px-4 pb-8 pt-4 md:px-8 ${isShowcaseIllustrationPage || isGeneratedTextShowcasePage ? "max-w-[1600px]" : "max-w-[1480px]"}`}>
         <section className={`overflow-hidden rounded-[30px] border border-[#f3dbe6] bg-white shadow-[0_24px_72px_rgba(251,114,153,0.08)] ${isShowcaseIllustrationPage || isGeneratedTextShowcasePage ? "bg-[linear-gradient(135deg,#fffdfd_0%,#fff7fb_42%,#f7fbff_100%)]" : ""}`}>
           <div className={`grid gap-0 ${isShowcaseIllustrationPage || isGeneratedTextShowcasePage ? "xl:grid-cols-[minmax(0,1fr)_240px]" : "xl:grid-cols-[minmax(0,1fr)_320px]"}`}>

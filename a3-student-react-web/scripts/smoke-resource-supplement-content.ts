@@ -25,7 +25,7 @@ const CASES: ContentCase[] = [
   {
     resourceType: "coding_lab",
     label: "代码实操",
-    requiredSnippets: ["## 任务目标", "## 前置准备", "## 交付物要求", "## 复盘提示"],
+    requiredSnippets: ["## 题目描述", "## 输入说明", "## 起始代码", "## 验收标准"],
   },
   {
     resourceType: "visual_illustration",
@@ -45,7 +45,7 @@ const CASES: ContentCase[] = [
   {
     resourceType: "ocr_notes",
     label: "OCR 板书",
-    requiredSnippets: ["## 板书主线", "## 课堂速记整理", "## 复习提醒"],
+    requiredSnippets: ["## OCR 识别文本", "## 黑板布局还原", "## 结构化板书笔记", "## 课后复盘动作"],
   },
 ];
 

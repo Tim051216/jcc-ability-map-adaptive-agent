@@ -46,7 +46,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-full-local.ps1 -NoOpenPages
 ```
 
-该脚本负责启动 Docker 依赖、等待 MySQL 真正就绪、导入数据库、启动 Java 学习服务、Python AI 服务、网关、学生端和管理端。不要同时重复启动相同端口的服务。
+该脚本负责启动 Docker 依赖、等待 MySQL 真正就绪、导入数据库、启动 Java 学习服务与课程资源服务、Python AI 服务、网关、学生端和管理端。不要同时重复启动相同端口的服务。
 
 ### 4. 验证结果
 
@@ -60,6 +60,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\doctor-local.ps1 -
 - 管理端：<http://127.0.0.1:3004>
 - 网关：<http://127.0.0.1:10010>
 - 学习服务：<http://127.0.0.1:8090>
+- 课程资源服务：<http://127.0.0.1:8086>
 - AI API 文档：<http://127.0.0.1:18080/docs>
 - Milvus 健康检查：<http://127.0.0.1:19091/healthz>
 

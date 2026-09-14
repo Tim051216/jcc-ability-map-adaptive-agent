@@ -478,6 +478,10 @@ async def test_evaluation_paper_repository_returns_only_wrong_answers(db_session
     repository = EvaluationPaperRepository()
     now = "2026-05-09T17:00:00+00:00"
 
+    # Local demo submissions use SQLite; PostgreSQL sequence maintenance must
+    # be a safe no-op on that backend.
+    await repository._realign_answer_sequence(db_session)
+
     paper = await repository.create_paper(
         db_session,
         user_id=1001,
