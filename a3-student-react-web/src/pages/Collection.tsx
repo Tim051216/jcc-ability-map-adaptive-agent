@@ -224,7 +224,7 @@ function getFavoriteTutorSessions(): FavoriteTutorSession[] {
     return history
       .map((item) => ({
         ...item,
-        title: titleMap[item.sessionId] || item.title || "AI 导师会话",
+        title: titleMap[item.sessionId] || item.title || "学习助手会话",
       }))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   } catch {
@@ -304,7 +304,7 @@ function buildClassroomAssetPreviewState(asset: ClassroomFavoriteAsset) {
         asset.kind === "mindmap"
           ? "建议先顺着导图主干看结构，再按分支顺序回到课堂继续学习。"
           : asset.kind === "practice"
-            ? "建议先完成练习，再结合解析和 AI 导师继续补薄弱点。"
+            ? "建议先完成练习，再结合解析和 学习助手继续补薄弱点。"
             : "建议先通读讲义主线，再围绕关键概念继续提问和展开。",
       source_file_count: 1,
       source_files: [previewFile],
@@ -787,7 +787,7 @@ export default function Collection() {
       courseId: session.courseId,
       mode: "default",
       title: session.title,
-      subtitle: "从学习收藏里继续回到这条 AI 导师会话。",
+      subtitle: "从学习收藏里继续回到这条 学习助手会话。",
       query: session.preview,
     });
   };
@@ -827,7 +827,7 @@ export default function Collection() {
               </div>
               <h1 className="mt-3 text-[24px] font-black tracking-[-0.05em] text-[#171c22] lg:text-[32px]">把要回看的内容收成一张复习清单</h1>
               <p className="mt-2 max-w-2xl text-[13px] leading-7 text-[#564145]">
-                课程、资源、课堂生成内容和 AI 导师会话会沉淀到同一个列表里。这里不只是收藏夹，而是你下次继续学习时的入口。
+                课程、资源、课堂生成内容和 学习助手会话会沉淀到同一个列表里。这里不只是收藏夹，而是你下次继续学习时的入口。
               </p>
               <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#0f172a] px-3 py-1.5 text-[10px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]">
                 <span className="relative flex h-2.5 w-2.5 items-center justify-center">
@@ -1048,9 +1048,9 @@ export default function Collection() {
               <div className="space-y-4">
                 <div className="flex items-end justify-between gap-4">
                   <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">AI 导师收藏</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">学习助手收藏</div>
                     <h2 className="mt-1 text-2xl font-black tracking-[-0.04em] text-[#171c22]">值得回看的问答会话</h2>
-                    <p className="mt-1 text-sm text-[#5b6574]">这里会沉淀你标记过的重要 AI 导师会话，方便后续继续追问。</p>
+                    <p className="mt-1 text-sm text-[#5b6574]">这里会沉淀你标记过的重要 学习助手会话，方便后续继续追问。</p>
                   </div>
                   <div className="rounded-full bg-[#f4f6f8] px-3 py-1 text-xs font-bold text-[#5b6574]">
                     共 {filteredTutorSessions.length} 条

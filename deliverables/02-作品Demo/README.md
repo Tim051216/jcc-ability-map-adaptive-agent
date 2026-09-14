@@ -4,8 +4,9 @@
 
 ## 地址登记
 
-- 正式 Demo：待团队补充可持续访问的 HTTPS 地址；
-- 星辰 Agent：待团队补充体验地址或编号；
+- 正式 Demo：星辰公开体验地址待平台审核生成；
+- 星辰 Agent：Agent ID `5816885`，已于 2026-09-14 提交讯飞星辰/讯飞星火渠道审核；
+- 发布管理详情：<https://agent.xfyun.cn/agentbuilder/management/release/detail/5816885>（账号内页面，不是公开体验地址）；
 - 本地验收：`http://127.0.0.1:3002/annotation-agent`（兼容入口为 `/ai-annotation-agent`）。
 
 `localhost`/`127.0.0.1` 仅用于开发和现场兜底，不能替代正式公网 Demo。具体启动命令、三分钟演示脚本和反馈记录边界见 `AI数据标注实训智能体-Demo信息.md`。其他历史页面不应写入本目录的正式地址登记。

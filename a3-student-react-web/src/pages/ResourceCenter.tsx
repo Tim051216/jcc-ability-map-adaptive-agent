@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -276,7 +276,7 @@ function buildGeneratedResourcePreviewState(
           item.kind === "mindmap"
             ? "建议先看导图主干，再按分支顺序回到课堂或讲义补细节。"
             : item.kind === "practice"
-              ? "建议先做题，再结合解析与 AI 导师定位薄弱点。"
+              ? "建议先做题，再结合解析与 学习助手定位薄弱点。"
               : "建议先通读讲义主线，再继续追问关键概念和易错点。",
         source_file_count: 0,
         source_files: [],
@@ -607,7 +607,7 @@ function buildGeneratedIllustrationPreview(courseId: string, title: string, sour
       <rect x="720" y="540" width="236" height="16" rx="8" fill="${palette.line}" opacity="0.22"/>
       <rect x="1002" y="506" width="182" height="16" rx="8" fill="${palette.soft}"/>
       <rect x="1002" y="540" width="182" height="16" rx="8" fill="${palette.line}" opacity="0.22"/>
-      <text x="156" y="596" font-size="18" font-family="Arial, sans-serif" fill="#475467">推荐用途：讲义配图、课堂讲解、答辩结构说明、AI 导师流程解释</text>
+      <text x="156" y="596" font-size="18" font-family="Arial, sans-serif" fill="#475467">推荐用途：讲义配图、课堂讲解、答辩结构说明、学习助手流程解释</text>
       <rect x="124" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
       <rect x="336" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
       <rect x="548" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
@@ -618,7 +618,7 @@ function buildGeneratedIllustrationPreview(courseId: string, title: string, sour
       <rect x="356" y="734" width="110" height="10" rx="5" fill="${palette.line}" opacity="0.55"/>
       <rect x="568" y="734" width="110" height="10" rx="5" fill="${palette.line}" opacity="0.55"/>
       <rect x="760" y="684" width="484" height="86" rx="22" fill="#f8fafc"/>
-      <text x="786" y="718" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="${palette.accent}">插图投放位：讲义页 / PPT 页 / AI 导师页</text>
+      <text x="786" y="718" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="${palette.accent}">插图投放位：讲义页 / PPT 页 / 学习助手页</text>
       <text x="786" y="748" font-size="15" font-family="Arial, sans-serif" fill="#667085">同一张图会裁成不同版式，保证课堂、资源页和答辩展示观感统一。</text>
     </svg>
   `);
@@ -750,10 +750,10 @@ function buildAiPptDraft(topicInput: string, sourceText: string, courseTitle: st
       subtitle: "把 PPT 继续转成学习资源闭环",
       bullets: ["导出 .pptx 后可用于课堂讲解和答辩展示", "在线幻灯片保留每页讲稿与配图提示词", "后端可替换为阿里通义千问 + 通义万相正式生成链路"],
       accent,
-      speakerNote: "收束到系统价值：不是单页生成，而是能进入资源中心、课堂和 AI 导师的完整闭环。",
+      speakerNote: "收束到系统价值：不是单页生成，而是能进入资源中心、课堂和 学习助手的完整闭环。",
       illustration: {
         title: "从课件到学习闭环",
-        caption: "PPT、讲义、练习、AI 导师统一承接",
+        caption: "PPT、讲义、练习、学习助手统一承接",
         type: "summary" as const,
       },
     },
@@ -1131,7 +1131,7 @@ function buildFallbackExtendedReadingMarkdown(courseId: string) {
     "## 6. 场景案例",
     isVueCourse
       ? "以资源中心页面为例：资料列表、文件预览、AI 补齐、收藏状态和学习建议都不是孤立按钮。它们共同构成一个学习资料工作流，因此需要统一资源模型、统一跳转参数、统一预览页，而不是每个入口各写一套页面。"
-      : "以课程资源页为例：同一份知识可以出现在讲义、练习、导图、板书和 AI 导师对话里。系统需要保证这些入口指向同一学习目标，否则学生会看到很多碎片，却无法形成主线。",
+      : "以课程资源页为例：同一份知识可以出现在讲义、练习、导图、板书和 学习助手对话里。系统需要保证这些入口指向同一学习目标，否则学生会看到很多碎片，却无法形成主线。",
     "",
     "## 7. 对比理解",
     "| 做法 | 短期效果 | 长期风险 | 推荐处理 |",
@@ -2151,7 +2151,7 @@ export default function ResourceCenter() {
       courseId: resource.courseId,
       mode: "default",
       title: `${resource.title} · 资料精读`,
-      subtitle: "AI 导师会结合当前资源页上下文继续讲解、提炼重点和安排下一步。",
+      subtitle: "学习助手会结合当前资源页上下文继续讲解、提炼重点和安排下一步。",
       resourceId: Number(resource.resourceId) || undefined,
       resourceTitle: resource.title,
       resourceType: resource.rawResource?.resource_type || resource.resourceTypes[0],
@@ -2166,7 +2166,7 @@ export default function ResourceCenter() {
       courseId: bundle.courseId,
       mode: "default",
       title: `${bundle.title} · 课程资料工作台`,
-      subtitle: "AI 导师会结合当前课程已有资料和缺口，继续讲解、补充和安排下一步。",
+      subtitle: "学习助手会结合当前课程已有资料和缺口，继续讲解、补充和安排下一步。",
       resourceId: Number(bundle.primaryResource.resourceId) || undefined,
       resourceTitle: bundle.title,
       resourceType: bundle.primaryResource.rawResource?.resource_type || bundle.resourceTypes[0],
@@ -2216,7 +2216,7 @@ export default function ResourceCenter() {
       query: `请按照这份 PPT 讲解视频脚本继续讲解，并优先按分镜顺序展开：\n\n${item.explanationVideo.transcript}`,
       quickPrompts: ["按分镜讲一遍", "压缩成 1 分钟", "生成答辩口播稿"],
     });
-    setToastMessage("AI 导师已接入 PPT 讲解视频脚本。");
+    setToastMessage("学习助手已接入 PPT 讲解视频脚本。");
   };
 
   const handleAiPptFileUpload = async (file?: File | null) => {
@@ -2997,7 +2997,7 @@ export default function ResourceCenter() {
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#d7e3ef] bg-white px-3.5 py-2 text-[11px] font-black text-[#006689] transition hover:bg-[#f8fbff]"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      问 AI 导师
+                      问 学习助手
                     </button>
                     <button
                       type="button"

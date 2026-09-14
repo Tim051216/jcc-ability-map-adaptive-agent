@@ -18,13 +18,13 @@ const buildDir = path.join(workspaceDir, ".ai-annotation-ppt-build");
 const outputDir = path.join(workspaceDir, "deliverables", "03-作品说明");
 // Revision output used for the validation pass. After the finalizer succeeds,
 // the validated bytes are copied to the stable handoff filename.
-const finalPath = path.join(outputDir, "AI数据标注实训智能体-演示稿-v7.pptx");
-const stablePath = path.join(outputDir, "AI数据标注实训智能体-演示稿.pptx");
+const finalPath = path.join(outputDir, "作品编码600370-答辩PPT-最新版.pptx");
+const stablePath = finalPath;
 const candidatePath = path.join(buildDir, "candidate.pptx");
-const receiptPath = path.join(buildDir, "AI数据标注实训智能体-演示稿-v7.validation.json");
+const receiptPath = path.join(buildDir, "作品编码600370-答辩PPT-最新版.validation.json");
 // Keep the deck self-contained by embedding the latest checked-in UI capture.
 // The dated capture is optional and may not exist on a clean checkout.
-const screenshotPath = path.join(workspaceDir, "output", "playwright", "ai-annotation-agent-with-sketch-20260913.png");
+const screenshotPath = path.join(workspaceDir, "a3-student-react-web", "output", "playwright", "ai-annotation-task-transformer-desktop.png");
 
 await fs.mkdir(buildDir, { recursive: true });
 await fs.mkdir(outputDir, { recursive: true });
@@ -123,15 +123,17 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
   const slide = p.slides.add();
   slide.background.fill = C.white;
   addRule(slide, 72, 86, 210, C.accent, 4);
-  addText(slide, "AI 数据标注实训智能体", 72, 138, 900, 74, { fontSize: 50, bold: true, color: C.ink });
-  addText(slide, "人工智能技术应用专业群项目说明", 76, 232, 760, 42, { fontSize: 27, bold: true, color: C.blue });
-  addText(slide, "服务岗位：AI 数据标注工程师", 78, 330, 640, 28, { fontSize: 21, color: C.body });
-  addText(slide, "微任务：目标检测中的遮挡、截断与同类实例判定", 78, 372, 760, 28, { fontSize: 21, color: C.body });
+  addText(slide, "AI 数据标注实训智能体", 72, 126, 900, 66, { fontSize: 46, bold: true, color: C.ink });
+  addText(slide, "报名作品的核心实施模块", 76, 206, 760, 38, { fontSize: 25, bold: true, color: C.blue });
+  addText(slide, "报名作品名：面向软件工程专业群的岗课赛能力图谱构建与全闭环自适应导学智能体", 78, 260, 1080, 48, { fontSize: 15, color: C.body });
+  addText(slide, "服务岗位：AI 数据标注工程师", 78, 330, 640, 28, { fontSize: 20, color: C.body });
+  addText(slide, "核心方向 3：岗位典型工作任务转化成学习型任务", 78, 370, 800, 28, { fontSize: 20, color: C.body });
+  addText(slide, "微任务：脱敏标注工单生成可执行学习任务卡", 78, 408, 760, 28, { fontSize: 18, color: C.body });
   addRect(slide, 78, 474, 470, 78, C.paleBlue, C.paleBlue, 12);
   addText(slide, "技术 MVP 已完成", 102, 493, 210, 28, { fontSize: 20, bold: true, color: C.green });
   addText(slide, "真实场景、教师复核、真人试用待补", 302, 495, 220, 24, { fontSize: 14, color: C.amber });
   addText(slide, "页面与回答均标注“AI生成内容 · 教学辅助”", 78, 570, 520, 22, { fontSize: 14, bold: true, color: C.amber });
-  addText(slide, "2026 年 9 月 · 预提交说明稿", 78, 620, 400, 24, { fontSize: 14, color: C.muted });
+  addText(slide, "南京林业大学 · 负责人韩盛豪 · 作品编码 600370", 78, 620, 620, 24, { fontSize: 14, color: C.muted });
   addNotes(slide, "本页只说明作品定位。项目状态中的“待补”是事实边界，不代表已完成真实场景或真人试用。来源：deliverables/AI数据标注实训智能体-项目说明.md。");
 }
 
@@ -162,14 +164,14 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
 {
   const slide = p.slides.add();
   slide.background.fill = C.white;
-  addHeader(slide, 3, "一个页面完成微任务闭环");
-  addText(slide, "输入、规则、处理、反馈和试用记录在同一条路径内完成。", 72, 184, 800, 30, { fontSize: 21, color: C.body });
+  addHeader(slide, 3, "岗位工单转学习任务闭环");
+  addText(slide, "工单、规则、任务卡、教学指导和试用记录在同一条路径内完成。", 72, 184, 900, 30, { fontSize: 21, color: C.body });
   const stages = [
-    ["01", "输入", "文字描述"],
-    ["02", "匹配", "命中 1 条规则"],
-    ["03", "处理", "按意图分支"],
-    ["04", "输出", "步骤与依据"],
-    ["05", "记录", "反馈导出 CSV"],
+    ["01", "工单", "脱敏任务输入"],
+    ["02", "识别", "命中 1 条规则"],
+    ["03", "任务卡", "八类结构字段"],
+    ["04", "指导", "步骤与依据"],
+    ["05", "反馈", "记录导出 CSV"],
   ];
   stages.forEach((stage, i) => {
     const x = 72 + i * 226;
@@ -184,9 +186,9 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
   });
   addRect(slide, 72, 500, 1136, 94, "#FFF7F1", "#F1D2BE", 12);
   addText(slide, "闭环边界", 96, 520, 150, 24, { fontSize: 18, bold: true, color: C.accent });
-  addText(slide, "前端内置 3 条核心执行规则与 60 条候选知识条目；来源和字段边界在结果中同时显示。", 250, 519, 900, 28, { fontSize: 17, color: C.body });
+  addText(slide, "任务卡包含情境、步骤、知识、技能、安全、交付物、量化验收和来源；信息不足时先澄清。", 250, 512, 900, 48, { fontSize: 16, color: C.body });
   addFooter(slide);
-  addNotes(slide, "规则库代码：a3-student-react-web/src/data/aiAnnotationRules.ts。页面逻辑：a3-student-react-web/src/pages/AIAnnotationAgent.tsx。反馈使用 localStorage，按记录类型导出 CSV。");
+  addNotes(slide, "任务生成模块：a3-student-react-web/src/lib/aiAnnotationLearningTask.ts。规则库：a3-student-react-web/src/data/aiAnnotationRules.ts。页面逻辑：a3-student-react-web/src/pages/AIAnnotationAgent.tsx。反馈使用 localStorage，按记录类型导出 CSV。");
 }
 
 // 4 Rule library
@@ -274,7 +276,7 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
   addText(slide, "页面入口：/annotation-agent  ·  默认端口：3002", 72, 184, 700, 28, { fontSize: 21, color: C.body });
   addRect(slide, 72, 260, 380, 300, C.pale, C.line, 12);
   addText(slide, "现场演示顺序", 98, 288, 240, 26, { fontSize: 20, bold: true, color: C.ink });
-  const demo = ["遮挡快捷问题", "模糊问题追问", "截断与 bbox 检查", "同类实例分别标框", "反馈类型与 CSV 导出"];
+  const demo = ["岗位工单转学习任务卡", "多意图输入先澄清", "任务步骤与量化验收", "规则依据与边界提示", "反馈类型与 CSV 导出"];
   demo.forEach((item, i) => {
     addText(slide, `${i + 1}`, 100, 342 + i * 39, 28, 24, { fontSize: 15, bold: true, color: C.accent });
     addText(slide, item, 142, 340 + i * 39, 250, 24, { fontSize: 16, color: C.body });
@@ -295,7 +297,10 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
 {
   const slide = p.slides.add();
   slide.background.fill = C.white;
-  addHeader(slide, 8, "八项要求与提交闸门");
+  addHeader(slide, 8, "核心方向与八项要求");
+  addRect(slide, 72, 166, 1136, 48, C.paleBlue, "#B8D4E4", 8);
+  addText(slide, "核心方向 3", 92, 178, 150, 22, { fontSize: 16, bold: true, color: C.blue });
+  addText(slide, "岗位典型工作任务 → 可执行学习任务卡（已实现）", 250, 177, 790, 24, { fontSize: 17, bold: true, color: C.green });
   const rows = [
     ["1", "场景真实性", "待真实来源记录", C.amber],
     ["2", "功能闭环性", "已实现", C.green],
@@ -307,16 +312,16 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
     ["8", "真实用户测试", "待 2 名学生 + 1 名教师", C.amber],
   ];
   rows.forEach((row, i) => {
-    const y = 188 + i * 47;
+    const y = 222 + i * 43;
     addRule(slide, 72, y + 43, 1136, C.line);
     addText(slide, row[0], 84, y + 10, 32, 22, { fontSize: 15, bold: true, color: C.accent });
     addText(slide, row[1], 140, y + 8, 250, 24, { fontSize: 17, bold: true, color: C.ink });
     addText(slide, row[2], 500, y + 8, 580, 24, { fontSize: 16, color: row[3] });
   });
-  addRect(slide, 72, 586, 1136, 58, "#FFF7F1", "#F1D2BE", 10);
-  addText(slide, "正式状态：技术 MVP 已完成，外部证据待补。AI 模拟记录不能替代第 8 项。", 96, 603, 1060, 24, { fontSize: 16, bold: true, color: C.amber });
+  addRect(slide, 72, 584, 1136, 58, "#FFF7F1", "#F1D2BE", 10);
+  addText(slide, "正式状态：技术 MVP 已完成，外部证据待补。AI 模拟记录不能替代第 8 项。", 96, 601, 1060, 24, { fontSize: 16, bold: true, color: C.amber });
   addFooter(slide);
-  addNotes(slide, "截至 2026-09-13 的自动化结果：npm run lint 通过，npm run build 通过，npm run smoke:ai-annotation-agent（含知识目录展开检查）27/27 通过，npm run audit:ai-annotation-deliverables（含知识条目数量检查与内部演示录屏检查）44/44 通过，预提交包验真以最新包验证记录为准。上述结果不证明真实场景、教师复核或真人试用。来源：deliverables/AI数据标注实训智能体-自动化验收记录.md。" );
+  addNotes(slide, "截至 2026-09-14 的自动化结果：npm run lint 通过，npm run build 通过，npm run smoke:ai-annotation-agent 34/34 通过，npm run audit:ai-annotation-deliverables 全部通过，预提交包验真以最新包验证记录为准。上述结果不证明真实场景、教师复核或真人试用。来源：deliverables/AI数据标注实训智能体-自动化验收记录.md。" );
 }
 
 // 9 Team and iteration plan
@@ -324,14 +329,14 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
   const slide = p.slides.add();
   slide.background.fill = C.white;
   addHeader(slide, 9, "团队分工与迭代计划");
-  addText(slide, "团队信息必须与报名系统保持一致；本预提交稿只提供可填写结构，不虚构成员姓名。", 72, 184, 1060, 30, { fontSize: 21, color: C.body });
+  addText(slide, "团队信息已按盖章报名表填写；联系方式与学号仅保留在报名表扫描件中。", 72, 184, 1060, 30, { fontSize: 21, color: C.body });
   addRect(slide, 72, 258, 548, 330, C.pale, C.line, 12);
-  addText(slide, "团队介绍（待填写真实信息）", 98, 284, 420, 28, { fontSize: 22, bold: true, color: C.ink });
+  addText(slide, "南京林业大学参赛团队", 98, 284, 420, 28, { fontSize: 22, bold: true, color: C.ink });
   const roles = [
-    ["负责人", "统筹报名、版本与提交材料"],
-    ["前端/交互", "维护页面、反馈闭环与回归脚本"],
-    ["知识与测试", "整理候选条目、组织教师核验和试用"],
-    ["指导教师", "确认专业来源、平台字段与安全边界"],
+    ["负责人", "韩盛豪（人工智能专业）"],
+    ["团队成员", "张文馨、蒋孟窈、朱佳音"],
+    ["所在学院", "信息科学技术学院、人工智能学院"],
+    ["指导教师", "徐雨凤（副教授）、张晓丹（讲师）"],
   ];
   roles.forEach((row, i) => {
     const y = 340 + i * 52;
@@ -341,10 +346,10 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
   addRect(slide, 656, 258, 552, 330, C.paleBlue, "#B8D4E4", 12);
   addText(slide, "四阶段迭代", 682, 284, 240, 28, { fontSize: 22, bold: true, color: C.ink });
   const iterations = [
-    ["01", "MVP（已完成）", "3 条核心规则、60 条候选条目、反馈导出"],
+    ["01", "MVP（已完成）", "工单转任务卡、3 条规则、60 条候选条目"],
     ["02", "教师核验（待补）", "锁定学校 schema、条款、阈值与授权"],
     ["03", "真实试用（待补）", "2 名学生 + 1 名教师，形成可追溯证据"],
-    ["04", "发布提交（待补）", "正式 Demo 地址、报名表与签署版合规文件"],
+    ["04", "平台发布（已提交审核）", "Agent ID 5816885；公开体验链接待平台审核生成"],
   ];
   iterations.forEach((row, i) => {
     const y = 340 + i * 56;
@@ -353,7 +358,7 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
     addText(slide, row[2], 900, y, 270, 34, { fontSize: 13, color: C.body });
   });
   addFooter(slide);
-  addNotes(slide, "成员姓名、指导教师和外部材料必须由团队据实填写；本页的待补状态不能用 AI 模拟或占位姓名替代。迭代顺序与缺口计划见 deliverables/AI数据标注实训智能体-缺口审计与推进计划.md。");
+  addNotes(slide, "团队姓名、学校和指导教师来自作品编码 600370 的盖章报名表扫描件。外部测评仍须由真实参与者完成，不能用 AI 模拟替代。星辰 Agent ID 为 5816885，公开体验链接待审核生成。");
 }
 
 // 10 Innovation and adaptation
@@ -361,10 +366,10 @@ const p = Presentation.create({ slideSize: { width: W, height: H } });
   const slide = p.slides.add();
   slide.background.fill = C.white;
   addHeader(slide, 10, "创新点与岗位适配");
-  addText(slide, "把“边界判定”拆成可追溯的小知识条目，并让候选状态贯穿回答、反馈和提交审计。", 72, 184, 1060, 30, { fontSize: 21, color: C.body });
+  addText(slide, "把企业式工单转成可验收的学习任务卡，并让规则来源贯穿生成、指导、反馈和提交审计。", 72, 184, 1060, 30, { fontSize: 21, color: C.body });
   const cards = [
     ["可追溯", "每条核心规则和知识条目都有稳定 ID、来源编号、定位与核验状态。", C.paleBlue],
-    ["可解释", "回答同时给步骤、常见错误、字段边界和示意图，学生能看到为什么这样框。", C.pale],
+    ["可执行", "任务卡同时给情境、步骤、知识技能、安全、交付物和量化验收标准。", C.pale],
     ["可适配", "替换触发词、条目、schema 与 smoke 用例即可迁移到语音切分或文本分类教学。", "#FFF7F1"],
   ];
   cards.forEach((card, i) => {
@@ -394,7 +399,4 @@ const result = await finalizePresentation({
   receiptPath,
 });
 console.log(JSON.stringify({ finalPath, receiptPath, sha256: result.finalSha256 }, null, 2));
-// Keep the handoff filename stable for the package script while retaining the
-// versioned, validator-produced artifact for audit history.
-await fs.copyFile(finalPath, stablePath);
 console.log(JSON.stringify({ stablePath }, null, 2));

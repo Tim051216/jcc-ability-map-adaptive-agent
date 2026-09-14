@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -893,7 +893,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
         icon: Target,
         description:
           profileSummary?.key_features ||
-          "岗位学情诊断智能体把这些信号汇总成当前阶段、能力强弱项和学习偏好，再同步给路径、资源、测评与 AI 导师。",
+          "岗位学情诊断智能体把这些信号汇总成当前阶段、能力强弱项和学习偏好，再同步给路径、资源、测评与 学习助手。",
         result: `画像完整度：${profileSummary?.completeness ?? overallScore}%`,
         tone: "from-[#f5f7ff] to-[#ffffff]",
       },
@@ -1203,7 +1203,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
               从测评、行为和作业表现生成学生画像
             </h2>
             <p className="mt-1.5 max-w-3xl text-sm leading-6 text-[#64748b]">
-              页面会把输入信号、判断依据和画像输出放在同一条链路里：先识别知识掌握程度和学习偏好，再把结果同步给路径、资源、测评与 AI 导师。
+              页面会把输入信号、判断依据和画像输出放在同一条链路里：先识别知识掌握程度和学习偏好，再把结果同步给路径、资源、测评与 学习助手。
             </p>
           </div>
           <div className="rounded-[18px] border border-[#d9edf3] bg-[#f4fbff] px-3.5 py-2.5 text-right">
@@ -1803,7 +1803,7 @@ export default function CapabilityModel({ user }: CapabilityModelProps = {}) {
               画像已接入后续链路
             </h3>
             <p className="mt-1 text-[11px] leading-5 text-[#564145]">
-              会继续影响学习路径、资源生成、AI 导师回答重点和练习触发。
+              会继续影响学习路径、资源生成、学习助手回答重点和练习触发。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

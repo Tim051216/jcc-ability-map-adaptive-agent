@@ -117,7 +117,7 @@ const FALLBACK_REPORT = {
     completedSteps: 5,
     totalSteps: 8,
     nextAction: "继续完成本周剩余强化节点，并把阶段测评结果回写到路径。",
-    summary: "岗课赛训练路径可继续联动课程资源、能力测评与 AI 导师问答，形成可追踪的实训证据链。",
+    summary: "岗课赛训练路径可继续联动课程资源、能力测评与 学习助手问答，形成可追踪的实训证据链。",
   },
   resource: {
     total: 6,
@@ -672,7 +672,7 @@ export default function StudyReport() {
     {
       title: "提问反馈",
       value: `${tutoringHistory.length || FALLBACK_REPORT.tutor.total} 次`,
-      detail: "你在 AI 导师中的追问内容，会补充系统对卡点、表达方式和讲解偏好的理解。",
+      detail: "你在 学习助手中的追问内容，会补充系统对卡点、表达方式和讲解偏好的理解。",
       icon: Bot,
     },
   ];

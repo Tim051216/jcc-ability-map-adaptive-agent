@@ -404,7 +404,7 @@ function buildFallbackEvaluationResult(
           : "本轮短测已完成，建议优先回看薄弱知识点，并用错因复盘巩固。",
       strengths: score >= 85 ? ["基础概念理解清晰", "答题节奏稳定"] : ["已完成阶段诊断"],
       weak_points: weakPoints,
-      suggestions: ["回看错题对应讲义", "补一组同类练习", "把薄弱点带到 AI 导师继续追问"],
+      suggestions: ["回看错题对应讲义", "补一组同类练习", "把薄弱点带到 学习助手继续追问"],
       layered_results: [
         { level: "概念理解", score, status: score >= 70 ? "done" : "active", comment: "根据本轮选择题表现估算。" },
         { level: "案例应用", score: Math.max(0, score - 8), status: score >= 80 ? "done" : "active", comment: "建议结合课程案例继续验证。" },
@@ -414,7 +414,7 @@ function buildFallbackEvaluationResult(
         { metric_name: "薄弱点覆盖", score: Math.max(60, 100 - wrongQuestions.length * 12), comment: "用于驱动后续资源推荐。" },
       ],
       knowledge_points: Array.from(new Set(paper.questions.map((question) => question.knowledge_point))).slice(0, 5),
-      recommended_actions: ["查看错题复盘", "生成薄弱点练习", "带着测评结果追问 AI 导师"],
+      recommended_actions: ["查看错题复盘", "生成薄弱点练习", "带着测评结果追问 学习助手"],
       path_feedback: {},
       profile_feedback: {},
     },
@@ -1671,7 +1671,7 @@ export default function Evaluation() {
       ? "可开始本轮阶段诊断"
       : "请选择课程";
   const nextEvaluationAction = latestResult
-    ? "查看报告或追问 AI 导师"
+    ? "查看报告或追问 学习助手"
     : activePaper
       ? "完成剩余题目并提交"
       : "开始 5 题短测";
@@ -1707,7 +1707,7 @@ export default function Evaluation() {
   const resourceSyncDetail = generatedResources.length
     ? `已补充 ${generatedResources.length} 份讲义、练习或导图`
     : "提交后会按薄弱点补齐讲义、练习和导图";
-  const tutorSyncDetail = tutorFollowup?.answer || "提交后可直接带着测评结果继续追问 AI 导师";
+  const tutorSyncDetail = tutorFollowup?.answer || "提交后可直接带着测评结果继续追问 学习助手";
 
   return (
     <div className="eval-product mx-auto max-w-[1320px] select-none space-y-6 px-1" id="evaluation-workspace">
@@ -1729,7 +1729,7 @@ export default function Evaluation() {
                   岗位能力短测与训练闭环
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5b6770]">
-                  完成 5 题短测后，系统会把薄弱能力同步到课程训练路径、实训资源和 AI 导师上下文。
+                  完成 5 题短测后，系统会把薄弱能力同步到课程训练路径、实训资源和 学习助手上下文。
                 </p>
               </div>
               <div className="grid grid-cols-3 overflow-hidden rounded-[18px] border border-[#e8edf2] bg-[#fbfcfd]">
@@ -1870,7 +1870,7 @@ export default function Evaluation() {
                 测评闭环
               </div>
               <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-[#171c22]">测评结果会回写到后续学习动作</h2>
-              <p className="mt-1 text-sm leading-6 text-[#5b6770]">提交本轮短测后，页面会同步生成岗位学情更新、路径调整、补充资源和 AI 导师建议。</p>
+              <p className="mt-1 text-sm leading-6 text-[#5b6770]">提交本轮短测后，页面会同步生成岗位学情更新、路径调整、补充资源和 学习助手建议。</p>
             </div>
             {latestResult ? (
               <span className="rounded-full bg-[#ecfdf3] px-3 py-1.5 text-xs font-bold text-emerald-700">
@@ -2369,7 +2369,7 @@ export default function Evaluation() {
                         <h3 className="mt-2 text-4xl font-black tracking-[-0.04em] text-[#171c22]">{formatPercent(latestResult.overall_score)}</h3>
                         <p className="mt-2 text-sm font-semibold text-[#5b6770]">当前状态：{latestResult.mastery_level || "已完成本轮测评"}</p>
                         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5b6770]">
-                          {latestResult.report_summary || "本轮结果已生成，可以继续看报告或追问 AI 导师。"}
+                          {latestResult.report_summary || "本轮结果已生成，可以继续看报告或追问 学习助手。"}
                         </p>
                       </div>
                       <div className="grid min-w-[260px] grid-cols-3 gap-2">
@@ -2407,9 +2407,9 @@ export default function Evaluation() {
                       </p>
                     </div>
                     <div className="rounded-[24px] border border-[#e8edf2] bg-white p-4">
-                      <div className="text-[11px] font-black text-[#8a96a3]">AI 导师摘要</div>
+                      <div className="text-[11px] font-black text-[#8a96a3]">学习助手摘要</div>
                       <p className="mt-2 line-clamp-3 text-sm font-semibold leading-6 text-[#344054]">
-                        {tutorFollowup?.answer || "点击“问 AI 导师”后，会带着本轮得分和薄弱点继续追问。"}
+                        {tutorFollowup?.answer || "点击“问 学习助手”后，会带着本轮得分和薄弱点继续追问。"}
                       </p>
                     </div>
                   </div>
@@ -2508,7 +2508,7 @@ export default function Evaluation() {
                         <p className="text-[11px] font-black text-[#8a96a3]">完整解答</p>
                         <h4 className="mt-1 text-lg font-black text-[#171c22]">本轮 5 题逐题复盘</h4>
                       </div>
-                      <p className="text-xs font-semibold text-[#667085]">每题都可以继续追问 AI 导师</p>
+                      <p className="text-xs font-semibold text-[#667085]">每题都可以继续追问 学习助手</p>
                     </div>
                     <div className="mt-4 grid gap-3">
                       {activePaper.questions.map((question, index) => {
@@ -2586,7 +2586,7 @@ export default function Evaluation() {
                       className="flex items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm font-bold text-[#344054] transition hover:border-[#cfd8df]"
                     >
                       <Bot className="h-4 w-4" />
-                      问 AI 导师
+                      问 学习助手
                     </button>
                     <button
                       type="button"

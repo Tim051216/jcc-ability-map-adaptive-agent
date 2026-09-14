@@ -28,6 +28,17 @@ function Fail([string]$message) {
   throw "Package verification failed: $message"
 }
 
+function Get-Sha256Hex([string]$path) {
+  $stream = [IO.File]::OpenRead($path)
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace("-", "")
+  } finally {
+    $sha.Dispose()
+    $stream.Dispose()
+  }
+}
+
 try {
   Expand-Archive -LiteralPath $archive -DestinationPath $temp -Force
   $manifest = @(Get-ChildItem -LiteralPath $temp -Recurse -File -Filter "package-manifest.json" | Select-Object -First 1)
@@ -39,8 +50,9 @@ try {
   # the package itself may (and does) contain Unicode directory names.
   $manifestText = [IO.File]::ReadAllText($manifest[0].FullName, [Text.Encoding]::UTF8)
   $manifestObject = $manifestText | ConvertFrom-Json
-  if ($manifestObject.package_type -ne "technical-pre-submission") {
-    Fail "package_type is not technical-pre-submission"
+  $allowedPackageTypes = @("technical-pre-submission", "submission-materials-external-evidence-pending")
+  if ($manifestObject.package_type -notin $allowedPackageTypes) {
+    Fail "unsupported package_type: $($manifestObject.package_type)"
   }
   if ([string]::IsNullOrWhiteSpace([string]$manifestObject.external_evidence_status)) {
     Fail "external evidence status is empty"
@@ -60,10 +72,12 @@ try {
   $sourcePage = @(Get-ChildItem -LiteralPath $officialRoots["04-"] -Recurse -File -Filter "AIAnnotationAgent.tsx")
   $sourceRules = @(Get-ChildItem -LiteralPath $officialRoots["04-"] -Recurse -File -Filter "aiAnnotationRules.ts")
   $knowledgeSource = @(Get-ChildItem -LiteralPath $officialRoots["04-"] -Recurse -File -Filter "aiAnnotationKnowledge.ts")
+  $learningTaskSource = @(Get-ChildItem -LiteralPath $officialRoots["04-"] -Recurse -File -Filter "aiAnnotationLearningTask.ts")
   $officialWebRoot = Join-Path $officialRoots["04-"] "source\a3-student-react-web"
   $officialStartScript = Join-Path $officialRoots["04-"] "source\scripts\start-ai-annotation.ps1"
   $projectDoc = @(Get-ChildItem -LiteralPath $officialRoots["03-"] -Recurse -File -Filter "*.docx")
   $deck = @(Get-ChildItem -LiteralPath $officialRoots["03-"] -Recurse -File -Filter "*.pptx")
+  $registrationPdf = @(Get-ChildItem -LiteralPath $officialRoots["01-"] -Recurse -File -Filter "*.pdf")
   $demoRecordings = @(Get-ChildItem -LiteralPath $officialRoots["02-"] -Recurse -File | Where-Object {
     ($_.Extension -in @(".mp4", ".webm")) -and $_.Length -gt 1000
   })
@@ -80,6 +94,7 @@ try {
   if ($sourcePage.Count -eq 0) { Fail "missing AIAnnotationAgent.tsx" }
   if ($sourceRules.Count -eq 0) { Fail "missing aiAnnotationRules.ts" }
   if ($knowledgeSource.Count -eq 0) { Fail "missing aiAnnotationKnowledge.ts" }
+  if ($learningTaskSource.Count -eq 0) { Fail "missing aiAnnotationLearningTask.ts" }
   if (-not (Test-Path -LiteralPath (Join-Path $officialWebRoot "package.json") -PathType Leaf)) {
     Fail "official source tree is not runnable at 04-作品代码/source/a3-student-react-web"
   }
@@ -91,6 +106,8 @@ try {
   }
   if ($projectDoc.Count -eq 0) { Fail "missing project DOCX" }
   if ($deck.Count -eq 0) { Fail "missing presentation PPTX" }
+  if ($deck.Count -ne 1) { Fail "official presentation directory must contain exactly one PPTX" }
+  if ($registrationPdf.Count -eq 0) { Fail "missing registration PDF" }
   if ($demoRecordings.Count -eq 0) { Fail "missing non-empty internal demo recording" }
   if ($declaration.Count -lt 2) { Fail "missing external evidence declaration/index files" }
   if ($gapPlan.Count -eq 0) { Fail "missing gap audit plan" }
@@ -130,7 +147,7 @@ try {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
       Fail "hash list references missing file: $relative"
     }
-    $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToUpperInvariant()
+    $actual = (Get-Sha256Hex $file).ToUpperInvariant()
     if ($actual -ne $expected) { Fail "hash mismatch: $relative" }
   }
   $actualFiles = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.FullName -ne $sumFile })

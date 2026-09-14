@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle,
@@ -522,7 +522,7 @@ function buildIllustrationPreviewDataUrl(courseId: string, title: string, source
       <rect x="720" y="540" width="236" height="16" rx="8" fill="${palette.line}" opacity="0.22"/>
       <rect x="1002" y="506" width="182" height="16" rx="8" fill="${palette.soft}"/>
       <rect x="1002" y="540" width="182" height="16" rx="8" fill="${palette.line}" opacity="0.22"/>
-      <text x="156" y="596" font-size="18" font-family="Arial, sans-serif" fill="#475467">推荐用途：讲义配图、课堂讲解、答辩结构说明、AI 导师流程解释</text>
+      <text x="156" y="596" font-size="18" font-family="Arial, sans-serif" fill="#475467">推荐用途：讲义配图、课堂讲解、答辩结构说明、学习助手流程解释</text>
       <rect x="124" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
       <rect x="336" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
       <rect x="548" y="684" width="182" height="86" rx="22" fill="${palette.card}"/>
@@ -533,7 +533,7 @@ function buildIllustrationPreviewDataUrl(courseId: string, title: string, source
       <rect x="356" y="734" width="110" height="10" rx="5" fill="${palette.line}" opacity="0.55"/>
       <rect x="568" y="734" width="110" height="10" rx="5" fill="${palette.line}" opacity="0.55"/>
       <rect x="760" y="684" width="484" height="86" rx="22" fill="#f8fafc"/>
-      <text x="786" y="718" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="${palette.accent}">插图投放位：讲义页 / PPT 页 / AI 导师页</text>
+      <text x="786" y="718" font-size="16" font-family="Arial, sans-serif" font-weight="700" fill="${palette.accent}">插图投放位：讲义页 / PPT 页 / 学习助手页</text>
       <text x="786" y="748" font-size="15" font-family="Arial, sans-serif" fill="#667085">同一张图会裁成不同版式，保证课堂、资源页和答辩展示观感统一。</text>
     </svg>
   `);
@@ -592,7 +592,7 @@ function buildStructuredDocumentPreview(title: string, resourceType?: string | n
       "- RAG + 多智能体：既保留资料依据，又能按学生状态组织下一步动作，适合个性化学习平台。",
       "",
       "## 5. 演示时可以怎么讲",
-      "演示时先用一个学生问题触发 AI 导师，让系统展示命中的课程资料和回答；再切到画像页说明这些推荐不是固定模板，而是结合测评、行为和作业表现生成；最后展示路径页或资源页，说明系统会把薄弱点转成后续学习任务和补充资料。",
+      "演示时先用一个学生问题触发 学习助手，让系统展示命中的课程资料和回答；再切到画像页说明这些推荐不是固定模板，而是结合测评、行为和作业表现生成；最后展示路径页或资源页，说明系统会把薄弱点转成后续学习任务和补充资料。",
       "",
       "## 6. 自测清单",
       "- 我能否说明 RAG 和普通聊天机器人的区别？",
@@ -721,7 +721,7 @@ function buildStructuredDocumentPreview(title: string, resourceType?: string | n
     "## 7. 完成标准",
     "- 不依赖原文也能解释主要概念。",
     "- 能把概念映射到项目实现或学习任务。",
-    "- 能提出至少一个追问，继续让 AI 导师补充细节。",
+    "- 能提出至少一个追问，继续让 学习助手补充细节。",
     "- 能基于本文形成下一步练习或复习计划。",
   ].join("\n");
 }
@@ -761,7 +761,7 @@ function buildFileFallbackDocument(file: ResourceSourceFileRef, resource?: Resou
     "1. 浏览标题和目录，确认这份资料对应哪一节课。",
     "2. 阅读核心概念，标出和项目实现直接相关的内容。",
     "3. 对照实操任务，检查自己是否能独立复述实现思路。",
-    "4. 使用 AI 导师继续追问不清楚的概念或工程边界。",
+    "4. 使用 学习助手继续追问不清楚的概念或工程边界。",
     "",
     "## 5. 自测问题",
     "- 这份资料对应的核心问题是什么？",
@@ -1012,7 +1012,7 @@ function buildGenerationIntentFallbackFile(fileId: number, courseId?: string, in
       "- 哪个步骤最容易理解错？应该用什么例子验证？",
       "",
       "## 6. 继续学习",
-      "读完后建议把不确定的术语或步骤交给 AI 导师继续追问，再回到课堂视频核对老师的原始讲解。",
+      "读完后建议把不确定的术语或步骤交给 学习助手继续追问，再回到课堂视频核对老师的原始讲解。",
     ].join("\n"),
     practice_set: [
       `# ${title}`,
@@ -3722,7 +3722,7 @@ export default function ResourceSourcePreview() {
       resourceTitle: sanitizePreviewText(resource?.title, selectedFile?.display_name || "当前资料"),
       resourceType: String(resource?.resource_type || "course_resource"),
       resourceSummary: sanitizePreviewText(resource?.summary || selectedFile?.preview_text, "请结合当前资料继续讲解重点、难点和学习顺序。"),
-      title: "资料精读 AI 导师",
+      title: "资料精读 学习助手",
       subtitle: "围绕当前资料内容继续解释、总结和安排下一步学习。",
       quickPrompts: ["提炼这份资料重点", "按项目实现角度讲", "告诉我下一步先学什么"],
       mode: "learning" as const,
@@ -3738,7 +3738,7 @@ export default function ResourceSourcePreview() {
       resourceTitle: sanitizePreviewText(resource?.title, selectedFile?.display_name || "当前实操资料"),
       resourceType: String(resource?.resource_type || "coding_lab"),
       resourceSummary: sanitizePreviewText(resource?.summary, "请结合当前代码实操资源继续讲解题面、代码和运行结果。"),
-      title: "代码实操 AI 导师",
+      title: "代码实操 学习助手",
       subtitle: "围绕当前题面、代码输入输出和运行结果继续讲解。",
       quickPrompts: ["先帮我讲清楚这道题要做什么", "看当前代码哪里可能出错", "结合题面给我一版解题思路"],
       mode: "learning" as const,
@@ -4038,7 +4038,7 @@ export default function ResourceSourcePreview() {
                   className="inline-flex items-center gap-1.5 rounded-md border border-[#BFD0FF] bg-[#F7F9FF] px-3 py-2 text-xs font-black text-[#002FA7] transition hover:bg-[#EEF3FF]"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  问 AI 导师
+                  问 学习助手
                 </button>
                 <button
                   type="button"

@@ -20,8 +20,8 @@
 ```text
 npm run lint                         PASS
 npm run build                        PASS
-npm run smoke:ai-annotation-agent   27/27 PASS
-npm run audit:ai-annotation-deliverables 44/44 PASS
+npm run smoke:ai-annotation-agent   34/34 PASS
+npm run audit:ai-annotation-deliverables 46/46 PASS
 预提交包验真                         PASS
 ```
 

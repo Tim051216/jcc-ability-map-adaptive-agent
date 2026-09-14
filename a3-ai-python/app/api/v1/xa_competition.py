@@ -465,6 +465,8 @@ async def generate_learning_task(request: LearningTaskRequest) -> LearningTaskRe
         knowledge = ["新能源汽车高压安全", "动力电池包结构", "绝缘电阻检测原理"]
         skills = ["高压下电", "电池包拆装", "绝缘检测", "质量工单填写"]
         resources = ["新能源汽车高压安全微课", "电池包拆装仿真练习"]
+        deliverables = ["高压下电安全检查记录", "电池包拆装过程记录", "绝缘检测结果与维修工单"]
+        acceptance = ["断电、验电、挂牌上锁流程无缺项", "拆装顺序和关键参数记录完整", "绝缘检测结论符合任务工单要求并经教师复核"]
         citation = "校内新能源汽车实训安全规范（需负责人补充正式编号）"
     elif any(term in text for term in ("机器人", "plc", "坐标系", "轨迹")):
         steps = ["确认机器人型号、程序版本和作业区域安全状态", "切换手动低速模式并建立工具/工件坐标系", "执行单步轨迹校准，检查奇异点、干涉和限位", "保存参数、恢复运行并提交点检与校准记录"]
@@ -472,6 +474,8 @@ async def generate_learning_task(request: LearningTaskRequest) -> LearningTaskRe
         knowledge = ["工业机器人坐标系", "轨迹规划原理", "安全联锁与限位"]
         skills = ["示教器操作", "坐标系标定", "轨迹校准", "报警诊断"]
         resources = ["机器人坐标系微课", "虚拟示教器仿真实训"]
+        deliverables = ["作业区域安全检查表", "坐标系与轨迹参数记录", "点检和校准工单"]
+        acceptance = ["安全联锁和低速示教设置符合规程", "坐标系参数可复现且轨迹无干涉", "点检、异常和恢复结果记录完整"]
         citation = "工业机器人实训操作规程（需负责人补充正式版本）"
     elif any(term in text for term in ("标注", "数据", "质检", "标签")):
         steps = ["读取项目工单和标签体系，确认边界案例与验收口径", "抽取小样本试标并与金标准对齐", "批量标注并记录不确定样本", "执行交叉质检、一致性复核和问题回流"]
@@ -479,6 +483,8 @@ async def generate_learning_task(request: LearningTaskRequest) -> LearningTaskRe
         knowledge = ["数据标注规范", "标签体系设计", "抽样质检与一致性"]
         skills = ["边界判定", "标注工具操作", "一致性检查", "问题样本回流"]
         resources = ["数据合规微课", "图像标注与质检仿真实训"]
+        deliverables = ["试标样本集", "批量标注结果", "质检报告与问题样本清单"]
+        acceptance = ["试标结果与标签规范一致", "敏感数据已脱敏且不确定样本有标记", "抽检结果、错误类型和回流记录完整"]
         citation = "项目标注规范与数据合规要求（需负责人上传正式版本）"
     elif any(term in text for term in ("视觉", "缺陷", "机器视觉")):
         steps = ["读取视觉检测工单并确认产品型号、缺陷分类和验收阈值", "检查相机、光源和标定参数，采集标准样本", "执行缺陷识别与边界复核，记录误检和漏检样本", "完成质量追溯记录并提交复核结论"]
@@ -486,6 +492,8 @@ async def generate_learning_task(request: LearningTaskRequest) -> LearningTaskRe
         knowledge = ["机器视觉检测原理", "缺陷分类与质量标准", "相机标定与参数管理"]
         skills = ["缺陷判定", "相机标定", "质量复核", "异常样本记录"]
         resources = ["工业视觉检测微课", "机器视觉缺陷识别仿真实训"]
+        deliverables = ["设备与标定参数检查表", "缺陷识别结果", "质量追溯与复核记录"]
+        acceptance = ["相机、光源和标定参数记录完整", "缺陷分类符合任务验收口径", "误检、漏检和异常样本均可追溯"]
         citation = "智能制造质量检测规范（需负责人补充正式版本）"
     else:
         steps = ["阅读工单并确认设备型号、作业边界和防护用品", "执行作业前检查并记录初始状态", "按标准流程完成核心操作并记录关键参数", "依据验收标准复盘异常、提交工单和实训产出"]
@@ -493,16 +501,21 @@ async def generate_learning_task(request: LearningTaskRequest) -> LearningTaskRe
         knowledge = ["岗位工单与质量标准", "设备结构和操作原理", "异常诊断与记录规范"]
         skills = ["任务拆解", "规范操作", "质量记录", "异常复盘"]
         resources = ["校内实训微课", "仿真操作练习"]
+        deliverables = ["作业前检查表", "核心操作过程记录", "任务工单与异常复盘"]
+        acceptance = ["任务边界、安全风险和工具状态确认完整", "核心操作步骤符合岗位规范", "结果、异常和改进建议可由教师复核"]
         citation = "校内实训安全规范（需专业负责人补充正式版本）"
     for focus in request.ability_focus:
         if focus and focus not in skills:
             skills.append(focus)
     resource_links = [LearningResourceLink(name=item, href=f"/resources?search={quote_plus(item)}", resource_type="校内实训资源") for item in resources]
+    learning_objectives = [f"理解{item}" for item in knowledge[:2]] + [f"能够完成{item}" for item in skills[:2]]
     return LearningTaskResponse(
         task_id="LT-20260909", task_name=request.work_task,
         task_description=f"面向{request.professional_group}的{request.job_name}学习任务：在真实岗位工作情境中完成“{request.work_task}”，重点强化{ '、'.join(request.ability_focus) if request.ability_focus else '岗位核心能力' }，形成可验收的操作记录与任务产出。",
         work_context=f"企业实训车间：围绕“{request.work_task}”完成工单交付并提交质量记录。产业背景：{request.industry_context or '依据岗位典型工作任务进行教学转化'}。",
-        steps=steps, safety_points=safety, knowledge_points=knowledge, skill_points=skills, resources=resource_links,
+        learning_objectives=learning_objectives, steps=steps, safety_points=safety,
+        knowledge_points=knowledge, skill_points=skills, deliverables=deliverables,
+        acceptance_criteria=acceptance, resources=resource_links,
         citations=["岗位任务输入（用户提供）", citation], generation_mode="rule-template",
     )
 
@@ -537,6 +550,12 @@ async def generate_job_ability(request: JobAbilityRequest) -> JobAbilityResponse
         nodes = [JobAbilityNode(name="任务理解与规划", score=80, ability_units=["需求分析", "任务拆解"], skill_points=["工单阅读", "流程设计"], knowledge_points=["岗位标准", "质量要求"]), JobAbilityNode(name="规范执行与复盘", score=76, ability_units=["标准操作", "异常复盘"], skill_points=["规范操作", "质量记录"], knowledge_points=["安全规范", "验收标准"])]
     if request.typical_tasks:
         tasks = list(dict.fromkeys([item.strip() for item in request.typical_tasks if item.strip()] + tasks))[:8]
+    # Keep the task-to-ability reasoning visible in the response instead of
+    # returning two unrelated lists that the UI has to imply are connected.
+    for index, task in enumerate(tasks):
+        node = nodes[index % len(nodes)]
+        if task not in node.related_tasks:
+            node.related_tasks.append(task)
     if request.observed_skills and nodes:
         for index, skill in enumerate(request.observed_skills):
             normalized = skill.strip()

@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentType } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import gsap from "gsap";
 import {
   AlertCircle,
+  AlertTriangle,
+  ArrowRight,
   Bot,
   Camera,
   ChevronDown,
   ChevronUp,
   Copy,
+  Database,
   Heart,
   FileText,
   LoaderCircle,
@@ -17,6 +21,7 @@ import {
   Plus,
   Send,
   Sparkles,
+  TrendingUp,
   X,
 } from "lucide-react";
 import {
@@ -114,10 +119,32 @@ type TutorResourceContext = {
 
 type TutorTaskMode = NonNullable<AITutorProps["initialMode"]>;
 
+function AgentCapability({ icon: Icon, index, label, detail }: { icon: ComponentType<{ className?: string }>; index: string; label: string; detail: string }) {
+  return (
+    <div className="p-3">
+      <div className="flex items-center justify-between text-[#002FA7]"><Icon className="h-4 w-4" /><span className="text-[10px] font-black tabular-nums">{index}</span></div>
+      <div className="mt-3 text-[11px] font-bold text-[#111827]">{label}</div>
+      <div className="mt-1 text-[10px] leading-4 text-[#667085]">{detail}</div>
+    </div>
+  );
+}
+
 const TUTOR_SESSION_STORAGE_KEY = "a3-active-tutor-session-map";
 const TUTOR_SESSION_TITLE_STORAGE_KEY = "a3-tutor-session-title-map";
 const TUTOR_FAVORITE_HISTORY_STORAGE_KEY = "a3-tutor-favorite-history-cache";
 const TUTOR_DRAFT_STORAGE_KEY = "a3-active-tutor-draft-map";
+const TALENT_PLAN_PROMPTS = [
+  "分析当前专业与岗位技能需求的匹配度",
+  "识别需要预警的专业方向和课程缺口",
+  "根据岗位趋势生成培养方案优化建议",
+  "说明建议的数据来源和人工复核项",
+];
+const TALENT_PLAN_AGENT_INSTRUCTION = [
+  "角色：人才培养方案智能优化智能体，服务对象是专业负责人。",
+  "任务：基于公开岗位动态、产业分析、专业匹配度和历史采集快照，识别技能趋势与专业预警，并把结论转成课程、实训和教学计划的结构化调整建议。",
+  "约束：不得虚构招聘数量、增长率或数据来源；没有实时证据时必须明确说明，并引导用户进入“人才培养方案智能优化”看板重新采集公开岗位数据。",
+  "输出：优先按“岗位证据—影响判断—调整对象—实施动作—复核方式”给出简明、可执行、可核验的方案。",
+].join("\n");
 const TUTOR_HISTORY_CACHE_STORAGE_KEY = "a3-tutor-history-cache";
 const TUTOR_MEMORY_STORAGE_KEY = "a3-tutor-resolved-memory";
 const TUTOR_MEMORY_LIMIT = 8;
@@ -163,7 +190,7 @@ function buildModeSubtitle(mode: TutorTaskMode | undefined) {
   if (mode === "practice") return "当前已切到练习模式，会优先直接产出题目和解析。";
   if (mode === "ppt") return "当前已切到 PPT 模式，会优先直接产出逐页课件草案。";
   if (mode === "open-classroom") return "当前已切到互动课堂模式，会优先展开教师主讲、助教追问和随堂测验。";
-  return "结合课程上下文进行问答";
+  return "岗位趋势、专业预警与培养方案决策支持";
 }
 
 function formatTime(value?: string | number | Date) {
@@ -264,7 +291,7 @@ function buildSessionPreview(item: TutoringHistoryItem) {
 
 function formatTutorAnswerMarkdown(text?: string | null) {
   const raw = String(text || "").trim();
-  if (!raw) return "导师暂时还没有返回可展示的回答。";
+  if (!raw) return "智能体暂时还没有返回可展示的优化结论。";
   return raw;
 }
 
@@ -280,13 +307,13 @@ function isTransientTutorFetchError(error: unknown) {
 function buildTutorErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (/^HTTP\s*5\d\d\b/i.test(message)) {
-    return "AI 导师服务暂时不可用，请稍后重试。";
+    return "人才培养方案智能优化服务暂时不可用，请稍后重试。";
   }
   if (/request timeout|响应超时|timeout/i.test(message)) {
     return "这次生成时间超过预期，我已保留问题。请稍后在最近会话里查看结果，或重新发送一次。";
   }
   if (/failed to fetch|networkerror|load failed/i.test(message)) {
-    return "AI 导师连接暂时不稳定，请稍后重试。";
+    return "人才培养方案智能优化服务连接暂时不稳定，请稍后重试。";
   }
   return message || "提问失败，请稍后重试。";
 }
@@ -471,11 +498,11 @@ async function waitForTutoringTaskResult(taskId: string | number, maxAttempts = 
       return status.result;
     }
     if (status.status === "failed") {
-      throw new Error(status.error_message || "AI 导师生成失败，请稍后重试。");
+      throw new Error(status.error_message || "人才培养方案智能优化生成失败，请稍后重试。");
     }
     await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
-  throw new Error("AI 导师响应超时，请稍后重试。");
+  throw new Error("人才培养方案智能优化响应超时，请稍后重试。");
 }
 
 function extractStreamingTextChunk(payload: unknown): string {
@@ -1255,7 +1282,7 @@ function buildCaptureSuccessMessage(surface: string) {
   return "已截取当前页面";
 }
 
-function buildQuickLocalReply(text: string, title?: string, subtitle?: string) {
+function buildQuickLocalReply(text: string) {
   const normalized = text
     .trim()
     .toLowerCase()
@@ -1278,14 +1305,14 @@ function buildQuickLocalReply(text: string, title?: string, subtitle?: string) {
   }
 
   if (["你是谁", "你是干嘛的", "你能做什么", "你会什么"].includes(normalized)) {
-    return `我是岗课赛 AI 导师，可以陪你看${title || "这节课程"}，把知识点连接到软件开发岗位任务，并继续安排${subtitle || "当前内容"}对应的实训或竞赛练习。`;
+    return "我是人才培养方案智能优化智能体。我会基于公开岗位数据、技能需求趋势、专业匹配度和历史采集快照，为专业负责人生成专业预警与课程、实训、教学计划调整建议；没有真实来源时不会把示例数据当成实时结论。";
   }
 
   const asksForDemoSummary =
     /演示|展示|答辩|汇报|讲解|介绍/.test(normalized) &&
     /两句话|2句话|一句话|概括|总结|简单|怎么讲|怎么演示|适合怎么|资源页|当前页面|这页/.test(normalized);
   if (asksForDemoSummary) {
-    return "演示时先用一个真实学习任务跑通资源检索、筛选、打开与下载的完整闭环。再补充分类维护、资源更新和学习任务联动，说明它不是静态页面，而是能支撑日常教学的资源中枢。";
+    return "演示时先在人才培养方案智能优化看板重新采集公开岗位，展示样本筛选、技能热度、专业匹配与预警；再选择一条有来源的趋势，生成对应的课程或实训调整清单，并说明数据来源、采集时间和人工复核要求。";
   }
 
   if (["谢谢", "谢了", "多谢", "ok", "okay", "好的", "收到", "行", "知道了"].includes(normalized)) {
@@ -1423,7 +1450,7 @@ async function buildAutoCourseLinksSection(text: string) {
 
 function cleanTutorDisplayText(text: string) {
   if (/^HTTP\s*5\d\d\s*$/i.test(text.trim())) {
-    return "AI 导师服务暂时不可用，请稍后重试。";
+    return "人才培养方案智能优化服务暂时不可用，请稍后重试。";
   }
   if (/^Request timeout\s*$/i.test(text.trim())) {
     return "这次生成时间超过预期，我已保留问题。请稍后在最近会话里查看结果，或重新发送一次。";
@@ -1478,6 +1505,9 @@ export default function AITutor(props: AITutorProps = {}) {
     resetToken,
   } = props;
   const preferFreshTaskContext = false;
+  const isTalentPlanAgent =
+    initialTitle?.includes("人才培养方案") ||
+    (!initialCourseId && !initialSectionId && !initialResourceId && !initialVideoSrc && !initialVideoFileId && !initialMode);
   const resolvedUserId = user?.id || "1001";
   const resolvedUserProfile = useMemo(() => getDemoUserProfile(resolvedUserId), [resolvedUserId]);
   const userExperience = useMemo(() => getDemoUserExperienceConfig(resolvedUserId), [resolvedUserId]);
@@ -1508,12 +1538,15 @@ export default function AITutor(props: AITutorProps = {}) {
     () => {
       const modePrompts = buildModePromptSuggestions(initialMode || "default", userExperience.tutorPrompts);
       const resourcePrompts = buildResourcePromptSuggestions(resourceContext);
+      if (isTalentPlanAgent) {
+        return Array.from(new Set([...TALENT_PLAN_PROMPTS, ...(initialQuickPrompts || [])])).slice(0, 6);
+      }
       if (initialQuickPrompts?.length) {
         return Array.from(new Set([...initialQuickPrompts, ...resourcePrompts, ...modePrompts, ...userExperience.tutorPrompts])).slice(0, 6);
       }
       return Array.from(new Set([...(resourcePrompts.length ? resourcePrompts : []), ...modePrompts, ...userExperience.tutorPrompts])).slice(0, 6);
     },
-    [initialMode, initialQuickPrompts, resourceContext, userExperience],
+    [initialMode, initialQuickPrompts, isTalentPlanAgent, resourceContext, userExperience],
   );
 
   const [messages, setMessages] = useState<TutorMessage[]>(() =>
@@ -2393,8 +2426,16 @@ export default function AITutor(props: AITutorProps = {}) {
       isClassroomPage &&
       !shouldUseSystemKnowledgeAnswer &&
       (Boolean(initialVideoSrc) || typeof initialStartAt === "number" || typeof initialVideoFileId === "number");
-    const quickLocalReply = outgoingAttachments.length === 0 ? buildQuickLocalReply(text, initialTitle, initialSubtitle) : null;
-    const promptLines = [effectiveQuestionText || (attachmentExtractedSummary ? "请结合这份附件讲解重点，并先概括核心内容。" : "")];
+    const quickLocalReply = outgoingAttachments.length === 0 ? buildQuickLocalReply(text) : null;
+    const promptLines = [
+      isTalentPlanAgent ? TALENT_PLAN_AGENT_INSTRUCTION : "",
+      effectiveQuestionText ||
+        (attachmentExtractedSummary
+          ? isTalentPlanAgent
+            ? "请结合这份附件分析岗位技能证据，并提出培养方案调整建议。"
+            : "请结合这份附件讲解重点，并先概括核心内容。"
+          : ""),
+    ];
     const modeInstruction = buildModeInstruction(initialMode || "default");
     if (shouldUseSystemKnowledgeAnswer) {
       promptLines.push("请基于本地知识库回答该系统如何使用，并列出命中的本地知识库依据；不要按当前视频片段回答。");
@@ -2716,7 +2757,7 @@ export default function AITutor(props: AITutorProps = {}) {
               continue;
             }
             if (nextAnswer.status === "failed") {
-              throw new Error(nextAnswer.error_message || nextAnswer.error || "AI 导师生成失败，请稍后重试。");
+              throw new Error(nextAnswer.error_message || nextAnswer.error || "人才培养方案智能优化生成失败，请稍后重试。");
             }
             return nextAnswer;
           } catch (error) {
@@ -2733,7 +2774,7 @@ export default function AITutor(props: AITutorProps = {}) {
         if (streamSettled || streamedFinalAnswer || streamedCompleteText || streamedText) {
           return null;
         }
-        throw lastError instanceof Error ? lastError : new Error("AI 导师响应超时，请稍后重试。");
+        throw lastError instanceof Error ? lastError : new Error("人才培养方案智能优化响应超时，请稍后重试。");
       })();
 
       let answer: TutoringAnswerDetail | null = null;
@@ -2769,7 +2810,7 @@ export default function AITutor(props: AITutorProps = {}) {
                     text:
                       visualText ||
                       streamedText ||
-                      "内容稍微复杂一点，AI 导师还在继续生成，我会自动等待完成后回填。",
+                      "当前方案分析较复杂，智能体仍在生成，我会自动等待完成后回填。",
                     status: "pending",
                   }
                 : item,
@@ -2791,7 +2832,7 @@ export default function AITutor(props: AITutorProps = {}) {
       const answerMessage: TutorMessage = {
         id: `assistant-${submitResponse.question_id}`,
         role: "assistant",
-        text: finalRenderedText || "导师暂时还没有返回可展示的回答。",
+        text: finalRenderedText || "智能体暂时还没有返回可展示的优化结论。",
         createdAt: formatTime(),
         evidenceAttachments: evidenceAttachments.length ? evidenceAttachments : undefined,
         videos:
@@ -2976,7 +3017,7 @@ export default function AITutor(props: AITutorProps = {}) {
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#0f172a]">AI 导师</p>
+                  <p className="text-sm font-semibold text-[#0f172a]">人才培养方案智能优化智能体</p>
                   <p className="text-xs text-[#64748b]">{buildModeSubtitle(initialMode || "default")}</p>
                 </div>
               </div>
@@ -3096,7 +3137,7 @@ export default function AITutor(props: AITutorProps = {}) {
                         Session Deck
                       </div>
                       <h2 className="mt-3 text-lg font-extrabold text-[#171c22]">最近会话页</h2>
-                      <p className="mt-1 text-sm leading-6 text-[#667085]">这里是独立于 AI 导师主会话的完整最近会话页，适合集中检索、回看与续聊。</p>
+                      <p className="mt-1 text-sm leading-6 text-[#667085]">这里集中保存岗位趋势、专业预警与培养方案优化会话，便于检索、复核和续聊。</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -3110,9 +3151,9 @@ export default function AITutor(props: AITutorProps = {}) {
                         type="button"
                         onClick={() => setHistoryFullscreen(false)}
                         className="rounded-full border border-[#E7ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#344054] transition hover:border-[#d8dee6] hover:bg-[#f8fafc]"
-                        title="返回 AI 导师"
+                        title="返回人才培养方案智能优化智能体"
                       >
-                        返回导师
+                        返回优化智能体
                       </button>
                     </div>
                   </div>
@@ -3236,13 +3277,13 @@ export default function AITutor(props: AITutorProps = {}) {
                 <div className="min-w-0 flex items-center gap-3">
                   <div className="inline-flex items-center gap-2 rounded-full bg-[#FFF2F7] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#e85d8e]">
                     <Sparkles className="h-3.5 w-3.5" />
-                    AI Tutor
+                    {isTalentPlanAgent ? "培养方案优化智能体" : "学习助手"}
                   </div>
                   <button
                     type="button"
                     onClick={handleStartFreshConversation}
                     className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[12px] font-semibold text-[#344054] transition hover:bg-[#F5F7FA] hover:text-[#171c22]"
-                    title="开启一条新的导师会话"
+                    title="开启一条新的方案分析会话"
                     aria-label="新对话"
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -3264,7 +3305,7 @@ export default function AITutor(props: AITutorProps = {}) {
                       type="button"
                       onClick={onClose}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F5F7FA] text-[#667085] transition hover:bg-[#EEF2F6] hover:text-[#171c22]"
-                      title="关闭 AI 导师"
+                      title="关闭人才培养方案智能优化智能体"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -3294,17 +3335,28 @@ export default function AITutor(props: AITutorProps = {}) {
               <>
                 <div ref={listRef} className={`flex-1 space-y-3 px-4 py-3 ${previewAttachment ? "overflow-hidden" : "overflow-y-auto"}`}>
                   {messages.length === 0 ? (
-                    <div className="flex h-full min-h-[220px] items-center justify-center">
-                      <div className="max-w-[320px] rounded-[22px] border border-dashed border-[#D6DEE8] bg-white/72 px-5 py-5 text-center shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
-                        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5F7FA] text-[#667085]">
-                          <MessageCircleMore className="h-5 w-5" />
+                    isTalentPlanAgent ? <div className="flex min-h-[300px] items-center justify-center py-2" data-testid="talent-plan-agent-overview">
+                      <div className="w-full border border-[#D6DEE8] bg-white">
+                        <div className="grid grid-cols-[58px_1fr] border-b border-[#D6DEE8]">
+                          <div className="flex items-center justify-center bg-[#002FA7] text-2xl font-black text-white">01</div>
+                          <div className="p-4">
+                            <div className="text-[13px] font-black text-[#111827]">人才培养方案智能优化智能体</div>
+                            <p className="mt-1 text-[11px] leading-5 text-[#667085]">面向专业负责人，把公开岗位证据转成可复核的课程、实训与教学计划调整建议。</p>
+                          </div>
                         </div>
-                        <div className="mt-3 text-[13px] font-bold text-[#171c22]">还没有对话记录</div>
-                        <p className="mt-1 text-[12px] leading-5 text-[#667085]">
-                          直接输入问题，或选择上方快捷问题开始；课堂上下文会在回答时自动参考。
-                        </p>
+                        <div className="grid grid-cols-3 divide-x divide-[#D6DEE8] border-b border-[#D6DEE8]">
+                          <AgentCapability icon={Database} index="02" label="采集岗位" detail="公开来源与快照" />
+                          <AgentCapability icon={TrendingUp} index="03" label="分析趋势" detail="技能热度与匹配" />
+                          <AgentCapability icon={AlertTriangle} index="04" label="生成方案" detail="预警与调整清单" />
+                        </div>
+                        <div className="flex items-center justify-between gap-3 p-3">
+                          <span className="text-[10px] leading-4 text-[#667085]">所有数值需显示来源、时间与采集模式；最终方案由专业负责人复核。</span>
+                          <Link to="/industry-dashboard" className="inline-flex shrink-0 items-center gap-1 bg-[#002FA7] px-3 py-2 text-[11px] font-bold text-white">
+                            打开数据看板 <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
                       </div>
-                    </div>
+                    </div> : <div className="flex h-full min-h-[220px] items-center justify-center"><div className="max-w-[320px] border border-dashed border-[#D6DEE8] bg-white px-5 py-5 text-center"><div className="mx-auto flex h-10 w-10 items-center justify-center bg-[#F5F7FA] text-[#667085]"><MessageCircleMore className="h-5 w-5" /></div><div className="mt-3 text-[13px] font-bold text-[#171c22]">还没有对话记录</div><p className="mt-1 text-[12px] leading-5 text-[#667085]">直接输入问题，或选择上方快捷问题开始；当前课程或资源上下文会在回答时自动参考。</p></div></div>
                   ) : messages.map((message) => (
                     <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex gap-3"}>
                       {message.role === "assistant" ? (
@@ -3574,7 +3626,7 @@ export default function AITutor(props: AITutorProps = {}) {
                           sending
                             ? (hasExtractedAttachment(attachments)
                               ? "正在识别附件内容并生成讲解"
-                              : "AI 导师正在组织回答")
+                              : "人才培养方案智能优化智能体正在组织回答")
                             : capturing
                               ? "正在处理截图上下文"
                               : "正在上传附件并挂接上下文"
@@ -3597,7 +3649,7 @@ export default function AITutor(props: AITutorProps = {}) {
                           void submitQuestion();
                         }
                       }}
-                      placeholder={userExperience.tutorPlaceholder}
+                      placeholder={isTalentPlanAgent ? "输入专业群、核心岗位或需要优化的课程模块…" : userExperience.tutorPlaceholder}
                       className="min-h-[56px] w-full resize-none border-none bg-transparent px-1 py-1.5 text-[13px] leading-5 text-[#101828] outline-none placeholder:text-[#98A2B3]"
                     />
 

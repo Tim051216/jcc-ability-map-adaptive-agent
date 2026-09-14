@@ -42,13 +42,18 @@ check(
   fs.existsSync(path.join(repoRoot, "a3-student-react-web/src/data/aiAnnotationKnowledge.ts")),
   "a3-student-react-web/src/data/aiAnnotationKnowledge.ts",
 );
+check(
+  "岗位工单转学习任务模块存在",
+  fs.existsSync(path.join(repoRoot, "a3-student-react-web/src/lib/aiAnnotationLearningTask.ts")),
+  "a3-student-react-web/src/lib/aiAnnotationLearningTask.ts",
+);
 
 // Binary handoff artifacts are part of the formal submission, so verify both
 // their presence and that the files are non-empty.  Text-only audits can pass
 // while the actual DOCX/PPTX handoff is missing.
 const requiredArtifacts = [
   "deliverables/03-作品说明/AI数据标注实训智能体-项目说明.docx",
-  "deliverables/03-作品说明/AI数据标注实训智能体-演示稿.pptx",
+  "deliverables/03-作品说明/作品编码600370-答辩PPT-最新版.pptx",
 ];
 for (const file of requiredArtifacts) {
   const artifactPath = path.join(repoRoot, file);
@@ -77,6 +82,7 @@ check(
 const component = read("a3-student-react-web/src/pages/AIAnnotationAgent.tsx");
 const ruleModule = read("a3-student-react-web/src/data/aiAnnotationRules.ts");
 const knowledgeModule = read("a3-student-react-web/src/data/aiAnnotationKnowledge.ts");
+const learningTaskModule = read("a3-student-react-web/src/lib/aiAnnotationLearningTask.ts");
 const competition = read("deliverables/AI数据标注实训智能体-竞赛说明.md");
 const mapping = read("deliverables/AI数据标注实训智能体-来源规则输出映射.md");
 const simulationCsv = read("deliverables/AI数据标注实训智能体-AI模拟反馈.csv");
@@ -117,6 +123,15 @@ check(
 );
 check("页面输出规则 ID 与来源状态", component.includes("annotation-rule-trace") && component.includes("待教师核验"), "AIAnnotationAgent.tsx");
 check("规则命中后按对象携带来源", component.includes("source: matchedRule.source") && !component.includes("source: rules[0].source"), "AIAnnotationAgent.tsx");
+check(
+  "岗位工单形成可验收学习任务闭环",
+  component.includes("learning-task-transformer") &&
+    learningTaskModule.includes("generateAnnotationLearningTask") &&
+    learningTaskModule.includes("acceptanceCriteria") &&
+    learningTaskModule.includes("citations") &&
+    learningTaskModule.includes("safetyPoints"),
+  "工单输入、规则匹配、步骤、知识技能点、安全、产出、量化验收与来源",
+);
 check("反馈需确认后保存", component.includes("feedback-consent") && component.includes("!consentConfirmed"), "AIAnnotationAgent.tsx");
 check("文档没有把知识库误写为仅 3 条", !competition.includes("含 3 条结构化规则的规则库"), "竞赛说明");
 check(
@@ -142,7 +157,7 @@ check(
   "页面与模板",
 );
 check("模拟 CSV 明确标记", simulationCsv.split(/\r?\n/).slice(1).filter(Boolean).every((line) => line.startsWith("AI模拟（内部演示）")), "AI 模拟 CSV");
-check("Smoke 至少覆盖 27 个断言", (smoke.match(/checks\.push\(/g) || []).length >= 27, "smoke 脚本");
+check("Smoke 至少覆盖 34 个断言", (smoke.match(/checks\.push\(/g) || []).length >= 34, "smoke 脚本");
 check("提交预检区分开发/严格模式", submissionAudit.includes("--strict") && submissionAudit.includes("BLOCKED") && submissionAudit.includes("未生成或修改任何证据文件"), "提交预检脚本");
 check("预提交包包含缺口计划", packageScript.includes("deliverables\\AI数据标注实训智能体-缺口审计与推进计划.md"), "package-ai-annotation.ps1");
 check("预提交包验真脚本存在", fs.existsSync(packageVerifierPath), "scripts/verify-ai-annotation-package.ps1");

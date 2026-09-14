@@ -1,10 +1,9 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   Lock,
@@ -18,9 +17,10 @@ import {
 } from "../App";
 import assetHaibaraAcademic from "../assets/images/haibara_academic_1779716437995.webp";
 import assetUsagiStudy from "../assets/images/usagi_perfect_1779717893221.webp";
-import StudyAssistant3D from "../components/StudyAssistant3D";
 
 import { DEMO_USER_PROFILES, getDemoUserProfile } from "../lib/userProfiles";
+
+const StudyAssistant3D = lazy(() => import("../components/StudyAssistant3D"));
 
 interface LoginProps {
   onLoginSuccess: (
@@ -39,7 +39,7 @@ const DEMO_ACCOUNTS = DEMO_USER_PROFILES;
 const LOGIN_HIGHLIGHTS = [
   { label: "岗位能力诊断", value: "动态更新", detail: "登录后恢复专业、目标、岗位能力薄弱点和学习历史。" },
   { label: "学习闭环", value: "自动衔接", detail: "继续课程测评、规划、资源生成、答疑和复习提醒。" },
-  { label: "AI 导师", value: "随时追问", detail: "围绕当前课程资料和生成资源继续对话学习。" },
+  { label: "培养方案优化智能体", value: "动态决策", detail: "依据公开岗位趋势生成专业预警和课程、实训调整建议。" },
 ];
 const LOGIN_POSTER_TAGS = ["岗位能力", "测评", "规划", "资源", "答疑"];
 const LOGIN_LOOP_STEPS = [
@@ -84,7 +84,7 @@ function LoginModelFallback({ compact = false }: { compact?: boolean }) {
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[#F6B6CA] bg-white text-[#fb7299] shadow-[0_14px_30px_rgba(251,114,153,0.16)]">
           <MessageCircleMore className="h-7 w-7" />
         </div>
-        <div className="mt-3 text-sm font-black text-[#111827]">AI 导师入口</div>
+        <div className="mt-3 text-sm font-black text-[#111827]">人才培养方案智能优化入口</div>
         <div className="mt-1 text-[12px] leading-5 text-[#667085]">3D 模型暂未加载成功，入口页仍可正常使用。</div>
       </div>
     </div>
@@ -126,8 +126,6 @@ function useTypewriterText(text: string, enabled: boolean, speed = 28, delay = 0
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const [studentId, setStudentId] = useState(() => localStorage.getItem(LAST_ACCOUNT_STORAGE_KEY) || "");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -146,6 +144,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [introReady, setIntroReady] = useState(false);
   const [hoveredHighlight, setHoveredHighlight] = useState<string | null>(null);
   const [loginTutorBubbleOpen, setLoginTutorBubbleOpen] = useState(false);
+  const [shouldRenderLoginModel, setShouldRenderLoginModel] = useState(false);
+  const [isWideLayout, setIsWideLayout] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
   const [loginTutorInput, setLoginTutorInput] = useState("");
   const [loginTutorMessages, setLoginTutorMessages] = useState<LoginTutorMessage[]>([
     {
@@ -208,6 +208,31 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   }, []);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1280px)");
+    const syncLayout = () => setIsWideLayout(mediaQuery.matches);
+    mediaQuery.addEventListener("change", syncLayout);
+
+    let idleId: number | undefined;
+    const timer = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = (window as Window & {
+          requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
+        }).requestIdleCallback(() => setShouldRenderLoginModel(true), { timeout: 3000 });
+      } else {
+        setShouldRenderLoginModel(true);
+      }
+    }, 2500);
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncLayout);
+      window.clearTimeout(timer);
+      if (idleId !== undefined && "cancelIdleCallback" in window) {
+        (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!loginTutorBubbleOpen) return;
     window.requestAnimationFrame(() => {
       const messageLists = [
@@ -219,8 +244,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       });
     });
   }, [loginTutorBubbleOpen, loginTutorMessages]);
-
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/";
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,7 +275,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             name: profile?.name || "BiliLearn 用户",
             avatar: profile?.avatar || assetHaibaraAcademic,
           }, { persist: rememberMe });
-          navigate(from, { replace: true });
         }, 850);
       } else {
         setError("学籍卡号或学习口令不能为空，请补全后继续。");
@@ -275,7 +297,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         name: profile?.name || "BiliLearn 用户",
         avatar: profile?.avatar || assetHaibaraAcademic,
       }, { persist: true });
-      navigate(from, { replace: true });
     }, 420);
   };
 
@@ -331,18 +352,18 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return "系统围绕岗课赛闭环工作：先从岗位能力诊断和测评了解当前状态，再进入课堂学习，随后生成任务卡、讲义、导图和练习，最后用报告和复习提醒跟踪进展。登录后从首页导航进入对应模块即可。";
     }
     if (normalizedQuestion.includes("课堂") || normalizedQuestion.includes("视频") || normalizedQuestion.includes("资源")) {
-      return "进入后可以从课堂页继续看视频，在资源页生成讲义、PPT、练习和代码任务，AI 导师会带着当前课程上下文回答。";
+      return "进入后可以在人才培养方案智能优化看板采集公开岗位数据、分析技能趋势与专业匹配度，并生成课程、实训和教学计划调整建议。";
     }
     if (normalizedQuestion.includes("画像") || normalizedQuestion.includes("岗位能力") || normalizedQuestion.includes("测评") || normalizedQuestion.includes("路径") || normalizedQuestion.includes("学习情况")) {
       return "系统会用岗位能力诊断、测评结果和历史进度生成个性化路径，再把课堂、任务、资源和报告串成闭环。";
     }
     if (normalizedQuestion.includes("ai导师") || normalizedQuestion.includes("答疑") || normalizedQuestion.includes("问问题")) {
-      return "AI 导师会根据当前页面和已保存的学习上下文回答问题。课堂页会结合当前视频内容，资源页会结合当前资源，其他页面则依据本地知识库和你的学习记录回答。";
+      return "人才培养方案智能优化智能体会围绕公开岗位证据、技能趋势、专业匹配度和历史采集快照回答，并明确标注无真实来源的规范化样例。";
     }
     if (normalizedQuestion.includes("讲义") || normalizedQuestion.includes("ppt") || normalizedQuestion.includes("导图") || normalizedQuestion.includes("练习")) {
       return "在课堂页进入资源生成区，选择讲义、PPT、导图或练习即可生成对应资源。系统会优先展示知识库中已有的结果，避免重复等待。";
     }
-    return "可以的。你可以问我登录入口怎么用、进入后先看哪里、AI 导师会读取哪些学习上下文。";
+    return "可以的。你可以问我登录入口怎么用、如何采集公开岗位，以及智能体如何生成专业预警和培养方案优化清单。";
   };
 
   const buildSmartLoginTutorReply = (question: string) => {
@@ -359,7 +380,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return "进入后会先恢复你的岗位能力诊断和最近进度，再从岗位分析、任务转学习卡、岗位能力图谱和岗课赛学习页面继续。";
     }
     if (hasAny(["课堂", "视频", "播放", "暂停", "当前时间", "提问"])) {
-      return "课堂页会记录视频上下文。你在课堂里点击“直接对当前视频提问”时，会带上当前视频和播放时间，方便 AI 导师围绕这段内容回答。";
+      return "课堂页会记录视频上下文。你在课堂里点击“直接对当前视频提问”时，会带上当前视频和播放时间，方便 学习助手围绕这段内容回答。";
     }
     if (hasAny(["资源", "资料", "ppt", "讲义", "练习", "代码", "生成"])) {
       return "资源中心可以区分原始资料和 AI 生成资料，支持生成讲义、PPT、练习、代码任务等内容，并能继续进入预览或下载。";
@@ -368,7 +389,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return "系统会结合岗位能力诊断、测评结果、课程进度和薄弱点生成个性化路径，推荐下一步课程、资源和实训任务。";
     }
     if (hasAny(["导师", "ai", "问答", "助手", "聊天"])) {
-      return "AI 导师会尽量带着当前页面上下文回答。登录页这里只提供轻量说明，进入学习空间后可以在课堂、资源、路径等页面继续问更具体的问题。";
+      return "学习助手会尽量带着当前页面上下文回答。登录页这里只提供轻量说明，进入学习空间后可以在课堂、资源、路径等页面继续问更具体的问题。";
     }
     if (hasAny(["收藏", "报告", "消息", "im", "沟通"])) {
       return "收藏页用于沉淀常用资料，报告页汇总阶段成果和薄弱点，消息页处理课程群和私聊协作。";
@@ -550,7 +571,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         <div className="fixed bottom-20 right-5 z-[80] w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-[24px] border border-[#ffd5e2] bg-white/96 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl xl:hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[#f3e2e9] px-4 py-3">
             <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">AI Tutor</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">Learning Assistant</div>
               <div className="text-sm font-black text-[#111827]">入口页小助手</div>
             </div>
             <button
@@ -721,7 +742,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <div className="rounded-full border border-white/70 bg-white/72 px-3 py-1 text-[10px] font-black uppercase ui-ui-tracking-tight ui-text-secondary shadow-sm" style={{ animation: "loginRibbonFloat 8s ease-in-out infinite" }}>
-                        AI Tutor Runtime
+                        Learning Assistant Runtime
                       </div>
                       <div className="rounded-full border border-white/70 bg-white/72 px-3 py-1 text-[10px] font-black uppercase ui-ui-tracking-tight ui-text-secondary shadow-sm" style={{ animation: "loginRibbonFloat 8s ease-in-out infinite 0.5s" }}>
                         Personal Learning Graph
@@ -741,6 +762,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     <button
                       type="button"
                       onClick={handleOpenLoginTutor}
+                      onPointerEnter={() => setShouldRenderLoginModel(true)}
+                      onFocus={() => setShouldRenderLoginModel(true)}
                       className="group relative block w-full overflow-visible text-left"
                       aria-label="点击 3D 模型咨询系统相关问题"
                       title="点击 3D 模型咨询系统相关问题"
@@ -755,21 +778,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       </span>
                       <span className="absolute inset-x-4 top-8 h-[360px] rounded-[48px] bg-[radial-gradient(circle_at_50%_20%,rgba(251,114,153,0.12),transparent_40%),radial-gradient(circle_at_70%_18%,rgba(125,211,252,0.10),transparent_30%)] blur-2xl" />
                       <LoginModelBoundary fallback={<LoginModelFallback />}>
-                        <StudyAssistant3D
-                          className="relative z-10 h-[500px] w-full -translate-y-2"
-                          minHeightClassName="min-h-[500px]"
-                          minRenderWidth={310}
-                          minRenderHeight={500}
-                          modelYOffset={0.78}
-                          modelScale={2.72}
-                        />
+                        <Suspense fallback={<LoginModelFallback />}>
+                          {shouldRenderLoginModel && isWideLayout ? (
+                            <StudyAssistant3D
+                              className="relative z-10 h-[500px] w-full -translate-y-2"
+                              minHeightClassName="min-h-[500px]"
+                              minRenderWidth={310}
+                              minRenderHeight={500}
+                              modelYOffset={0.78}
+                              modelScale={2.72}
+                            />
+                          ) : <LoginModelFallback />}
+                        </Suspense>
                       </LoginModelBoundary>
                     </button>
                     {loginTutorBubbleOpen ? (
                       <div className="absolute right-[calc(100%+16px)] top-[118px] z-[80] w-[min(360px,calc(100vw-2rem))] max-w-[360px] overflow-hidden rounded-[24px] border border-[#ffd5e2] bg-white/96 text-left shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl">
                         <div className="flex items-center justify-between gap-3 border-b border-[#f3e2e9] px-4 py-3">
                           <div>
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">AI Tutor</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#fb7299]">Learning Assistant</div>
                             <div className="text-sm font-black text-[#111827]">入口页小助手</div>
                           </div>
                           <button
@@ -944,18 +971,24 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 <button
                   type="button"
                   onClick={handleOpenLoginTutor}
+                  onPointerEnter={() => setShouldRenderLoginModel(true)}
+                  onFocus={() => setShouldRenderLoginModel(true)}
                   className="relative mt-4 block w-full overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.88))] text-left shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-[#fb7299]/15"
                   aria-label="点击 3D 模型打开入口页小助手"
                 >
                   <LoginModelBoundary fallback={<LoginModelFallback compact />}>
-                    <StudyAssistant3D
-                      className="h-[300px] w-full -translate-y-8"
-                      minHeightClassName="min-h-[300px]"
-                      minRenderWidth={280}
-                      minRenderHeight={300}
-                      modelYOffset={1.4}
-                      modelScale={2.65}
-                    />
+                    <Suspense fallback={<LoginModelFallback compact />}>
+                      {shouldRenderLoginModel && !isWideLayout ? (
+                        <StudyAssistant3D
+                          className="h-[300px] w-full -translate-y-8"
+                          minHeightClassName="min-h-[300px]"
+                          minRenderWidth={280}
+                          minRenderHeight={300}
+                          modelYOffset={1.4}
+                          modelScale={2.65}
+                        />
+                      ) : <LoginModelFallback compact />}
+                    </Suspense>
                   </LoginModelBoundary>
                 </button>
 

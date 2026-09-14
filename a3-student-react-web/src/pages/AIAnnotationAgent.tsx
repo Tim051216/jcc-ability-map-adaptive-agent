@@ -10,10 +10,16 @@ import {
   AI_ANNOTATION_KNOWLEDGE_COUNT,
 } from "../data/aiAnnotationKnowledge";
 import {
+  generateAnnotationLearningTask,
+  type AnnotationLearningTask,
+} from "../lib/aiAnnotationLearningTask";
+import {
+  ArrowLeft,
   Bot,
   CheckCircle2,
   CircleAlert,
   ClipboardCheck,
+  ClipboardList,
   ChevronDown,
   Download,
   FileText,
@@ -24,6 +30,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 type FeedbackRecordType = "" | "真实用户试用" | "AI模拟（内部演示）";
 
@@ -308,6 +315,9 @@ export default function AIAnnotationAgent() {
   const [rating, setRating] = useState({ usefulness: "5", usability: "5", accuracy: "5" });
   const [consentConfirmed, setConsentConfirmed] = useState(false);
   const [showKnowledgeCatalog, setShowKnowledgeCatalog] = useState(false);
+  const [workOrder, setWorkOrder] = useState("");
+  const [learningTask, setLearningTask] = useState<AnnotationLearningTask | null>(null);
+  const [taskGenerationMessage, setTaskGenerationMessage] = useState("");
 
   const send = (value = input) => {
     if (!value.trim()) return;
@@ -315,6 +325,17 @@ export default function AIAnnotationAgent() {
     setMessages((current) => [...current, { role: "user", text: value }, response]);
     setInput("");
     setAwaitingClarification(Boolean(response.needsClarification));
+  };
+
+  const generateLearningTask = () => {
+    const result = generateAnnotationLearningTask(workOrder);
+    if (result.status === "clarify") {
+      setLearningTask(null);
+      setTaskGenerationMessage(result.message);
+      return;
+    }
+    setLearningTask(result.task);
+    setTaskGenerationMessage("");
   };
 
   const save = () => {
@@ -403,17 +424,25 @@ export default function AIAnnotationAgent() {
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#172033]">
       <header className="border-b border-[#dde2ee] bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-7xl flex-col items-stretch justify-between gap-3 px-3 py-4 sm:flex-row sm:items-center sm:px-6">
           <div className="flex items-center gap-3">
+            <Link
+              to="/job-learning"
+              aria-label="返回 BiliLearn 岗课赛自适应学习"
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:border-[#5146c7] hover:text-[#5146c7]"
+            >
+              <ArrowLeft size={17} />
+              <span className="hidden sm:inline">返回 BiliLearn</span>
+            </Link>
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5146c7] text-white">
               <Bot size={22} />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[.16em] text-[#5146c7]">AI 实训智能体</p>
+              <p className="text-xs font-semibold uppercase tracking-[.16em] text-[#5146c7]">BiliLearn · 扩展岗位实训模块</p>
               <h1 className="text-lg font-bold">AI 数据标注 · 质检助手</h1>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:justify-end sm:text-sm">
             <span
               data-testid="ai-generated-label"
               title="页面回答来自候选规则库，仅供教学辅助，提交前需教师核验"
@@ -423,14 +452,14 @@ export default function AIAnnotationAgent() {
             </span>
             <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">核心规则 {AI_ANNOTATION_RULE_COUNT} 条</span>
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">知识库 {AI_ANNOTATION_KNOWLEDGE_COUNT} 条</span>
-            <span className="flex items-center gap-1">
+            <span className="hidden items-center gap-1 md:flex">
               <ShieldCheck size={16} />一致性优先
             </span>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-6 px-6 py-6 lg:grid-cols-[1fr_360px]">
+      <main className="mx-auto grid max-w-7xl gap-6 px-3 py-6 sm:px-6 lg:grid-cols-[1fr_360px]">
         <section className="space-y-5">
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -449,6 +478,119 @@ export default function AIAnnotationAgent() {
               <CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span><strong>AI生成内容：</strong>以下回答由候选规则库生成，仅供教学辅助；提交作业或生产标注前请由教师核验。</span>
             </p>
+          </div>
+
+          <div className="overflow-hidden border border-slate-200 bg-white" data-testid="learning-task-transformer">
+            <div className="grid border-b border-slate-200 md:grid-cols-[92px_1fr]">
+              <div className="flex items-center justify-center bg-[#002FA7] px-4 py-5 text-3xl font-black tabular-nums text-white">
+                03
+              </div>
+              <div className="px-5 py-4">
+                <div className="flex items-center gap-2 text-[#002FA7]">
+                  <ClipboardList size={18} aria-hidden="true" />
+                  <h3 className="font-bold">岗位工单转学习任务卡</h3>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  核心方向 3：输入真实或脱敏后的标注工单，自动生成任务名称、工作情境、步骤、知识点、技能点、安全要点与验收标准。
+                </p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2">
+              <div className="border-b border-slate-200 p-5 md:border-b-0 md:border-r">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <label htmlFor="annotation-work-order" className="text-sm font-bold text-slate-800">
+                    01｜企业或实训工单
+                  </label>
+                  <button
+                    type="button"
+                    data-testid="fill-work-order-example"
+                    onClick={() => setWorkOrder("目标检测标注工单：两名同类行人挨在一起但仍可分别辨认，请分别框选并完成提交前质检。")}
+                    className="text-xs font-semibold text-[#002FA7] underline underline-offset-4"
+                  >
+                    填入脱敏示例
+                  </button>
+                </div>
+                <textarea
+                  id="annotation-work-order"
+                  value={workOrder}
+                  onChange={(event) => setWorkOrder(event.target.value)}
+                  placeholder="粘贴工单，并写明任务类型、目标类别和遮挡/截断/同类实例现象…"
+                  className="h-32 w-full resize-y border border-slate-300 bg-white p-3 text-sm leading-6 outline-none focus:border-[#002FA7]"
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[11px] leading-5 text-slate-500">不得粘贴未授权原图、姓名、学号、账号或生产数据。</p>
+                  <button
+                    type="button"
+                    onClick={generateLearningTask}
+                    className="bg-[#002FA7] px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800"
+                  >
+                    生成学习任务卡
+                  </button>
+                </div>
+                {taskGenerationMessage ? (
+                  <p role="alert" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                    {taskGenerationMessage}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="min-h-64 bg-slate-50 p-5">
+                <p className="mb-3 text-sm font-bold text-slate-800">02｜生成结果</p>
+                {learningTask ? (
+                  <article className="space-y-4" data-testid="generated-learning-task-card">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="bg-[#002FA7] px-2 py-1 text-[10px] font-bold text-white">{learningTask.id}</span>
+                        <span className="border border-amber-300 px-2 py-1 text-[10px] font-semibold text-amber-800">
+                          {learningTask.reviewStatus === "candidate" ? "候选规则·待教师核验" : "已核验"}
+                        </span>
+                      </div>
+                      <h4 className="mt-2 text-lg font-bold text-slate-900">{learningTask.taskName}</h4>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">{learningTask.taskDescription}</p>
+                    </div>
+                    <div className="border-y border-slate-200 py-3 text-xs leading-5 text-slate-600">
+                      <p className="font-semibold text-slate-800">工作情境</p>
+                      <p>{learningTask.workContext}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">操作步骤</p>
+                      <ol className="mt-2 space-y-1.5 text-xs leading-5 text-slate-600">
+                        {learningTask.steps.map((step, index) => <li key={step}>{index + 1}. {step}</li>)}
+                      </ol>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">知识点</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">{learningTask.knowledgePoints.join("、")}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">技能点</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">{learningTask.skillPoints.join("、")}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">提交产出与量化验收</p>
+                      <ul className="mt-1 space-y-1 text-xs leading-5 text-slate-600">
+                        {learningTask.deliverables.map((item) => <li key={item}>产出：{item}</li>)}
+                        {learningTask.acceptanceCriteria.map((item) => <li key={item}>验收：{item}</li>)}
+                      </ul>
+                    </div>
+                    <div className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2">
+                      <p className="text-xs font-bold text-amber-900">安全要点</p>
+                      <ul className="mt-1 space-y-1 text-xs leading-5 text-amber-900">
+                        {learningTask.safetyPoints.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </div>
+                    <p className="text-[11px] leading-5 text-slate-500">依据：{learningTask.citations.join("；")}</p>
+                  </article>
+                ) : (
+                  <div className="flex min-h-52 items-center justify-center border border-dashed border-slate-300 bg-white p-6 text-center text-xs leading-6 text-slate-500">
+                    输入单一微任务工单后生成。若同时出现遮挡和截断，系统会先要求缩小任务范围。
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-[#dde2ee] bg-white">

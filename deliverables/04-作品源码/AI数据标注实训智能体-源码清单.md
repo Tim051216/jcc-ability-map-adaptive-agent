@@ -7,6 +7,9 @@
 | React 页面 | `a3-student-react-web/src/pages/AIAnnotationAgent.tsx` |
 | 规则库 | `a3-student-react-web/src/data/aiAnnotationRules.ts` |
 | 候选知识目录 | `a3-student-react-web/src/data/aiAnnotationKnowledge.ts`（K001–K060，共 60 条） |
+| 工单转学习任务规则工作流 | `a3-student-react-web/src/lib/aiAnnotationLearningTask.ts` |
+| 星辰专用系统提示词 | `a3-ai-python/xfyun_agent/AI_ANNOTATION_SYSTEM_PROMPT.md` |
+| 星辰工作流部署说明 | `a3-ai-python/xfyun_agent/AI_ANNOTATION_WORKFLOW_DEPLOYMENT.md` |
 | 路由与独立页面壳 | `a3-student-react-web/src/App.tsx` |
 | 启动脚本 | `scripts/start-ai-annotation.ps1` |
 | 浏览器回归 | `a3-student-react-web/scripts/smoke-ai-annotation-agent.ts` |
@@ -32,6 +35,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ..\scripts\verify-ai-annotat
 - `src/pages/AIAnnotationAgent.tsx`
 - `src/data/aiAnnotationRules.ts`
 - `src/data/aiAnnotationKnowledge.ts` 与 `../AI数据标注实训智能体-知识库目录.md`
+- `src/lib/aiAnnotationLearningTask.ts`
 - `src/App.tsx` 与 `vite.config.ts`
 - `package.json`、锁文件和 TypeScript 配置
 - `scripts/smoke-ai-annotation-agent.ts`

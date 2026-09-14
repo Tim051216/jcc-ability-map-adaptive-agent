@@ -6,12 +6,12 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from "react-router-dom";
 import { Layers, Compass, Tv, FolderOpen, Heart, ClipboardCheck, BarChart2, User, Sparkles, ChevronLeft, ChevronDown, Bot, MessageCircleMore, ArrowRight, BookOpen } from "lucide-react";
+import Header from "./components/Header";
 import { ACTIVE_TUTOR_CONTEXT_EVENT, OPEN_TUTOR_PANEL_EVENT, loadActiveTutorContext, type TutorPanelPayload } from "./lib/tutorPanel";
 import { getDemoUserIdentity } from "./lib/demoUserIdentity";
 import { buildResourcesRoute, readLastRouteCourseId } from "./lib/routeCourseContext";
 
 const routeImporters = {
-  header: () => import("./components/Header"),
   login: () => import("./pages/Login"),
   overview: () => import("./pages/Overview"),
   path: () => import("./pages/LearningPath"),
@@ -38,7 +38,6 @@ const routeImporters = {
   aiAnnotation: () => import("./pages/AIAnnotationAgent"),
 };
 
-const Header = lazy(routeImporters.header);
 const Login = lazy(routeImporters.login);
 const Overview = lazy(routeImporters.overview);
 const LearningPath = lazy(routeImporters.path);
@@ -62,119 +61,48 @@ const JobAbilityGraph = lazy(routeImporters.jobAbilityGraph);
 const RobotOpsAgent = lazy(routeImporters.robotOps);
 const AIAnnotationAgent = lazy(routeImporters.aiAnnotation);
 
-// Warm route chunks after the first screen settles so the first navigation is not a cold import.
-if (typeof window !== "undefined") {
-  const warmRouteChunks = () => {
-    Object.values(routeImporters).forEach((loadRoute) => {
-      void loadRoute();
-    });
-  };
-  const idleWindow = window as Window & {
-    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-  };
-  if (idleWindow.requestIdleCallback) {
-    idleWindow.requestIdleCallback(warmRouteChunks, { timeout: 3500 });
-  } else {
-    window.setTimeout(warmRouteChunks, 2500);
-  }
-}
 const WelcomeScreen = lazy(routeImporters.welcome);
 const StudyAssistant3D = lazy(() => import("./components/StudyAssistant3D"));
 const preloadedRouteKeys = new Set<string>();
 
+const routeImporterByPath: Record<string, () => Promise<unknown>> = {
+  "/": routeImporters.jobLearning,
+  "/overview": routeImporters.overview,
+  "/search": routeImporters.search,
+  "/path": routeImporters.path,
+  "/learn": routeImporters.learn,
+  "/resources": routeImporters.resources,
+  "/resources/preview": routeImporters.resourcePreview,
+  "/resources/code-list": routeImporters.resourcePreview,
+  "/resources/judge-result": routeImporters.judgeResult,
+  "/collection": routeImporters.collection,
+  "/evaluation": routeImporters.evaluation,
+  "/report": routeImporters.report,
+  "/profile": routeImporters.jobAbilityGraph,
+  "/profile/conversation": routeImporters.jobAbilityGraph,
+  "/im": routeImporters.im,
+  "/login": routeImporters.login,
+  "/job-learning": routeImporters.jobLearning,
+  "/job-learning/outcomes": routeImporters.jobLearningOutcomes,
+  "/job-learning/knowledge-catalog": routeImporters.jobKnowledgeCatalog,
+  "/trial-feedback": routeImporters.trialFeedback,
+  "/industry-dashboard": routeImporters.industryDashboard,
+  "/learning-task-factory": routeImporters.learningTaskFactory,
+  "/job-ability-graph": routeImporters.jobAbilityGraph,
+  "/robot-ops-agent": routeImporters.robotOps,
+  "/ai-annotation-agent": routeImporters.aiAnnotation,
+  "/annotation-agent": routeImporters.aiAnnotation,
+};
+
 function preloadRoute(path: string) {
   const normalizedPath = path.split("?")[0] || path;
   if (preloadedRouteKeys.has(normalizedPath)) return;
-  const importer =
-    normalizedPath === "/"
-        ? routeImporters.jobLearning
-      : normalizedPath === "/search"
-        ? routeImporters.search
-      : normalizedPath === "/path"
-        ? routeImporters.path
-        : normalizedPath === "/learn"
-          ? routeImporters.learn
-          : normalizedPath === "/resources"
-            ? routeImporters.resources
-            : normalizedPath === "/resources/preview" || normalizedPath === "/resources/code-list"
-              ? routeImporters.resourcePreview
-              : normalizedPath === "/resources/judge-result"
-                ? routeImporters.judgeResult
-                : normalizedPath === "/collection"
-                  ? routeImporters.collection
-                  : normalizedPath === "/evaluation"
-                    ? routeImporters.evaluation
-                    : normalizedPath === "/report"
-                      ? routeImporters.report
-                      : normalizedPath === "/profile" || normalizedPath === "/profile/conversation"
-                        ? routeImporters.jobAbilityGraph
-                          : normalizedPath === "/im"
-                            ? routeImporters.im
-                            : normalizedPath === "/login"
-                              ? routeImporters.login
-                              : normalizedPath === "/job-learning"
-                                ? routeImporters.jobLearning
-                              : normalizedPath === "/job-learning/outcomes"
-                                  ? routeImporters.jobLearningOutcomes
-                              : normalizedPath === "/trial-feedback"
-                                    ? routeImporters.trialFeedback
-                              : normalizedPath === "/job-learning/knowledge-catalog"
-                                ? routeImporters.jobKnowledgeCatalog
-                              : normalizedPath === "/industry-dashboard"
-                                ? routeImporters.industryDashboard
-                              : normalizedPath === "/learning-task-factory"
-                                ? routeImporters.learningTaskFactory
-                              : normalizedPath === "/job-ability-graph"
-                                ? routeImporters.jobAbilityGraph
-                              : null;
+  const importer = routeImporterByPath[normalizedPath];
 
   if (importer) {
     preloadedRouteKeys.add(normalizedPath);
-    void importer();
+    void importer().catch(() => preloadedRouteKeys.delete(normalizedPath));
   }
-}
-
-function scheduleRouteWarmup() {
-  const shouldSkipWarmup = () => {
-    const connection = (navigator as Navigator & {
-      connection?: { saveData?: boolean; effectiveType?: string };
-    }).connection;
-    return Boolean(connection?.saveData || /2g/.test(connection?.effectiveType || ""));
-  };
-
-  const warmRoutes = () => {
-    if (shouldSkipWarmup()) return;
-    const currentPath = window.location.pathname;
-    const importers = [
-      routeImporters.jobLearning,
-      routeImporters.path,
-      routeImporters.resources,
-      routeImporters.evaluation,
-      routeImporters.jobAbilityGraph,
-    ].filter((importer) => {
-      if (currentPath === "/" && importer === routeImporters.overview) return false;
-      if (currentPath === "/path" && importer === routeImporters.path) return false;
-      if (currentPath === "/resources" && importer === routeImporters.resources) return false;
-      if (currentPath === "/evaluation" && importer === routeImporters.evaluation) return false;
-      if ((currentPath === "/profile" || currentPath === "/profile/conversation") && importer === routeImporters.jobAbilityGraph) return false;
-      return true;
-    });
-    importers.forEach((importer, index) => {
-      window.setTimeout(() => void importer(), index * 700);
-    });
-  };
-
-  if (typeof window === "undefined") return undefined;
-  if ("requestIdleCallback" in window) {
-    const idleId = (window as Window & {
-      requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
-      cancelIdleCallback: (id: number) => void;
-    }).requestIdleCallback(warmRoutes, { timeout: 12000 });
-    return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
-  }
-
-  const timer = globalThis.setTimeout(warmRoutes, 2500);
-  return () => globalThis.clearTimeout(timer);
 }
 
 interface UserSession {
@@ -411,7 +339,7 @@ function GlobalAIAssistantBar() {
       title: "课程实训",
       agent: "课堂学习智能体",
       status: "当前页面更适合边学边问，不需要跳走。",
-      nextAction: "有卡点时直接打开右侧 AI 导师。",
+      nextAction: "需要调整专业方向时，打开右侧人才培养方案智能优化智能体。",
     },
     "/path": {
       title: "岗课赛训练路径",
@@ -566,7 +494,7 @@ function MainLayout({
   const isProductizedPage = !isShellHiddenPage;
   const isPathPage = currentPath === "/path";
   const hideCompactAgentBar = currentPath === "/path" || currentPath === "/evaluation" || currentPath === "/search";
-  const [shouldRenderAssistantModel, setShouldRenderAssistantModel] = useState(!isLoginPage);
+  const [shouldRenderAssistantModel, setShouldRenderAssistantModel] = useState(false);
   const [assistantContext, setAssistantContext] = useState<TutorPanelPayload | undefined>(() => loadActiveTutorContext());
   const [assistantBubbleId, setAssistantBubbleId] = useState<string | null>(null);
   const [assistantPanelCollapsed, setAssistantPanelCollapsed] = useState(true);
@@ -600,28 +528,38 @@ function MainLayout({
 
   const navItems = [
     { label: "岗课赛工作台", id: "overview", path: "/overview", icon: Layers },
-    { label: "产业岗位分析", id: "industry-dashboard", path: "/industry-dashboard", icon: BarChart2 },
+    { label: "人才培养方案智能优化", id: "industry-dashboard", path: "/industry-dashboard", icon: BarChart2 },
     { label: "岗位能力图谱", id: "job-ability-graph", path: "/job-ability-graph", icon: User },
     { label: "岗位任务转学习卡", id: "learning-task-factory", path: "/learning-task-factory", icon: ClipboardCheck },
-    { label: "AI 数据标注实训", id: "ai-annotation-agent", path: "/annotation-agent", icon: Bot },
     { label: "岗课赛自适应学习", id: "job-learning", path: "/job-learning", icon: Compass },
     { label: "岗位能力诊断", id: "evaluation", path: "/evaluation", icon: ClipboardCheck },
     { label: "课程与竞赛资源", id: "resources", path: buildResourcesRoute(readLastRouteCourseId()), icon: FolderOpen },
     { label: "能力与实训报告", id: "report", path: "/report", icon: BarChart2 },
+    { label: "扩展岗位：AI 数据标注", id: "ai-annotation-agent", path: "/annotation-agent", icon: Bot },
   ];
 
   useEffect(() => {
     if (isShellHiddenPage || shouldRenderAssistantModel) return undefined;
-    const renderModel = () => setShouldRenderAssistantModel(true);
-    if ("requestIdleCallback" in window) {
-      const idleId = (window as Window & {
-        requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
-        cancelIdleCallback: (id: number) => void;
-      }).requestIdleCallback(renderModel, { timeout: 7000 });
-      return () => (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
-    }
-    const timer = setTimeout(renderModel, 7000);
-    return () => clearTimeout(timer);
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (connection?.saveData || /2g/.test(connection?.effectiveType || "")) return undefined;
+
+    let idleId: number | undefined;
+    const timer = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = (window as Window & {
+          requestIdleCallback: (callback: () => void, options?: { timeout: number }) => number;
+        }).requestIdleCallback(() => setShouldRenderAssistantModel(true), { timeout: 5000 });
+      } else {
+        setShouldRenderAssistantModel(true);
+      }
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (idleId !== undefined && "cancelIdleCallback" in window) {
+        (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+      }
+    };
   }, [isShellHiddenPage, shouldRenderAssistantModel]);
 
   useEffect(() => {
@@ -642,12 +580,6 @@ function MainLayout({
     setAssistantBubbleId(null);
     setAssistantPanelCollapsed(true);
   }, [location.pathname, location.search]);
-
-  useEffect(() => {
-    if (!isLoginPage) {
-      setShouldRenderAssistantModel(true);
-    }
-  }, [isLoginPage]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -726,92 +658,36 @@ function MainLayout({
     return searchCourseId || assistantContext?.courseId || readLastRouteCourseId() || "";
   }, [assistantContext?.courseId, location.search]);
 
-  const assistantPageLabel =
-    currentPath === "/learn"
-      ? "课堂"
-      : currentPath === "/path"
-        ? "学习路径"
-        : currentPath === "/resources"
-          ? "资源中心"
-          : currentPath === "/evaluation"
-            ? "测评页"
-            : currentPath === "/report"
-              ? "报告页"
-              : "当前页面";
-
   const assistantBubbles = useMemo(
     () => {
-      const chapterLabel = assistantContext?.subtitle || assistantContext?.title || assistantPageLabel;
-      const nextRouteBase = assistantCourseId ? `?courseId=${encodeURIComponent(assistantCourseId)}` : "";
-      const routeForPath = `/path${nextRouteBase}`;
-      const routeForResources = `/resources${nextRouteBase}`;
-      const routeForEvaluation = `/evaluation${nextRouteBase}`;
-
       return [
         {
-          id: "progress",
-          title: "进度",
-          summary: assistantContext
-            ? `接着看 ${chapterLabel}`
-            : `按当前页面看进度`,
-          routeLabel: "去路径",
-          route: routeForPath,
-          prompt: assistantContext
-            ? `结合我正在看的内容 ${chapterLabel}，告诉我当前进度和下一步。`
-            : `结合我当前所在的${assistantPageLabel}，告诉我现在最该先做什么。`,
+          id: "job-trend",
+          title: "岗位趋势",
+          summary: "采集公开岗位并识别技能变化",
+          routeLabel: "看岗位数据",
+          route: "/industry-dashboard",
+          prompt: "请基于可核验的公开岗位数据，分析当前专业群对应岗位的技能需求趋势；没有实时数据时请明确说明。",
         },
         {
-          id: "next",
-          title: "下一步",
-          summary:
-            currentPath === "/learn"
-              ? "先补课堂资源"
-              : currentPath === "/path"
-                ? "先做当前任务"
-                : currentPath === "/resources"
-                  ? "先把资料补完"
-                  : currentPath === "/evaluation"
-                    ? "先做完测评"
-                    : "先回主线任务",
-          routeLabel: "去完成",
-          route:
-            currentPath === "/learn"
-              ? routeForResources
-              : currentPath === "/path"
-                ? `/learn${nextRouteBase}`
-                : currentPath === "/resources"
-                  ? `/learn${nextRouteBase}`
-                  : routeForResources || routeForPath,
-          prompt:
-            currentPath === "/learn"
-              ? "请结合我当前视频和课堂上下文，告诉我下一步先做什么。"
-              : currentPath === "/path"
-                ? "请结合我的学习路径，告诉我下一步先做什么。"
-                : "请结合当前页面，告诉我下一步先做什么。",
+          id: "professional-alert",
+          title: "专业预警",
+          summary: "检查专业匹配度与课程缺口",
+          routeLabel: "看专业预警",
+          route: "/industry-dashboard",
+          prompt: "请对照岗位技能需求与当前专业方向，识别低匹配技能、课程缺口和需要预警的教学计划环节。",
         },
         {
-          id: "todo",
-          title: "待补",
-          summary:
-            currentPath === "/learn"
-              ? "练习和复盘可补齐"
-              : currentPath === "/path"
-                ? "还有阶段任务"
-                : currentPath === "/resources"
-                  ? "还有资源导出"
-                  : "还有收尾动作",
-          routeLabel: "去补齐",
-          route: routeForEvaluation,
-          prompt:
-            currentPath === "/learn"
-              ? "帮我列出当前课堂里还没有完成的内容。"
-              : currentPath === "/path"
-                ? "帮我列出当前学习路径里还没有完成的内容。"
-                : "帮我列出当前页面里还没有完成的内容。",
+          id: "optimization-plan",
+          title: "优化方案",
+          summary: "生成课程、实训与教学计划调整动作",
+          routeLabel: "生成优化清单",
+          route: "/industry-dashboard",
+          prompt: "请按岗位证据、影响判断、调整对象、实施动作和复核方式，生成一份人才培养方案优化建议。",
         },
       ];
     },
-    [assistantContext, assistantCourseId, assistantPageLabel, currentPath],
+    [],
   );
 
   const openAssistantBubbleTutor = (bubble: (typeof assistantBubbles)[number]) => {
@@ -819,8 +695,8 @@ function MainLayout({
       courseId: assistantCourseId || assistantContext?.courseId || undefined,
       sectionId: assistantContext?.sectionId,
       mode: assistantContext?.mode || "learning",
-      title: assistantContext?.title || "AI 学习助手",
-      subtitle: assistantContext?.subtitle || assistantPageLabel,
+      title: "人才培养方案智能优化",
+      subtitle: "岗位动态、专业预警与方案生成",
       videoSrc: assistantContext?.videoSrc,
       videoResourceId: assistantContext?.videoResourceId,
       videoFileId: assistantContext?.videoFileId,
@@ -830,7 +706,7 @@ function MainLayout({
       resourceType: assistantContext?.resourceType,
       resourceSummary: assistantContext?.resourceSummary,
       quickPrompts:
-        assistantContext?.quickPrompts?.length ? assistantContext.quickPrompts : ["继续讲清楚", "告诉我下一步", "帮我找遗漏"],
+        ["分析岗位技能趋势", "检查专业匹配度", "生成培养方案优化建议"],
       startAt: assistantContext?.startAt,
       autoplay: true,
       muted: true,
@@ -845,15 +721,13 @@ function MainLayout({
   return (
     <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#fff9fb_0%,#f8fbff_34%,#f4f7f9_100%)] text-[#171c22]">
       {!isShellHiddenPage ? (
-        <Suspense fallback={null}>
-          <Header
-            user={user}
-            onLogout={onLogout}
-            onOpenTutor={() => onOpenTutor()}
-            contentShiftClass={desktopTutorWidthClass}
-            onPreloadRoute={onPreloadRoute}
-          />
-        </Suspense>
+        <Header
+          user={user}
+          onLogout={onLogout}
+          onOpenTutor={() => onOpenTutor()}
+          contentShiftClass={desktopTutorWidthClass}
+          onPreloadRoute={onPreloadRoute}
+        />
       ) : null}
 
       <div
@@ -861,8 +735,20 @@ function MainLayout({
       >
         {!isShellHiddenPage ? (
           <div className="global-frame-background" aria-hidden="true">
-            <img className="global-frame-image global-frame-image--portrait" src="/backgrounds/path-haibara-dog-clear-frame.png" alt="" />
-            <img className="global-frame-image global-frame-image--water" src="/backgrounds/path-water-frame.webp" alt="" />
+            <img
+              className="global-frame-image global-frame-image--portrait"
+              src="/backgrounds/path-haibara-dog-clear-frame.webp"
+              alt=""
+              decoding="async"
+              fetchPriority="low"
+            />
+            <img
+              className="global-frame-image global-frame-image--water"
+              src="/backgrounds/path-water-frame.webp"
+              alt=""
+              decoding="async"
+              fetchPriority="low"
+            />
           </div>
         ) : null}
 
@@ -919,14 +805,14 @@ function MainLayout({
                 type="button"
                 onClick={() => setAssistantPanelCollapsed((value) => !value)}
                 className="flex w-full items-center justify-between gap-3 border-b border-[#eef2f6] px-3 py-2.5 text-left"
-                aria-label={assistantPanelCollapsed ? "展开 AI 建议" : "收起 AI 建议"}
+                    aria-label={assistantPanelCollapsed ? "展开培养方案优化建议" : "收起培养方案优化建议"}
               >
                 <span className="flex items-center gap-2">
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#fff1f6] text-[#fb7299]">
                     <Sparkles className="h-4 w-4" />
                   </span>
                   <span>
-                    <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">AI 导师建议</span>
+                      <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#8a94a3]">培养方案优化建议</span>
                     <span className="block text-[12px] font-semibold text-[#171c22]">
                       {assistantPanelCollapsed ? "已收起，点击展开" : "点击题目继续问"}
                     </span>
@@ -977,7 +863,7 @@ function MainLayout({
                                 }}
                                 className="inline-flex items-center gap-1 rounded-full border border-[#e7edf3] bg-white px-3 py-1.5 text-[11px] font-black text-[#171c22] transition hover:-translate-y-0.5 hover:border-[#fb7299]/30"
                               >
-                                打开 AI 导师
+                                打开优化智能体
                                 <Bot className="h-3.5 w-3.5" />
                               </button>
                             </div>
@@ -1022,13 +908,13 @@ function MainLayout({
               bottom: "auto",
               touchAction: "none",
             }}
-            aria-label="打开 AI 导师侧栏"
-            title="打开 AI 导师侧栏"
+            aria-label="打开人才培养方案智能优化智能体"
+            title="打开人才培养方案智能优化智能体"
           >
             <span className="absolute bottom-0 left-1/2 h-12 w-[102px] -translate-x-1/2 rounded-[999px] bg-[#fb7299]/18 blur-md transition group-hover:bg-[#fb7299]/24 md:w-[118px]" />
             <span className="absolute bottom-1 left-1/2 h-9 w-[92px] -translate-x-1/2 rounded-[999px] border border-white/80 bg-white/78 shadow-[0_16px_34px_rgba(15,23,42,0.14)] backdrop-blur-md md:w-[106px]" />
             <span className="absolute right-0 top-1 rounded-full border border-[#F6B6CA] bg-white/94 px-2.5 py-1 text-[10px] font-black text-[#fb7299] shadow-[0_10px_24px_rgba(251,114,153,0.16)] transition group-hover:-translate-y-0.5">
-              AI 导师
+              方案优化
             </span>
             <span className="pointer-events-none absolute inset-x-[-22px] bottom-[7px] top-[-10px] block">
               <Suspense
@@ -1075,7 +961,7 @@ function MainLayout({
               className={`ui-border-app ui-text-soft absolute -left-10 top-1/2 hidden h-20 w-10 -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 bg-white shadow-[-8px_10px_30px_rgba(15,23,42,0.08)] transition md:flex ${
                 tutorDrawer.open ? "opacity-100" : "pointer-events-none opacity-0"
               }`}
-              aria-label="收起 AI 导师侧栏"
+              aria-label="收起人才培养方案智能优化智能体"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -1145,7 +1031,7 @@ function TutorDrawerFallback() {
       <div className="border-b border-[#EEF2F6] px-4 py-3">
         <div className="inline-flex items-center gap-2 rounded-full bg-[#FFF2F7] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#e85d8e]">
           <Sparkles className="h-3.5 w-3.5" />
-          AI Tutor
+          培养方案优化智能体
         </div>
         <div className="mt-3 flex gap-2 overflow-hidden">
           <div className="h-8 w-24 rounded-full bg-[#F5F7FA]" />
@@ -1163,6 +1049,18 @@ function TutorDrawerFallback() {
       </div>
     </div>
   );
+}
+
+function LoginRoute({
+  user,
+  onLoginSuccess,
+}: {
+  user: UserSession;
+  onLoginSuccess: (profile: Pick<UserSession, "id" | "name" | "avatar">, options?: { persist?: boolean }) => void;
+}) {
+  const location = useLocation();
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/";
+  return user.loggedIn ? <Navigate to={from} replace /> : <Login onLoginSuccess={onLoginSuccess} />;
 }
 
 function RouterStateSync({
@@ -1513,14 +1411,9 @@ export default function App() {
     });
   };
 
-  useEffect(() => {
-    if (!user.loggedIn) return undefined;
-    return scheduleRouteWarmup();
-  }, [user.loggedIn]);
-
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const location = useLocation();
-    if (location.pathname === "/resources/preview" || location.pathname === "/resources/judge-result" || location.pathname === "/robot-ops-agent" || location.pathname === "/ai-annotation-agent" || location.pathname === "/annotation-agent") {
+    if (location.pathname === "/resources/preview" || location.pathname === "/resources/judge-result" || location.pathname === "/robot-ops-agent") {
       return <>{children}</>;
     }
     if (!user.loggedIn) {
@@ -1560,7 +1453,7 @@ export default function App() {
             <Routes>
               <Route
                 path="/login"
-                element={user.loggedIn ? <Navigate to="/" replace /> : <Login onLoginSuccess={handleLoginSuccess} />}
+                element={<LoginRoute user={user} onLoginSuccess={handleLoginSuccess} />}
               />
 
               <Route

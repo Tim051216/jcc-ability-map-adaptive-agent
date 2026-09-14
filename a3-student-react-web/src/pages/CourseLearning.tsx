@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -545,7 +545,7 @@ function buildTopicKeywords(courseTitle: string, sectionTitle: string, resourceL
     "学习闭环",
     "课堂资源",
     "测评反馈",
-    "AI 导师",
+    "学习助手",
   ];
   const matched = candidates.filter((item) => source.toLowerCase().includes(item.toLowerCase()));
   return (matched.length ? matched : ["问题背景", "结构拆解", "场景落地", "复盘迁移"]).slice(0, 4);
@@ -647,7 +647,7 @@ function parseTeachingPlanSlides(resources: ResourceCard[], courseTitle: string,
       kind: "ending" as const,
       title: "课后行动",
       subtitle: "形成学习闭环",
-      bullets: ["回看讲义主线", "结合导图复盘结构关系", "完成练习并继续追问 AI 导师"],
+      bullets: ["回看讲义主线", "结合导图复盘结构关系", "完成练习并继续追问 学习助手"],
     },
   ];
 }
@@ -1860,7 +1860,7 @@ function InlinePreviewContent({
                   value={practiceShortAnswers[question.id] || ""}
                   onChange={(event) => onPracticeShortAnswerChange(question.id, event.target.value)}
                   rows={4}
-                  placeholder="写下你的思路，提交后可继续交给 AI 导师讲解。"
+                  placeholder="写下你的思路，提交后可继续交给 学习助手讲解。"
                   className="mt-3 w-full rounded-2xl border border-[#DCE6F2] bg-[#FCFDFE] px-3 py-3 text-sm leading-6 ui-text-ink outline-none transition focus:border-[#171717]"
                 />
               ) : (
@@ -2005,8 +2005,8 @@ function buildLocalGeneratedResource(
     source_titles: [`${titleSuffix}即时整理`],
     study_suggestion:
       resourceType === "practice_set"
-        ? "建议先独立完成一轮，再让 AI 导师讲解你的思路漏洞。"
-        : "建议先顺着当前内容快速通读一遍，再继续问 AI 导师补细节。",
+        ? "建议先独立完成一轮，再让 学习助手讲解你的思路漏洞。"
+        : "建议先顺着当前内容快速通读一遍，再继续问 学习助手补细节。",
     source_file_count: 0,
     source_files: [],
   };
@@ -2527,7 +2527,7 @@ export default function CourseLearning() {
     if (previewState.kind === "ppt") {
       return {
         title: "推荐下一步",
-        detail: "先快速过一遍课件结构，再交给 AI 导师逐页拆解，会比直接从视频硬听更容易形成主线。",
+        detail: "先快速过一遍课件结构，再交给 学习助手逐页拆解，会比直接从视频硬听更容易形成主线。",
         actionLabel: "让 AI 逐页讲",
         onAction: () => {
           const prompt = `请结合这份课件《${previewState.title}》继续给我讲这一节的主线，并把每一页分别在讲什么说清楚。`;
@@ -2560,7 +2560,7 @@ export default function CourseLearning() {
     }
     return {
       title: "推荐下一步",
-      detail: "先做这组练习，再交给 AI 导师讲错题思路，能更快定位薄弱点。",
+      detail: "先做这组练习，再交给 学习助手讲错题思路，能更快定位薄弱点。",
       actionLabel: "让 AI 讲题思路",
       onAction: () => {
         setPreviewState(null);
@@ -2825,7 +2825,7 @@ export default function CourseLearning() {
               学习现场
             </div>
             <div className="mt-3 text-[15px] font-black tracking-[-0.02em] ui-text-ink">
-              右侧 AI 导师已经接入当前视频、章节和播放进度
+              右侧 学习助手已经接入当前视频、章节和播放进度
             </div>
             <div className="mt-1.5 max-w-2xl text-[12px] leading-6 text-[#526071]">
               在这一页边看边问，它会结合当前片段、术语上下文和课堂生成结果继续讲。
@@ -2858,7 +2858,7 @@ export default function CourseLearning() {
                 autoplay: true,
                 muted: true,
               });
-              showToast(`AI 导师已读取当前视频 ${playbackLabel} 的上下文`);
+              showToast(`学习助手已读取当前视频 ${playbackLabel} 的上下文`);
             }}
             className="shrink-0 rounded-full bg-[#111827] px-5 py-2.5 text-sm font-black text-white shadow-[0_12px_32px_rgba(17,24,39,0.2)] transition-all hover:-translate-y-0.5 hover:bg-[#0b1220]"
           >
@@ -3151,7 +3151,7 @@ export default function CourseLearning() {
               <div className="mt-3 ui-radius-20 border border-[#e8edf2] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_56%,#fff5f8_100%)] px-4 py-3.5">
                 <LazyAiLoading
                   caption="生成结果正在回填"
-                  subcaption="下方卡片会逐步切换成可下载、可预览、可继续交给 AI 导师的正式结果。"
+                  subcaption="下方卡片会逐步切换成可下载、可预览、可继续交给 学习助手的正式结果。"
                 />
               </div>
             ) : null}
@@ -3284,7 +3284,7 @@ export default function CourseLearning() {
                               artifact.loading ? "bg-[#CBD5E1] text-white cursor-not-allowed" : "ui-bg-dark text-white hover:bg-black"
                             }`}
                           >
-                            交给 AI 导师
+                            交给 学习助手
                           </button>
                           <button
                             type="button"
@@ -3376,7 +3376,7 @@ export default function CourseLearning() {
                                 <div>
                                   <div className="text-[11px] font-black uppercase ui-tracking-tight text-[#d97706]">Practice Preview</div>
                                   <p className="mt-1 text-sm font-black ui-text-ink">随堂练习题卡</p>
-                                  <p className="mt-1 text-[11px] leading-5 ui-text-body">先快速做题，再把不会的题继续交给 AI 导师讲透。</p>
+                                  <p className="mt-1 text-[11px] leading-5 ui-text-body">先快速做题，再把不会的题继续交给 学习助手讲透。</p>
                                 </div>
                                 <span className="rounded-full bg-[#FFF3D6] px-3 py-1 text-[10px] font-black text-[#b45309]">
                                   预览前 3 题
@@ -3519,7 +3519,7 @@ export default function CourseLearning() {
                               visibleRecentPpt.loading ? "bg-[#CBD5E1] text-white cursor-not-allowed" : "ui-bg-dark text-white hover:bg-black"
                             }`}
                           >
-                            交给 AI 导师
+                            交给 学习助手
                           </button>
                           <button
                             type="button"
@@ -4584,7 +4584,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       artifact.previewContent?.join("\n\n") ||
       artifact.summary,
     source_titles: sourceResource?.source_titles?.length ? sourceResource.source_titles : [artifact.sectionTitle],
-    study_suggestion: sourceResource?.study_suggestion || "可在这个预览页直接查看生成内容，也可以继续交给 AI 导师追问。",
+    study_suggestion: sourceResource?.study_suggestion || "可在这个预览页直接查看生成内容，也可以继续交给 学习助手追问。",
     source_file_count: sourceResource?.source_file_count || sourceResource?.source_files?.length || 0,
     source_files: sourceResource?.source_files || [],
     generated_at: sourceResource?.generated_at,
@@ -4616,7 +4616,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       summary: artifact.summary || "已按当前章节生成课件草案。",
       content_markdown: artifact.rawContent ? `<!-- ppt-template:${templateId} -->\n\n${artifact.rawContent}` : markedSlideMarkdown || artifact.previewContent?.join("\n\n") || artifact.summary || title,
       source_titles: sourceResource?.source_titles?.length ? sourceResource.source_titles : [artifact.sectionTitle],
-      study_suggestion: sourceResource?.study_suggestion || "先浏览课件结构，再把不清楚的页交给 AI 导师继续讲解。",
+      study_suggestion: sourceResource?.study_suggestion || "先浏览课件结构，再把不清楚的页交给 学习助手继续讲解。",
       source_file_count: sourceResource?.source_file_count || sourceResource?.source_files?.length || 0,
       source_files: sourceResource?.source_files || [],
       generated_at: sourceResource?.generated_at,
@@ -4642,7 +4642,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
       summary: video.summary,
       content_markdown: content,
       source_titles: [artifact.sectionTitle, artifact.fileName],
-      study_suggestion: "先看分镜和旁白稿，再根据需要让 AI 导师压缩成答辩口播或课堂短视频脚本。",
+      study_suggestion: "先看分镜和旁白稿，再根据需要让 学习助手压缩成答辩口播或课堂短视频脚本。",
       source_file_count: 1,
       source_files: [
         {
@@ -6030,7 +6030,7 @@ const upsertRecentArtifact = (artifact: RecentResourceArtifact) => {
                 当前进度 {String(Math.floor(currentPlaybackTime / 60)).padStart(2, "0")}:{String(Math.floor(currentPlaybackTime % 60)).padStart(2, "0")}
               </div>
               <div className="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-[10px] font-bold text-white/72">
-                右侧 AI 导师已联动
+                右侧 学习助手已联动
               </div>
             </div>
           </div>

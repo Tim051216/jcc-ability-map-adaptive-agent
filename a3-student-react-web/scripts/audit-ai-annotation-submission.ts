@@ -121,6 +121,15 @@ check(
 );
 check(
   "技术",
+  exists("a3-student-react-web/src/lib/aiAnnotationLearningTask.ts") &&
+    /learning-task-transformer/.test(read("a3-student-react-web/src/pages/AIAnnotationAgent.tsx"))
+      ? "PASS"
+      : "BLOCKED",
+  "岗位工单转学习任务闭环",
+  "真实/脱敏工单 → 规则匹配 → 学习任务卡 → 量化验收与来源",
+);
+check(
+  "技术",
   /annotation-agent/.test(read("a3-student-react-web/src/App.tsx")) ? "PASS" : "BLOCKED",
   "路由入口",
   "/annotation-agent 与 /ai-annotation-agent",

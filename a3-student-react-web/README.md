@@ -48,7 +48,7 @@ npm run dev
 
 ## AI 数据标注实训智能体（竞赛 MVP）
 
-人工智能专业版微任务页面：服务 AI 数据标注工程师岗位，训练遮挡、截断和同类目标实例判定。
+人工智能专业版微任务页面：服务 AI 数据标注工程师岗位，明确覆盖核心方向 3“岗位典型工作任务转化成学习型任务”。页面可将真实或脱敏标注工单生成完整学习任务卡，并继续训练遮挡、截断和同类目标实例判定。
 
 - 直接访问：[http://localhost:3002/annotation-agent](http://localhost:3002/annotation-agent)
 - 兼容地址：[http://localhost:3002/ai-annotation-agent](http://localhost:3002/ai-annotation-agent)
@@ -103,7 +103,7 @@ npm run lint
 - `npm run smoke:defense-core`
   演示核心链路组合验证
 - `npm run smoke:ai-annotation-agent`
-  AI 数据标注实训智能体入口、规则、追问、反馈和 CSV 回归
+  AI 数据标注实训智能体入口、工单转学习任务卡、规则、追问、反馈和 CSV 回归
 - `npm run audit:ai-annotation-deliverables`
   检查人工智能专业版提交材料、来源边界、模拟标记和旧口径
 - `npm run audit:ai-annotation-submission`

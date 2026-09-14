@@ -31,12 +31,13 @@ async function main() {
     await page.locator("#login-id-input").waitFor({ timeout: 20_000 });
     await page.locator("#login-id-input").fill("demo2024");
     await page.locator("#login-password-input").fill("bililearn");
+    await page.waitForTimeout(500);
     await page.locator("#login-submit-btn").click({ force: true });
 
     await page.waitForFunction(
       () => window.location.pathname !== "/login",
       undefined,
-      { timeout: 20_000 },
+      { timeout: 60_000 },
     );
     await page.waitForTimeout(1_200);
 

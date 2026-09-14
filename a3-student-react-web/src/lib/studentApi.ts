@@ -45,10 +45,13 @@ export interface LearningTaskResponse {
   task_name: string;
   task_description: string;
   work_context: string;
+  learning_objectives: string[];
   steps: string[];
   safety_points: string[];
   knowledge_points: string[];
   skill_points: string[];
+  deliverables: string[];
+  acceptance_criteria: string[];
   resources: Array<{ name: string; href: string; resource_type: string }>;
   citations: string[];
   ai_generated: boolean;
@@ -56,7 +59,7 @@ export interface LearningTaskResponse {
 }
 export interface JobAbilityResponse {
   job_name: string; industry_chain: string; job_group: string; typical_tasks: string[];
-  abilities: Array<{ name: string; score: number; ability_units: string[]; skill_points: string[]; knowledge_points: string[] }>;
+  abilities: Array<{ name: string; score: number; related_tasks: string[]; ability_units: string[]; skill_points: string[]; knowledge_points: string[] }>;
   citations: string[]; ai_generated: boolean; generation_mode: string;
 }
 export interface AdaptiveLearningResponse {

@@ -39,9 +39,21 @@ async function main() {
 
   await login(page);
 
+  await runCheck(checks, "人才培养方案智能优化智能体入口", async () => {
+    await page.goto(`${BASE_URL}/overview`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.locator("#header-ai-tutor-pill").click();
+    await page.getByTestId("talent-plan-agent-overview").waitFor({ state: "visible", timeout: 30_000 });
+    await visibleText(page, "采集岗位", 30_000);
+    await visibleText(page, "分析趋势", 30_000);
+    await visibleText(page, "生成方案", 30_000);
+    await visibleText(page, "分析当前专业与岗位技能需求的匹配度", 30_000);
+    return "原 AI 导师入口已改为培养方案优化智能体，岗位采集、趋势分析、专业预警和方案生成能力可见";
+  });
+
   await runCheck(checks, "产业岗位分析看板", async () => {
     await page.goto(`${BASE_URL}/industry-dashboard`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await visibleText(page, "产业岗位动态分析", 60_000);
+    await visibleText(page, "人才培养方案智能优化智能体", 60_000);
+    await page.getByTestId("talent-plan-workflow").waitFor({ state: "visible", timeout: 60_000 });
     await visibleText(page, "匹配岗位", 60_000);
     await visibleText(page, "专业群横向监测", 60_000);
     await visibleText(page, "从", 60_000);

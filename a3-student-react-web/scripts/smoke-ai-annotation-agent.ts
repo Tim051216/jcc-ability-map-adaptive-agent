@@ -17,20 +17,56 @@ async function waitForAgentPage(): Promise<void> {
 
 try {
   await page.goto(`${baseUrl}/annotation-agent`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.location.pathname === "/login", undefined, { timeout: 8000 });
+  checks.push(["未登录直达标注模块会回到 BiliLearn 登录页", new URL(page.url()).pathname === "/login"]);
+  await page.locator("#login-id-input").fill("demo2024");
+  await page.locator("#login-password-input").fill("bililearn");
+  await page.waitForTimeout(500);
+  await page.locator("#login-submit-btn").click();
+  await page.waitForFunction(() => window.location.pathname === "/annotation-agent", undefined, { timeout: 20_000 });
   await waitForAgentPage();
   await page.evaluate(() => localStorage.removeItem("aiAnnotationTrialFeedback"));
-  checks.push(["AI 标注页面可访问", (await page.getByText("AI 数据标注 · 质检助手", { exact: true }).count()) > 0]);
-  checks.push(["页面显示 AI 生成内容标识", (await page.getByTestId("ai-generated-label").count()) === 1 && (await page.getByText("AI生成内容", { exact: true }).count()) >= 1]);
+  checks.push(["登录后 AI 标注模块可访问", (await page.getByText("AI 数据标注 · 质检助手", { exact: true }).count()) > 0]);
+  checks.push(["标注模块可返回 BiliLearn 主线", (await page.getByRole("link", { name: "返回 BiliLearn 岗课赛自适应学习" }).count()) === 1]);
+  await page.getByRole("link", { name: "返回 BiliLearn 岗课赛自适应学习" }).click();
+  await page.waitForFunction(() => window.location.pathname === "/job-learning", undefined, { timeout: 30_000 });
+  await page.getByTestId("annotation-agent-entry").waitFor({ state: "visible", timeout: 60_000 });
+  checks.push(["BiliLearn 主页显示数据标注实训入口", (await page.getByRole("link", { name: "进入 AI 数据标注实训" }).count()) === 1]);
+  await page.getByRole("link", { name: "进入 AI 数据标注实训" }).click();
+  await page.waitForFunction(() => window.location.pathname === "/annotation-agent", undefined, { timeout: 30_000 });
+  await waitForAgentPage();
+  checks.push(["可从 BiliLearn 主页进入数据标注模块", new URL(page.url()).pathname === "/annotation-agent"]);
   const legacyResponse = await page.goto(`${baseUrl}/ai-annotation-agent`, { waitUntil: "domcontentloaded" });
   await waitForAgentPage();
   checks.push(["兼容入口可访问", legacyResponse?.status() === 200 && (await page.getByText("AI 数据标注 · 质检助手", { exact: true }).count()) > 0]);
   await page.goto(`${baseUrl}/annotation-agent`, { waitUntil: "domcontentloaded" });
   await waitForAgentPage();
+  checks.push([
+    "页面显示 AI 生成内容标识",
+    (await page.getByTestId("ai-generated-label").count()) >= 1,
+  ]);
   checks.push(["闭环流程图示可见", (await page.getByTestId("annotation-flow").count()) === 1 && (await page.getByText("输入现象", { exact: true }).count()) > 0]);
   checks.push(["框选示意图可见且标注为示意", (await page.getByTestId("annotation-sketch").count()) === 1 && (await page.getByText("示意图（非真实样本）", { exact: false }).count()) > 0]);
   checks.push([
     "页面显示知识库数量",
     (await page.getByText(/知识库\s+60\s+条/).count()) > 0 && (await page.getByText(/核心规则\s+3\s+条/).count()) > 0,
+  ]);
+  checks.push(["岗位工单转学习任务模块可见", (await page.getByTestId("learning-task-transformer").count()) === 1]);
+  await page.getByRole("button", { name: "生成学习任务卡" }).click();
+  checks.push(["空工单会要求补充真实输入", (await page.getByRole("alert").getByText("请先粘贴真实或脱敏后的数据标注工单", { exact: false }).count()) === 1]);
+  await page.getByTestId("fill-work-order-example").click();
+  await page.getByRole("button", { name: "生成学习任务卡" }).click();
+  const generatedTask = page.getByTestId("generated-learning-task-card");
+  checks.push([
+    "工单可转为完整学习任务卡",
+    (await generatedTask.count()) === 1 &&
+      (await generatedTask.getByText("同类实例标注与质检学习任务", { exact: true }).count()) === 1 &&
+      (await generatedTask.getByText("操作步骤", { exact: true }).count()) === 1 &&
+      (await generatedTask.getByText("知识点", { exact: true }).count()) === 1 &&
+      (await generatedTask.getByText("技能点", { exact: true }).count()) === 1 &&
+      (await generatedTask.getByText("提交产出与量化验收", { exact: true }).count()) === 1 &&
+      (await generatedTask.getByText("安全要点", { exact: true }).count()) === 1 &&
+      (await generatedTask.getByText("LT-ANN-INS-01", { exact: true }).count()) === 1,
   ]);
   await page.getByText(/查看候选知识目录（60 条/).click();
   checks.push([
@@ -65,19 +101,19 @@ try {
   await page.getByText("提交试用反馈", { exact: false }).click();
   checks.push(["反馈弹窗可打开", (await page.getByText("AI 标注助手试用反馈", { exact: true }).count()) > 0]);
   await page.locator("#feedback-record-type").selectOption("AI模拟（内部演示）");
-  await page.locator("textarea").fill("模拟回归：步骤清晰，建议增加示例图。");
+  await page.locator("#feedback-text").fill("模拟回归：步骤清晰，建议增加示例图。");
   checks.push(["未确认时禁止保存", await page.getByText("保存反馈记录", { exact: true }).isDisabled()]);
   await page.getByLabel(/我确认该记录仅用于 AI 模拟内部演示/).check();
   await page.getByText("保存反馈记录", { exact: true }).click();
   checks.push(["反馈可保存", (await page.getByText("反馈已保存", { exact: true }).count()) > 0 && (await page.evaluate(() => JSON.parse(localStorage.getItem("aiAnnotationTrialFeedback") || "[]").length)) === 1]);
   await page.getByText("记录下一位", { exact: true }).click();
-  checks.push(["可记录下一位", (await page.locator("textarea").count()) === 1 && (await page.locator("#feedback-identity").inputValue()) === "B｜人工智能专业在校生"]);
-  await page.locator("textarea").fill("模拟回归 B：同类实例提示清晰。");
+  checks.push(["可记录下一位", (await page.locator("#feedback-text").count()) === 1 && (await page.locator("#feedback-identity").inputValue()) === "B｜人工智能专业在校生"]);
+  await page.locator("#feedback-text").fill("模拟回归 B：同类实例提示清晰。");
   await page.getByLabel(/我确认该记录仅用于 AI 模拟内部演示/).check();
   await page.getByText("保存反馈记录", { exact: true }).click();
   await page.getByText("记录下一位", { exact: true }).click();
   checks.push(["可记录教师", (await page.locator("#feedback-identity").inputValue()) === "C｜人工智能专业教师"]);
-  await page.locator("textarea").fill("模拟回归 C：建议由教师核对平台字段。");
+  await page.locator("#feedback-text").fill("模拟回归 C：建议由教师核对平台字段。");
   await page.getByLabel(/我确认该记录仅用于 AI 模拟内部演示/).check();
   await page.getByText("保存反馈记录", { exact: true }).click();
   checks.push(["三位记录均已保存", (await page.evaluate(() => JSON.parse(localStorage.getItem("aiAnnotationTrialFeedback") || "[]").length)) === 3]);
@@ -88,9 +124,9 @@ try {
   checks.push(["反馈记录带有类型", (await page.evaluate(() => JSON.parse(localStorage.getItem("aiAnnotationTrialFeedback") || "[]")[0]?.recordType)) === "AI模拟（内部演示）"]);
   await page.getByLabel("关闭反馈窗口").click();
   await page.getByText("提交试用反馈", { exact: false }).click();
-  checks.push(["关闭重开可继续反馈", (await page.locator("textarea").count()) === 1 && (await page.getByText("反馈已保存", { exact: true }).count()) === 0]);
+  checks.push(["关闭重开可继续反馈", (await page.locator("#feedback-text").count()) === 1 && (await page.getByText("反馈已保存", { exact: true }).count()) === 0]);
   await page.locator("#feedback-record-type").selectOption("真实用户试用");
-  await page.locator("textarea").fill("真实类型导出回归：仅验证文件分类，不代表真人反馈。");
+  await page.locator("#feedback-text").fill("真实类型导出回归：仅验证文件分类，不代表真人反馈。");
   await page.getByLabel(/我确认以上意见由所选匿名身份本人/).check();
   await page.getByText("保存反馈记录", { exact: true }).click();
   const realDownload = page.waitForEvent("download");

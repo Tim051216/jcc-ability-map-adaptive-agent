@@ -80,10 +80,13 @@ class LearningTaskResponse(BaseModel):
     task_name: str
     task_description: str
     work_context: str
+    learning_objectives: list[str]
     steps: list[str]
     safety_points: list[str]
     knowledge_points: list[str]
     skill_points: list[str]
+    deliverables: list[str]
+    acceptance_criteria: list[str]
     resources: list[LearningResourceLink]
     citations: list[str]
     ai_generated: bool = False
@@ -100,6 +103,7 @@ class JobAbilityRequest(BaseModel):
 class JobAbilityNode(BaseModel):
     name: str
     score: int = Field(ge=0, le=100)
+    related_tasks: list[str] = Field(default_factory=list)
     ability_units: list[str]
     skill_points: list[str]
     knowledge_points: list[str]

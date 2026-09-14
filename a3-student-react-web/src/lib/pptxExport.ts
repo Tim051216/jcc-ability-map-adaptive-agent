@@ -514,7 +514,7 @@ function buildEndingSlideXml(slide: DeckSlide) {
         2860000,
         6800000,
         820000,
-        buildTextParagraphs([slide.subtitle || "可以继续让 AI 导师扩展为讲义、导图、练习或资料包"], 1600, "667085"),
+        buildTextParagraphs([slide.subtitle || "可以继续让 学习助手扩展为讲义、导图、练习或资料包"], 1600, "667085"),
       )}
       ${buildTextBoxXml(6, "Ending Bullets", 2560000, 3840000, 6200000, 900000, buildTextParagraphs(slide.bullets, 1300, accent))}
       ${buildIllustrationXml(20, 8120000, 1780000, 2100000, 2800000, accent, slide)}
@@ -587,7 +587,7 @@ const staticPptxParts = {
 </Properties>`,
   coreXml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>BiliLearn AI Tutor Deck</dc:title>
+  <dc:title>BiliLearn Learning Assistant Deck</dc:title>
   <dc:creator>OpenAI Codex</dc:creator>
   <cp:lastModifiedBy>OpenAI Codex</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">2026-06-10T00:00:00Z</dcterms:created>

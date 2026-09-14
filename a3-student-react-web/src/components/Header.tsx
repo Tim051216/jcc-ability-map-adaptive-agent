@@ -186,7 +186,7 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="搜索课程、讲义、导师..."
+            placeholder="搜索课程、岗位、培养方案..."
             className="ui-text-ink w-full rounded-xl border-none bg-[#F1F2F3] py-1 pl-8 pr-3 font-sans text-xs outline-none transition-all placeholder:ui-text-muted-rose/70 focus:ring-2 focus:ring-[#fb7299]"
           />
         </form>
@@ -208,7 +208,7 @@ export default function Header({ user, onLogout, onOpenTutor, contentShiftClass 
             className="ui-bg-brand flex items-center gap-1.5 rounded-full px-4 py-2 font-sans text-xs font-bold text-white shadow-sm transition-all hover:bg-[#fb7299]/90 hover:shadow"
           >
             <Bot className="h-3.5 w-3.5" />
-            <span>AI 导师</span>
+            <span>培养方案优化智能体</span>
           </button>
 
           <div className="relative">

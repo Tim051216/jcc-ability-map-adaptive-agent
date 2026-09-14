@@ -1299,7 +1299,7 @@ function buildGoalPlanningProfile(
         day: 3,
         title: "复盘并补最后一轮",
         focus: "把错题和知识点重新对齐，形成下一轮复习入口。",
-        task: "把错题按概念、流程、应用三类归档，再选 2 个最薄弱点让 AI 导师重新讲一遍。",
+        task: "把错题按概念、流程、应用三类归档，再选 2 个最薄弱点让 学习助手重新讲一遍。",
         deliverable: "错题分类表 + 2 个追问记录",
       },
     ];
@@ -2403,7 +2403,7 @@ export default function LearningPath() {
                       onClick={() => navigate(`/tutor?courseId=${course.id}&query=${encodeURIComponent(`结合我当前的学习路径，先帮我讲清楚：${pathDecisionInsight.learnNext}`)}`)}
                       className="inline-flex items-center gap-1 rounded-full border border-[#f3d5de] bg-white px-4 py-2 text-xs font-black text-[#8a5666]"
                     >
-                      去问 AI 导师
+                      去问 学习助手
                       <Bot className="h-3.5 w-3.5" />
                     </button>
                   </div>

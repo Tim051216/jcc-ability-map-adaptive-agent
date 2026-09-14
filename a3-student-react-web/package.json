@@ -18,6 +18,7 @@
     "smoke:login": "tsx ./scripts/smoke-login.ts",
     "smoke:personalized-learning": "tsx ./scripts/smoke-personalized-learning.ts",
     "smoke:xa-competition": "tsx ./scripts/smoke-xa-competition.ts",
+    "smoke:talent-plan-agent": "tsx ./scripts/smoke-talent-plan-agent.ts",
     "smoke:ai-annotation-agent": "tsx ./scripts/smoke-ai-annotation-agent.ts",
     "audit:ai-annotation-deliverables": "tsx ./scripts/audit-ai-annotation-deliverables.ts",
     "audit:ai-annotation-submission": "tsx ./scripts/audit-ai-annotation-submission.ts",

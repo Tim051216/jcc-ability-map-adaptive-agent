@@ -300,7 +300,7 @@ const HERO_DANMAKU_TIMELINE: DanmakuTemplate[] = [
   { id: "dan-4", text: "打卡第15天！", color: "#ff8fab", sizeClassName: "text-base", fontWeightClassName: "font-bold", time: 6.4 },
   { id: "dan-5", text: "原来 useRef 是这么一回事", color: "#ffffff", sizeClassName: "text-sm", time: 8.6 },
   { id: "dan-6", text: "这个交互重构思路很像真实项目", color: "#ffd166", sizeClassName: "text-sm", fontWeightClassName: "font-semibold", time: 10.5 },
-  { id: "dan-7", text: "AI 导师的答疑真的很有帮助", color: "#00FFC2", sizeClassName: "text-sm", fontWeightClassName: "font-semibold", time: 12.9 },
+  { id: "dan-7", text: "学习助手的答疑真的很有帮助", color: "#00FFC2", sizeClassName: "text-sm", fontWeightClassName: "font-semibold", time: 12.9 },
   { id: "dan-8", text: "100% completed!", color: "#ffffff", sizeClassName: "text-base", fontWeightClassName: "font-bold", time: 15.4 },
   { id: "dan-9", text: "老师讲到渲染链路这里突然听懂了", color: "#ffffff", sizeClassName: "text-sm", time: 18.2 },
   { id: "dan-10", text: "这个例子太像我前几天改的需求了", color: "#fb7299", sizeClassName: "text-sm", fontWeightClassName: "font-semibold", time: 21.1 },
@@ -931,7 +931,7 @@ export default function Overview({ user }: OverviewProps = {}) {
       title: options?.title || `${primaryCourse?.title ?? COURSES[0].title} · 学习总控`,
       subtitle:
         options?.subtitle ||
-        "AI 导师会结合首页里的学习目标、岗位学情阶段、推荐课程和资源状态，直接给出下一步建议。",
+        "学习助手会结合首页里的学习目标、岗位学情阶段、推荐课程和资源状态，直接给出下一步建议。",
       query:
         options?.query ||
         `请结合我当前首页里的学习目标、岗位学情阶段、推荐课程和资料状态，围绕“${homeConfig.tutorFocus}”告诉我现在最该先做什么，并给一个最短执行顺序。`,
@@ -1610,7 +1610,7 @@ export default function Overview({ user }: OverviewProps = {}) {
 
                   <div className="relative mt-4 flex flex-col gap-3 rounded-[22px] border border-white/72 bg-white/66 px-4 py-3 shadow-[0_10px_20px_rgba(15,23,42,0.045)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-[12px] font-bold text-[#5f6b7a]">
-                      已联动学习路径、资源推荐和 AI 导师问答，后续学习行为会继续刷新岗位能力诊断。
+                      已联动学习路径、资源推荐和 学习助手问答，后续学习行为会继续刷新岗位能力诊断。
                     </p>
                     <button
                       type="button"
@@ -2489,17 +2489,17 @@ export default function Overview({ user }: OverviewProps = {}) {
                   <button
                     onClick={() =>
                       openOverviewTutor({
-                        title: "首页快捷入口 · AI 导师答疑",
-                        subtitle: "导师会基于当前概览页状态，优先帮你扫清今天最影响推进的卡点。",
-                        query: "请根据我当前首页状态，先判断我最可能卡住的点，再给我一个非常短的推进建议。",
-                        quickPrompts: ["我最可能卡在哪", "先解决哪个问题", "今天最短推进建议"],
+                        title: "人才培养方案智能优化",
+                        subtitle: "基于岗位动态、专业匹配度和历史快照生成可核验调整建议。",
+                        query: "请说明如何从公开岗位证据识别专业预警，并生成一条可复核的人才培养方案优化建议。",
+                        quickPrompts: ["分析岗位技能趋势", "检查专业匹配度", "生成培养方案优化建议"],
                       })
                     }
                     className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-amber-100 bg-amber-50 p-3 text-center text-amber-700 transition-all hover:bg-amber-100"
                   >
                     <Bot className="w-6 h-6 mb-1 font-bold" />
-                    <span className="text-xs font-bold font-sans">AI 导师答疑</span>
-                    <span className="text-[9px] opacity-75 mt-0.5 truncate max-w-full">扫清思维死角</span>
+                    <span className="text-xs font-bold font-sans">培养方案优化</span>
+                    <span className="text-[9px] opacity-75 mt-0.5 truncate max-w-full">岗位趋势与专业预警</span>
                   </button>
                 </div>
               </div>

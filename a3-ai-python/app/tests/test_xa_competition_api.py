@@ -132,6 +132,9 @@ def test_learning_task_changes_by_job_context():
     assert any("高压" in item for item in battery.safety_points)
     assert any("示教" in item for item in robot.skill_points)
     assert "学习任务" in battery.task_description
+    assert battery.learning_objectives
+    assert battery.deliverables
+    assert battery.acceptance_criteria
 
 
 def test_learning_task_uses_industry_and_professional_context():
@@ -144,6 +147,8 @@ def test_learning_task_uses_industry_and_professional_context():
     assert "智能工厂质量追溯" in result.work_context
     assert any("缺陷" in item or "质量" in item for item in result.skill_points)
     assert result.resources and result.resources[0].href.startswith("/resources?search=")
+    assert any("质量" in item or "缺陷" in item for item in result.deliverables)
+    assert all(item.strip() for item in result.acceptance_criteria)
 
 
 def test_learning_task_preserves_explicit_ability_focus():
@@ -183,6 +188,7 @@ def test_job_ability_generation_maps_input_job_to_graph():
     assert result.job_name == "工业机器人系统运维员"
     assert "智能制造" in result.industry_chain
     assert result.typical_tasks
+    assert result.abilities[0].related_tasks
     assert result.abilities[0].skill_points
     assert result.abilities[0].knowledge_points
 
@@ -202,6 +208,7 @@ def test_job_ability_can_ingest_measured_skills_and_tasks():
         observed_skills=["代码审查"], typical_tasks=["企业 API 联调与验收"],
     )))
     assert "企业 API 联调与验收" in result.typical_tasks
+    assert any("企业 API 联调与验收" in node.related_tasks for node in result.abilities)
     assert any("代码审查" in node.skill_points for node in result.abilities)
     assert "公开来源" in result.citations[1]
 
